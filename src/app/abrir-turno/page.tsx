@@ -18,6 +18,9 @@ export default function AbrirTurno() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  const [hasActiveTurno, setHasActiveTurno] = useState(false);
+  const [otherUserTurno, setOtherUserTurno] = useState<any>(null);
+  const [isCheckingTurnos, setIsCheckingTurnos] = useState(true);
   const router = useRouter();
 
   const [formData, setFormData] = useState<TurnoFormData>({
@@ -30,28 +33,57 @@ export default function AbrirTurno() {
   });
 
   useEffect(() => {
-    const userSession = localStorage.getItem('userSession');
-    console.log('🔍 Raw userSession from localStorage:', userSession);
-    
-    if (!userSession) {
-      router.push('/login');
-      return;
-    }
-    
-    try {
-      const userData = JSON.parse(userSession);
-      console.log('🔍 Parsed userData:', userData);
-      console.log('🔍 userData.user:', userData.user);
+    const checkTurnos = async () => {
+      const userSession = localStorage.getItem('userSession');
+      console.log('🔍 Raw userSession from localStorage:', userSession);
       
-      setFormData(prev => ({
-        ...prev,
-        operador: userData.user?.Nombre || ''
-      }));
-      setIsAuthenticated(true);
-    } catch (error) {
-      console.error('Error parsing user session:', error);
-      router.push('/login');
-    }
+      if (!userSession) {
+        router.push('/login');
+        return;
+      }
+
+      // Verificar si ya hay un turno activo en localStorage
+      const turnoActivo = localStorage.getItem('turnoActivo');
+      if (turnoActivo) {
+        setHasActiveTurno(true);
+        setIsCheckingTurnos(false);
+        return;
+      }
+
+      try {
+        const userData = JSON.parse(userSession);
+        console.log('🔍 Parsed userData:', userData);
+        
+        // Verificar si hay turnos abiertos en Airtable
+        console.log('� Verificando turnos abiertos en Airtable...');
+        const response = await fetch('/api/turno/check');
+        const result = await response.json();
+        
+        if (response.ok) {
+          if (result.hasTurnoAbierto) {
+            console.log('⚠️ Turno abierto encontrado:', result.turnoAbierto);
+            setOtherUserTurno(result.turnoAbierto);
+          } else {
+            console.log('✅ No hay turnos abiertos, usuario puede proceder');
+            setFormData(prev => ({
+              ...prev,
+              operador: userData.user?.Nombre || ''
+            }));
+            setIsAuthenticated(true);
+          }
+        } else {
+          console.error('Error al verificar turnos:', result.error);
+          setMensaje(`❌ Error al verificar turnos: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Error parsing user session or checking turnos:', error);
+        router.push('/login');
+      } finally {
+        setIsCheckingTurnos(false);
+      }
+    };
+
+    checkTurnos();
   }, [router]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -109,6 +141,16 @@ export default function AbrirTurno() {
 
       if (response.ok) {
         setMensaje('✅ Turno abierto exitosamente');
+        
+        // Guardar el turno activo en localStorage
+        const turnoActivo = {
+          id: result.data?.records?.[0]?.id || 'temp-id',
+          operador: userData.Nombre,
+          fechaInicio: new Date().toISOString(),
+          status: 'activo'
+        };
+        localStorage.setItem('turnoActivo', JSON.stringify(turnoActivo));
+        
         // Limpiar formulario después de éxito
         setFormData({
           operador: formData.operador, // mantener el operador
@@ -118,6 +160,11 @@ export default function AbrirTurno() {
           consumoEnergiaInicio: '',
           consumoGasInicial: ''
         });
+        
+        // Redirigir al usuario después de un breve delay
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
       } else {
         setMensaje(`❌ Error: ${result.error || 'No se pudo abrir el turno'}`);
       }
@@ -129,10 +176,131 @@ export default function AbrirTurno() {
     }
   };
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !otherUserTurno && isCheckingTurnos) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-white text-xl">🔄 Verificando autenticación...</div>
+        <div className="text-white text-xl">🔄 Verificando turnos activos...</div>
+      </div>
+    );
+  }
+
+  if (otherUserTurno) {
+    return (
+      <div 
+        className="min-h-screen bg-cover bg-center bg-no-repeat relative"
+        style={{
+          backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+        }}
+      >
+        <div className="absolute inset-0 bg-black/60"></div>
+        
+        <div className="relative z-20">
+          <Navbar />
+          
+          <div className="flex items-center justify-center min-h-[80vh]">
+            <div className="max-w-lg mx-auto bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 text-center">
+              <div className="mb-6">
+                <div className="text-6xl mb-4">⚠️</div>
+                <h1 className="text-2xl font-bold text-gray-800 mb-4">
+                  Ya hay un turno activo
+                </h1>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-yellow-800 mb-2">
+                    📋 Información del turno activo:
+                  </h3>
+                  <div className="text-left text-sm text-yellow-700 space-y-1">
+                    <p><strong>👤 Operador:</strong> {otherUserTurno.operador}</p>
+                    <p><strong>📅 Inicio:</strong> {new Date(otherUserTurno.fechaInicio).toLocaleString('es-CO')}</p>
+                    <p><strong>🎙️ Alimentación Biomasa:</strong> {otherUserTurno.alimentacionBiomasa} Kg/min</p>
+                    <p><strong>🎙️ Herzt Tolva 2:</strong> {otherUserTurno.herztTolva2}</p>
+                  </div>
+                </div>
+                <p className="text-gray-600 mb-6">
+                  Para abrir un nuevo turno, es necesario que <strong>{otherUserTurno.operador}</strong> cierre 
+                  su turno activo primero. Por favor, coordina con tu compañero para que finalice su turno.
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                >
+                  🔄 Verificar Nuevamente
+                </button>
+                
+                <button
+                  onClick={() => router.push('/')}
+                  className="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                >
+                  🏠 Volver al Inicio
+                </button>
+                
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-600">
+                    💡 <strong>Sugerencia:</strong> Puedes usar el botón "Verificar Nuevamente" 
+                    después de que tu compañero cierre su turno.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <Footer />
+        </div>
+      </div>
+    );
+  }
+
+  if (hasActiveTurno) {
+    return (
+      <div 
+        className="min-h-screen bg-cover bg-center bg-no-repeat relative"
+        style={{
+          backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+        }}
+      >
+        <div className="absolute inset-0 bg-black/60"></div>
+        
+        <div className="relative z-20">
+          <Navbar />
+          
+          <div className="flex items-center justify-center min-h-[80vh]">
+            <div className="max-w-md mx-auto bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 text-center">
+              <div className="mb-6">
+                <div className="text-6xl mb-4">⚠️</div>
+                <h1 className="text-2xl font-bold text-gray-800 mb-4">
+                  Ya tienes un turno activo
+                </h1>
+                <p className="text-gray-600 mb-6">
+                  No puedes abrir un nuevo turno mientras tienes uno en curso. 
+                  Debes cerrar el turno actual desde el navbar antes de abrir uno nuevo.
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => router.push('/')}
+                  className="w-full bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                >
+                  🏠 Volver al Inicio
+                </button>
+                
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('turnoActivo');
+                    window.location.reload();
+                  }}
+                  className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                >
+                  🛑 Forzar Cierre de Turno
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <Footer />
+        </div>
       </div>
     );
   }

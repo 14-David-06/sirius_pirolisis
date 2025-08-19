@@ -1,26 +1,17 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Navbar from '@/components/Navbar';
+import { TurnoProtection } from '@/components';
 import Footer from '@/components/Footer';
 
 export default function SistemaBaches() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const router = useRouter();
+  return (
+    <TurnoProtection requiresTurno={true}>
+      <SistemaBachesContent />
+    </TurnoProtection>
+  );
+}
 
-  useEffect(() => {
-    const userSession = localStorage.getItem('userSession');
-    if (!userSession) {
-      router.push('/login');
-      return;
-    }
-    setIsAuthenticated(true);
-  }, [router]);
-
-  if (!isAuthenticated) {
-    return <div>Verificando autenticación...</div>;
-  }
+function SistemaBachesContent() {
 
   return (
     <div 
@@ -33,7 +24,6 @@ export default function SistemaBaches() {
       <div className="absolute inset-0 bg-black/40"></div>
       
       <div className="relative z-10">
-        <Navbar />
         <main className="container mx-auto px-6 py-8">
           <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-8">
             <h1 className="text-3xl font-bold text-gray-800 mb-6">🔥 Sistema de Baches</h1>

@@ -4,29 +4,70 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
+interface MenuItem {
+  label: string;
+  href: string;
+  icon: string;
+  description: string;
+}
+
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [activeTurno, setActiveTurno] = useState<any>(null);
 
   useEffect(() => {
     // Verificar si hay una sesión activa
     const userSession = localStorage.getItem('userSession');
     setIsLoggedIn(!!userSession);
+
+    // Verificar si hay un turno activo
+    const turnoActivo = localStorage.getItem('turnoActivo');
+    if (turnoActivo) {
+      setActiveTurno(JSON.parse(turnoActivo));
+    }
   }, []);
 
   const handleLogout = () => {
+    if (activeTurno) {
+      alert('⚠️ Debes cerrar el turno activo antes de cerrar sesión');
+      return;
+    }
     localStorage.removeItem('userSession');
     setIsLoggedIn(false);
     window.location.href = '/';
   };
 
-  const menuItems = [
-    { label: "🔄 Abrir Turno", href: "/abrir-turno", icon: "🔄", description: "Gestión de turnos" },
-    { label: "⚖️ Balance de Masa", href: "/balance-masa", icon: "⚖️", description: "Control de materiales" },
-    { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
-    { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
-    { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
-  ];
+  // Determinar qué opciones mostrar basado en el estado del turno
+  const getMenuItems = (): MenuItem[] => {
+    const baseItems: MenuItem[] = [
+      { label: "⚖️ Balance de Masa", href: "/balance-masa", icon: "⚖️", description: "Control de materiales" },
+      { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
+      { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
+      { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
+    ];
+
+    if (activeTurno) {
+      // Si hay turno activo, mostrar "Cerrar Turno"
+      return [
+        { 
+          label: "🛑 Cerrar Turno", 
+          href: "/cerrar-turno", 
+          icon: "🛑", 
+          description: "Finalizar turno activo"
+        },
+        ...baseItems
+      ];
+    } else {
+      // Si no hay turno activo, mostrar "Abrir Turno"
+      return [
+        { label: "🔄 Abrir Turno", href: "/abrir-turno", icon: "🔄", description: "Gestión de turnos" },
+        ...baseItems
+      ];
+    }
+  };
+
+  const menuItems = getMenuItems();
 
   return (
     <header className="w-full px-6 py-4 relative z-30 bg-transparent backdrop-blur-sm">
@@ -82,10 +123,17 @@ export default function Navbar() {
               
               <button
                 onClick={handleLogout}
-                className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-md hover:shadow-lg"
+                className={`transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-md hover:shadow-lg px-5 py-2 rounded-lg text-sm font-semibold ${
+                  activeTurno 
+                    ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700'
+                }`}
+                disabled={!!activeTurno}
+                title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
               >
                 <span>🚪</span>
                 <span>Cerrar Sesión</span>
+                {activeTurno && <span className="text-xs">⚠️</span>}
               </button>
             </div>
 
@@ -126,10 +174,17 @@ export default function Navbar() {
                   
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center px-4 py-3 text-red-600 hover:bg-red-50 transition-all duration-200 font-semibold rounded-lg mx-2"
+                    className={`w-full flex items-center px-4 py-3 transition-all duration-200 font-semibold rounded-lg mx-2 ${
+                      activeTurno 
+                        ? 'text-gray-400 cursor-not-allowed' 
+                        : 'text-red-600 hover:bg-red-50'
+                    }`}
+                    disabled={!!activeTurno}
+                    title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
                   >
                     <span className="text-xl mr-3">🚪</span>
                     <span>Cerrar Sesión</span>
+                    {activeTurno && <span className="ml-2 text-xs">⚠️</span>}
                   </button>
                 </div>
               )}

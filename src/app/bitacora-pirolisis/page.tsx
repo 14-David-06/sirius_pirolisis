@@ -2,12 +2,36 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import BitacoraVoiceRecorder from '@/components/BitacoraVoiceRecorder';
+
+interface BitacoraFormData {
+  evento: string;
+  descripcion: string;
+  severidad: 'Baja' | 'Media' | 'Alta' | 'Crítica';
+}
 
 export default function BitacoraPirolisis() {
+  return (
+    <TurnoProtection requiresTurno={true}>
+      <BitacoraContent />
+    </TurnoProtection>
+  );
+}
+
+function BitacoraContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [mensaje, setMensaje] = useState('');
   const router = useRouter();
+
+  const [formData, setFormData] = useState<BitacoraFormData>({
+    evento: '',
+    descripcion: '',
+    severidad: 'Baja'
+  });
 
   useEffect(() => {
     const userSession = localStorage.getItem('userSession');
@@ -15,173 +39,264 @@ export default function BitacoraPirolisis() {
       router.push('/login');
       return;
     }
-    setIsAuthenticated(true);
+
+    try {
+      const sessionData = JSON.parse(userSession);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Error parsing session:', error);
+      router.push('/login');
+    }
   }, [router]);
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const validateForm = () => {
+    if (!formData.evento.trim()) {
+      setMensaje('❌ Por favor ingrese el nombre del evento');
+      return false;
+    }
+    if (!formData.descripcion.trim()) {
+      setMensaje('❌ Por favor ingrese una descripción');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+    setMensaje('');
+
+    try {
+      // Obtener datos del usuario y turno
+      const userSession = localStorage.getItem('userSession');
+      const turnoActivo = localStorage.getItem('turnoActivo');
+      
+      let sessionData: any = {};
+      let turnoData: any = {};
+      
+      if (userSession) {
+        sessionData = JSON.parse(userSession);
+      }
+      
+      if (turnoActivo) {
+        turnoData = JSON.parse(turnoActivo);
+      }
+
+      const dataToSend = {
+        ...formData,
+        registradoPor: sessionData?.user?.Nombre || 'Usuario no identificado',
+        turnoId: turnoData?.id || null,
+        fechaHora: new Date().toISOString(),
+      };
+
+      console.log('📋 Enviando registro de bitácora:', dataToSend);
+
+      const response = await fetch('/api/bitacora/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dataToSend),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setMensaje(`✅ ${result.message}`);
+        
+        // Limpiar formulario
+        setFormData({
+          evento: '',
+          descripcion: '',
+          severidad: 'Baja'
+        });
+      } else {
+        setMensaje(`❌ ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setMensaje('❌ Error de conexión');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const limpiarFormulario = () => {
+    setFormData({
+      evento: '',
+      descripcion: '',
+      severidad: 'Baja'
+    });
+    setMensaje('');
+  };
+
+  const handleEventoExtraido = (eventData: { evento: string; descripcion: string }) => {
+    console.log('🎤 Datos del evento extraídos del dictado:', eventData);
+    
+    // Actualizar el formulario con los datos extraídos
+    setFormData(prev => ({
+      ...prev,
+      evento: eventData.evento || prev.evento,
+      descripcion: eventData.descripcion || prev.descripcion
+    }));
+
+    // Mostrar mensaje de éxito
+    setMensaje('✅ Formulario llenado automáticamente desde el dictado. Revise y edite si es necesario.');
+  };
+
   if (!isAuthenticated) {
-    return <div>Verificando autenticación...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-500 mx-auto"></div>
+          <p className="mt-4 text-lg">Verificando autenticación...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div 
       className="min-h-screen bg-cover bg-center bg-no-repeat relative"
       style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752096900/DSC_3884-Mejorado-NR_ghtz72.jpg')"
       }}
     >
-      {/* Overlay para mejorar la legibilidad */}
-      <div className="absolute inset-0 bg-black/40"></div>
+      {/* Overlay translúcido */}
+      <div className="absolute inset-0 bg-black/30"></div>
       
       <div className="relative z-10">
         <Navbar />
+        
         <main className="container mx-auto px-6 py-8">
-          <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-8">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">📋 Bitácora Pirólisis</h1>
-          <p className="text-gray-600 mb-8">
-            Registro detallado de eventos y parámetros del proceso de pirólisis.
-          </p>
-          
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-            <div className="xl:col-span-2">
-              <div className="bg-blue-50 p-6 rounded-lg">
-                <h3 className="text-xl font-semibold mb-4 text-[#5A7836]">Nuevo Registro</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-4xl mx-auto border border-white/30">
+            <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">📋 Bitácora Pirólisis</h1>
+            <p className="text-center text-white/90 mb-6 drop-shadow">
+              Registro de eventos y seguimiento del proceso de pirólisis
+            </p>
+
+            {mensaje && (
+              <div className={`mb-6 p-4 rounded-lg text-center font-semibold backdrop-blur-sm ${
+                mensaje.includes('✅') 
+                  ? 'bg-green-500/80 text-white border border-green-400/50 shadow-lg' 
+                  : 'bg-red-500/80 text-white border border-red-400/50 shadow-lg'
+              }`}>
+                {mensaje}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              
+              {/* Dictado de Evento */}
+              <BitacoraVoiceRecorder 
+                onEventExtracted={handleEventoExtraido}
+                isLoading={isLoading}
+              />
+
+              {/* Información del evento */}
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
+                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
+                  🎯 Información del Evento
+                </h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Fecha y Hora
-                    </label>
-                    <input
-                      type="datetime-local"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Operador
+                    <label htmlFor="evento" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                      🏷️ Nombre del Evento *
                     </label>
                     <input
                       type="text"
-                      placeholder="Nombre del operador"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent"
+                      id="evento"
+                      name="evento"
+                      value={formData.evento}
+                      onChange={handleInputChange}
+                      required
+                      placeholder="Ej: Mantenimiento preventivo, Falla en equipo..."
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Temperatura Reactor (°C)
+                    <label htmlFor="severidad" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                      ⚠️ Severidad
                     </label>
-                    <input
-                      type="number"
-                      placeholder="450"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Presión (bar)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      placeholder="1.2"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Observaciones
-                    </label>
-                    <textarea
-                      rows={3}
-                      placeholder="Descripción de eventos, incidencias o notas importantes..."
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent"
-                    ></textarea>
+                    <select
+                      id="severidad"
+                      name="severidad"
+                      value={formData.severidad}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 font-medium"
+                    >
+                      <option value="Baja">🟢 Baja</option>
+                      <option value="Media">🟡 Media</option>
+                      <option value="Alta">🟠 Alta</option>
+                      <option value="Crítica">🔴 Crítica</option>
+                    </select>
                   </div>
                 </div>
-                <div className="mt-4 flex justify-end">
-                  <button className="px-6 py-3 bg-[#5A7836] text-white rounded-lg hover:bg-[#4a6429] transition-colors duration-200">
-                    Registrar Evento
-                  </button>
+
+                <div className="mt-6">
+                  <label htmlFor="descripcion" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                    📝 Descripción detallada *
+                  </label>
+                  <textarea
+                    id="descripcion"
+                    name="descripcion"
+                    value={formData.descripcion}
+                    onChange={handleInputChange}
+                    required
+                    rows={4}
+                    placeholder="Describa detalladamente el evento, causa, ubicación, equipos involucrados..."
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium resize-none"
+                  />
                 </div>
               </div>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h4 className="font-semibold text-[#5A7836] mb-2">Estado del Sistema</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Reactor:</span>
-                    <span className="text-green-600 font-semibold">Operativo</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Temperatura:</span>
-                    <span>450°C</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Presión:</span>
-                    <span>1.2 bar</span>
-                  </div>
-                </div>
+
+              {/* Botones */}
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                  type="button"
+                  onClick={limpiarFormulario}
+                  className="px-8 py-3 bg-white/20 hover:bg-white/30 text-white border-2 border-white/40 rounded-lg font-semibold backdrop-blur-sm drop-shadow-lg transition-all duration-200"
+                >
+                  🧹 Limpiar
+                </button>
+                
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="px-8 py-3 bg-[#5A7836]/80 hover:bg-[#5A7836] text-white border-2 border-[#5A7836]/60 rounded-lg font-semibold backdrop-blur-sm drop-shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Registrando...
+                    </>
+                  ) : (
+                    <>
+                      📋 Registrar en Bitácora
+                    </>
+                  )}
+                </button>
               </div>
-              
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <h4 className="font-semibold text-[#5A7836] mb-2">Alertas Activas</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                    <span>Temperatura elevada en zona 3</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
-                    <span>Mantenimiento programado</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            </form>
           </div>
-          
-          <div className="bg-gray-50 p-6 rounded-lg">
-            <h3 className="text-xl font-semibold mb-4 text-[#5A7836]">Historial de Eventos</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-gray-300">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-gray-300 px-4 py-2 text-left">Fecha/Hora</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left">Operador</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left">Temperatura</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left">Presión</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left">Observaciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="hover:bg-gray-100">
-                    <td className="border border-gray-300 px-4 py-2">2025-08-19 14:30</td>
-                    <td className="border border-gray-300 px-4 py-2">Juan Pérez</td>
-                    <td className="border border-gray-300 px-4 py-2">450°C</td>
-                    <td className="border border-gray-300 px-4 py-2">1.2 bar</td>
-                    <td className="border border-gray-300 px-4 py-2">Inicio de proceso de pirólisis</td>
-                  </tr>
-                  <tr className="hover:bg-gray-100">
-                    <td className="border border-gray-300 px-4 py-2">2025-08-19 15:15</td>
-                    <td className="border border-gray-300 px-4 py-2">María García</td>
-                    <td className="border border-gray-300 px-4 py-2">465°C</td>
-                    <td className="border border-gray-300 px-4 py-2">1.3 bar</td>
-                    <td className="border border-gray-300 px-4 py-2">Ajuste de temperatura por protocolo</td>
-                  </tr>
-                  <tr className="hover:bg-gray-100">
-                    <td className="border border-gray-300 px-4 py-2">2025-08-19 16:00</td>
-                    <td className="border border-gray-300 px-4 py-2">Carlos López</td>
-                    <td className="border border-gray-300 px-4 py-2">452°C</td>
-                    <td className="border border-gray-300 px-4 py-2">1.2 bar</td>
-                    <td className="border border-gray-300 px-4 py-2">Proceso estable, producción normal</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </main>
-      <Footer />
+        </main>
+
+        <Footer />
       </div>
     </div>
   );
