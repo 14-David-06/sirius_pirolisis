@@ -275,10 +275,11 @@ function generateHTMLReport(data: BalanceData): string {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    console.log('📄 Generando PDF para balance:', params.id);
+    const { id: balanceId } = await params;
+    console.log('📄 Generando PDF para balance:', balanceId);
 
     if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
       return NextResponse.json({
@@ -286,8 +287,6 @@ export async function GET(
         error: 'Configuración de Airtable no encontrada'
       }, { status: 500 });
     }
-
-    const balanceId = params.id;
 
     // Obtener datos del balance desde Airtable
     const response = await fetch(

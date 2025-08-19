@@ -30,7 +30,6 @@ export async function POST(request: NextRequest) {
     const qrBuffer = await QRCode.toBuffer(qrUrl, {
       errorCorrectionLevel: 'M',
       type: 'png',
-      quality: 0.92,
       margin: 1,
       color: {
         dark: '#000000',

@@ -18,14 +18,14 @@ interface AirtableRecord {
     'Temperatura Ducto (G9)'?: number;
     'Realiza Registro'?: string;
     'Turno Pirolisis'?: string[];
-    'QR_lona'?: any[];
+    'QR_lona'?: string[];
     'Fecha de Creación': string;
   };
 }
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
@@ -35,7 +35,7 @@ export async function GET(
       }, { status: 500 });
     }
 
-    const balanceId = params.id;
+    const { id: balanceId } = await params;
 
     // Buscar el registro por ID de Airtable (no por ID_Balance personalizado)
     const response = await fetch(

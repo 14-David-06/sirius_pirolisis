@@ -84,8 +84,8 @@ function BitacoraContent() {
       const userSession = localStorage.getItem('userSession');
       const turnoActivo = localStorage.getItem('turnoActivo');
       
-      let sessionData: any = {};
-      let turnoData: any = {};
+      let sessionData: { user?: { Nombre?: string } } = {};
+      let turnoData: { id?: string } = {};
       
       if (userSession) {
         sessionData = JSON.parse(userSession);
