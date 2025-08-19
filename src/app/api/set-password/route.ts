@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import { config, validateEnvVars, logConfigSafely } from '@/lib/config';
 
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TABLE_NAME = process.env.AIRTABLE_TABLE_NAME;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
-const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '12');
-
-if (!AIRTABLE_TOKEN) {
-  throw new Error('AIRTABLE_TOKEN environment variable is required');
-}
-
-if (!AIRTABLE_BASE_ID) {
-  throw new Error('AIRTABLE_BASE_ID environment variable is required');
-}
-
-if (!AIRTABLE_TABLE_NAME) {
-  throw new Error('AIRTABLE_TABLE_NAME environment variable is required');
-}
+// Validar variables de entorno al cargar el módulo
+validateEnvVars();
 
 export async function POST(request: NextRequest) {
   console.log('🔧 [set-password] Iniciando configuración de contraseña');
+  logConfigSafely();
   
   try {
     console.log('📥 [set-password] Parseando request body...');
@@ -43,19 +31,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔧 [set-password] Verificando configuración...');
-    console.log(`📊 [set-password] Base ID: ${AIRTABLE_BASE_ID}`);
-    console.log(`📋 [set-password] Table: ${AIRTABLE_TABLE_NAME}`);
-    console.log(`🔑 [set-password] Token existe: ${AIRTABLE_TOKEN ? 'Sí' : 'No'}`);
-
     // Buscar usuario en Airtable por cédula
-    const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?filterByFormula={Cedula}="${cedula}"`;
+    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.tableName}?filterByFormula={Cedula}="${cedula}"`;
     console.log(`🌐 [set-password] URL de búsqueda: ${airtableUrl}`);
 
     console.log('🚀 [set-password] Buscando usuario en Airtable...');
     const response = await fetch(airtableUrl, {
       headers: {
-        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Authorization': `Bearer ${config.airtable.token}`,
         'Content-Type': 'application/json',
       },
     });
@@ -90,7 +73,7 @@ export async function POST(request: NextRequest) {
 
       // Generar salt y hash de la contraseña
       console.log('🔐 [set-password] Generando salt...');
-      const salt = await bcrypt.genSalt(BCRYPT_SALT_ROUNDS);
+      const salt = await bcrypt.genSalt(config.security.bcryptSaltRounds);
       console.log(`🧂 [set-password] Salt generado: ${salt.substring(0, 15)}...`);
 
       console.log('🔐 [set-password] Generando hash de la contraseña...');
@@ -98,7 +81,7 @@ export async function POST(request: NextRequest) {
       console.log(`🔒 [set-password] Hash generado: ${hashedPassword.substring(0, 20)}...`);
 
       // Actualizar la contraseña en Airtable
-      const updateUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}/${userRecord.id}`;
+      const updateUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.tableName}/${userRecord.id}`;
       console.log(`🌐 [set-password] URL de actualización: ${updateUrl}`);
 
       const updatePayload = {
@@ -118,7 +101,7 @@ export async function POST(request: NextRequest) {
       const updateResponse = await fetch(updateUrl, {
         method: 'PATCH',
         headers: {
-          'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+          'Authorization': `Bearer ${config.airtable.token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(updatePayload)

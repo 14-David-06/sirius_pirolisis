@@ -48,13 +48,16 @@ yarn install
 pnpm install
 ```
 
-3. Configura las variables de entorno:
+3. **Configura las variables de entorno:**
 ```bash
-# Copia y edita el archivo .env.local con tus variables
-cp .env.local.example .env.local
+# Copia el archivo de ejemplo
+cp .env.example .env.local
+
+# Edita .env.local con tus valores reales de Airtable
+# NUNCA subas este archivo a Git
 ```
 
-4. Ejecuta el servidor de desarrollo:
+4. Inicia el servidor de desarrollo:
 ```bash
 npm run dev
 # o
