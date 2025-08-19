@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+:root {
+  --background: #1a1a2e;
+  --foreground: #eee2dc;
+  --accent: #16213e;
+  --secondary: #0f3460;
+  --highlight: #e94560;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --background: #f8f6f0;
+    --foreground: #2c3e50;
+    --accent: #34495e;
+    --secondary: #5d6d7e;
+    --highlight: #c0392b;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Cinzel', serif;
+}
+
+/* Custom animations inspired by San Ferid's elegance */
+@keyframes blood-rise {
+  from {
+    opacity: 0;
+    transform: translateY(50px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes vampire-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(233, 69, 96, 0.6);
+  }
+}
+
+.animate-blood-rise {
+  animation: blood-rise 1.2s cubic-bezier(0.23, 1, 0.320, 1) forwards;
+}
+
+.animate-vampire-glow {
+  animation: vampire-glow 3s ease-in-out infinite;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+  opacity: 0;
+}
+
+.animation-delay-800 {
+  animation-delay: 0.8s;
+  opacity: 0;
+}
+
+.animation-delay-1200 {
+  animation-delay: 1.2s;
+  opacity: 0;
+}
+
+/* San Ferid inspired elements */
+.ferid-border {
+  border: 2px solid var(--highlight);
+  border-radius: 8px;
+  position: relative;
+}
+
+.ferid-border::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  background: linear-gradient(45deg, var(--highlight), var(--secondary));
+  border-radius: 12px;
+  z-index: -1;
+  opacity: 0.3;
+}
