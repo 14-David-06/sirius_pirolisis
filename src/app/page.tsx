@@ -51,7 +51,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden font-museo-slab">
+    <div className="min-h-screen relative overflow-x-hidden">
       {/* Background Video - First Priority */}
       <video 
         className="fixed inset-0 w-full h-full object-cover z-0"

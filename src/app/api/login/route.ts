@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Buscar usuario en Airtable por cédula
-    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.tableName}?filterByFormula={Cedula}="${cedula}"`;
+    const tableName = encodeURIComponent(config.airtable.tableName || '');
+    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${tableName}?filterByFormula={Cedula}="${cedula}"`;
     console.log(`🌐 [login] URL de Airtable: ${airtableUrl}`);
 
     console.log('🚀 [login] Realizando petición a Airtable...');

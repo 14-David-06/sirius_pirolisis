@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        'museo-slab': ['Museo Slab', 'serif'],
-        'sans': ['Museo Slab', 'ui-sans-serif', 'system-ui'],
+        'arial': ['Arial', 'Helvetica', 'sans-serif'],
+        'sans': ['Arial', 'Helvetica', 'ui-sans-serif', 'system-ui'],
       },
       colors: {
         background: "var(--background)",

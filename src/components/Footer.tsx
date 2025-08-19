@@ -2,7 +2,7 @@
 
 export default function Footer() {
   return (
-    <footer className="bg-black text-white py-12 relative z-30 font-museo-slab">
+    <footer className="bg-black text-white py-12 relative z-30">
       <div className="max-w-7xl mx-auto px-6 text-center">
         <p className="text-gray-300 mb-4 transition-colors duration-300 hover:text-white">
           Sirius Regenerative Solutions S.A.S

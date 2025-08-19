@@ -194,7 +194,7 @@ export default function LoginPage() {
 
   return (
     <div 
-      className="min-h-screen relative font-museo-slab"
+      className="min-h-screen relative"
       style={{
         backgroundImage: 'url(/blend.png)',
         backgroundSize: 'cover',

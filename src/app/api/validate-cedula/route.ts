@@ -22,8 +22,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar variables de entorno
+    console.log(`🔍 [validate-cedula] Nombre de tabla desde env: "${process.env.AIRTABLE_TABLE_NAME}"`);
+    console.log(`🔍 [validate-cedula] Nombre de tabla desde config: "${config.airtable.tableName}"`);
+    
     // Buscar usuario en Airtable por cédula
-    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.tableName}?filterByFormula={Cedula}="${cedula}"`;
+    const tableName = encodeURIComponent(config.airtable.tableName || '');
+    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${tableName}?filterByFormula={Cedula}="${cedula}"`;
     console.log(`🌐 [validate-cedula] URL de Airtable: ${airtableUrl}`);
 
     console.log('🚀 [validate-cedula] Realizando petición a Airtable...');
