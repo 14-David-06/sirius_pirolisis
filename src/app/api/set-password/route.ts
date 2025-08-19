@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       try {
         const errorText = await response.text();
         console.error(`💥 [set-password] Error body: ${errorText}`);
-      } catch (e) {
+      } catch {
         console.error(`💥 [set-password] No se pudo leer el error body`);
       }
       return NextResponse.json(
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
         try {
           const errorText = await updateResponse.text();
           console.error(`💥 [set-password] Error body: ${errorText}`);
-        } catch (e) {
+        } catch {
           console.error(`💥 [set-password] No se pudo leer el error body`);
         }
         return NextResponse.json(

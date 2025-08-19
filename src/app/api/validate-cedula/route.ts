@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       try {
         const errorText = await response.text();
         console.error(`💥 [validate-cedula] Error body: ${errorText}`);
-      } catch (e) {
+      } catch {
         console.error(`💥 [validate-cedula] No se pudo leer el error body`);
       }
       

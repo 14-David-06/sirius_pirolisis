@@ -104,7 +104,7 @@ export default function LoginPage() {
       } else {
         setError(data.message || 'Contraseña incorrecta');
       }
-    } catch (error) {
+    } catch {
       setError('Error al iniciar sesión. Intenta nuevamente.');
     } finally {
       setLoading(false);
@@ -156,7 +156,7 @@ export default function LoginPage() {
       } else {
         setError(data.message || 'Error al establecer la contraseña');
       }
-    } catch (error) {
+    } catch {
       setError('Error al establecer la contraseña. Intenta nuevamente.');
     } finally {
       setLoading(false);

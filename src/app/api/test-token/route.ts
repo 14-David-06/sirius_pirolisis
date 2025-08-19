@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
 
