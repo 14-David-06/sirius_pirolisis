@@ -22,20 +22,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar variables de entorno
-    console.log('🔧 [validate-cedula] Verificando configuración...');
-    console.log(`📊 [validate-cedula] Base ID: ${AIRTABLE_BASE_ID}`);
-    console.log(`📋 [validate-cedula] Table: ${AIRTABLE_TABLE_NAME}`);
-    console.log(`🔑 [validate-cedula] Token existe: ${AIRTABLE_TOKEN ? 'Sí' : 'No'}`);
-    console.log(`🔑 [validate-cedula] Token length: ${AIRTABLE_TOKEN?.length || 0}`);
-
     // Buscar usuario en Airtable por cédula
-    const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?filterByFormula={Cedula}="${cedula}"`;
+    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.tableName}?filterByFormula={Cedula}="${cedula}"`;
     console.log(`🌐 [validate-cedula] URL de Airtable: ${airtableUrl}`);
 
     console.log('🚀 [validate-cedula] Realizando petición a Airtable...');
     const response = await fetch(airtableUrl, {
       headers: {
-        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Authorization': `Bearer ${config.airtable.token}`,
         'Content-Type': 'application/json',
       },
     });

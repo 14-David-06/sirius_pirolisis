@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import { config, validateEnvVars, logConfigSafely } from '@/lib/config';
 
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TABLE_NAME = process.env.AIRTABLE_TABLE_NAME;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
-
-if (!AIRTABLE_TOKEN) {
-  throw new Error('AIRTABLE_TOKEN environment variable is required');
-}
-
-if (!AIRTABLE_BASE_ID) {
-  throw new Error('AIRTABLE_BASE_ID environment variable is required');
-}
-
-if (!AIRTABLE_TABLE_NAME) {
-  throw new Error('AIRTABLE_TABLE_NAME environment variable is required');
-}
+// Validar variables de entorno al cargar el módulo
+validateEnvVars();
 
 export async function POST(request: NextRequest) {
   console.log('🔐 [login] Iniciando proceso de login');
+  logConfigSafely();
   
   try {
     console.log('📥 [login] Parseando request body...');
@@ -34,19 +23,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔧 [login] Verificando configuración...');
-    console.log(`📊 [login] Base ID: ${AIRTABLE_BASE_ID}`);
-    console.log(`📋 [login] Table: ${AIRTABLE_TABLE_NAME}`);
-    console.log(`🔑 [login] Token existe: ${AIRTABLE_TOKEN ? 'Sí' : 'No'}`);
-
     // Buscar usuario en Airtable por cédula
-    const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?filterByFormula={Cedula}="${cedula}"`;
+    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.tableName}?filterByFormula={Cedula}="${cedula}"`;
     console.log(`🌐 [login] URL de Airtable: ${airtableUrl}`);
 
     console.log('🚀 [login] Realizando petición a Airtable...');
     const response = await fetch(airtableUrl, {
       headers: {
-        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Authorization': `Bearer ${config.airtable.token}`,
         'Content-Type': 'application/json',
       },
     });
