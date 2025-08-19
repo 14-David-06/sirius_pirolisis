@@ -19,7 +19,7 @@ interface AirtableFieldsData {
   'Fecha Inicio Turno': string;
   'Operador': string;
   '🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg)': number;
-  '🎙️ Hertz Tolva 2': number;
+  '🎙️ Herzt Tolva 2': number;
   'Consumo Agua Inicio': number;
   'Consumo Energia Inicio': number;
   'Consumo Gas Inicial': number;
@@ -54,17 +54,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Preparar los datos para Airtable usando los nombres de campos exactos
+    // Preparar los datos para Airtable usando los nombres de campos exactos de la documentación
     const fieldsData: AirtableFieldsData = {
       'Fecha Inicio Turno': new Date().toISOString(),
-      'Operador': turnoData.operador,                    // Nombre del usuario logueado
+      'Operador': turnoData.operador,
       '🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg)': turnoData.alimentacionBiomasa,
-      '🎙️ Hertz Tolva 2': turnoData.herztTolva2,
+      '🎙️ Herzt Tolva 2': turnoData.herztTolva2,
       'Consumo Agua Inicio': turnoData.consumoAguaInicio,
       'Consumo Energia Inicio': turnoData.consumoEnergiaInicio,
       'Consumo Gas Inicial': turnoData.consumoGasInicial,
-      'Realiza Registro': turnoData.realizaRegistro,     // Nombre del usuario logueado
-      'Usuarios Pirolisis': [turnoData.usuarioId]        // ID del usuario logueado
+      'Realiza Registro': turnoData.realizaRegistro,
+      'Usuarios Pirolisis': [turnoData.usuarioId]
     };
 
     console.log('🔍 Verificando datos antes de enviar:');
@@ -115,8 +115,23 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('💥 Error en la creación del turno:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    
+    if (errorMessage.includes('UNKNOWN_FIELD_NAME')) {
+      console.log('🔧 Sugerencia: Verifica que los nombres de los campos coincidan exactamente con Airtable');
+      return NextResponse.json(
+        { 
+          error: 'Error en nombres de campos de Airtable', 
+          details: errorMessage,
+          suggestion: 'Verifica los nombres de campos en tu tabla de Airtable'
+        },
+        { status: 422 }
+      );
+    }
+
     return NextResponse.json(
-      { error: 'Error interno del servidor', details: error instanceof Error ? error.message : 'Error desconocido' },
+      { error: 'Error interno del servidor', details: errorMessage },
       { status: 500 }
     );
   }

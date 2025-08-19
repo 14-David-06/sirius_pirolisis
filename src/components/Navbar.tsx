@@ -63,7 +63,7 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="group relative text-white hover:text-[#7fb843] px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:bg-black/20 flex items-center space-x-2 backdrop-blur-sm"
+                  className="group relative bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white hover:from-[#4a6429] hover:to-[#3d5422] px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-md hover:shadow-lg hover:shadow-[#5A7836]/30"
                   title={item.description}
                 >
                   <span className="text-lg">{item.icon}</span>
@@ -82,7 +82,7 @@ export default function Navbar() {
               
               <button
                 onClick={handleLogout}
-                className="bg-gradient-to-r from-red-500 to-red-600 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform hover:from-red-600 hover:to-red-700 hover:scale-105 flex items-center space-x-2"
+                className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-md hover:shadow-lg"
               >
                 <span>🚪</span>
                 <span>Cerrar Sesión</span>
@@ -111,13 +111,13 @@ export default function Navbar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className="flex items-center px-4 py-3 text-gray-800 hover:bg-gradient-to-r hover:from-gray-50 hover:to-gray-100 hover:text-[#5A7836] transition-all duration-200 font-medium group"
+                      className="flex items-center px-4 py-3 text-[#5A7836] hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg mx-2"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       <span className="text-xl mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
                       <div className="flex-1">
                         <div className="font-semibold">{item.label.replace(/^.+?\s/, '')}</div>
-                        <div className="text-xs text-gray-500">{item.description}</div>
+                        <div className="text-xs text-gray-500 group-hover:text-white/80">{item.description}</div>
                       </div>
                     </Link>
                   ))}
@@ -126,7 +126,7 @@ export default function Navbar() {
                   
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center px-4 py-3 text-red-600 hover:bg-red-50 transition-all duration-200 font-semibold"
+                    className="w-full flex items-center px-4 py-3 text-red-600 hover:bg-red-50 transition-all duration-200 font-semibold rounded-lg mx-2"
                   >
                     <span className="text-xl mr-3">🚪</span>
                     <span>Cerrar Sesión</span>

@@ -98,24 +98,6 @@ export default function Home() {
                     <p className="text-sm text-white/70 mb-8">
                       Última sesión: {new Date(userSession.loginTime).toLocaleString('es-ES')}
                     </p>
-                    
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in-up animation-delay-300">
-                      <button className="group bg-[#5A7836] text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-500 transform hover:bg-[#4a6429] hover:scale-110 hover:shadow-2xl hover:shadow-[#5A7836]/40 active:scale-95 hover:rotate-1 focus:outline-none focus:ring-4 focus:ring-[#5A7836]/50">
-                        <span className="group-hover:translate-x-1 transition-transform duration-300 inline-block">
-                          Acceder al Panel de Control
-                        </span>
-                        <span className="ml-2 group-hover:translate-x-2 transition-transform duration-300 inline-block">
-                          →
-                        </span>
-                      </button>
-                      
-                      <button 
-                        onClick={handleLogout}
-                        className="group bg-transparent border-2 border-white text-white px-6 py-3 rounded-lg text-lg font-semibold transition-all duration-500 transform hover:bg-white hover:text-black hover:scale-105 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/50"
-                      >
-                        Cerrar Sesión
-                      </button>
-                    </div>
                   </div>
                 ) : (
                   // Usuario no logueado
