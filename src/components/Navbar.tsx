@@ -33,10 +33,25 @@ export default function Navbar() {
       alert('⚠️ Debes cerrar el turno activo antes de cerrar sesión');
       return;
     }
-    localStorage.removeItem('userSession');
+    
+    // Confirmar logout
+    const confirmar = confirm('¿Estás seguro de que quieres cerrar sesión?');
+    if (!confirmar) return;
+    
+    // Limpiar todas las cookies y storage
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Limpiar cookies si las hay
+    document.cookie.split(";").forEach(function(c) { 
+      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+    });
+    
     setIsLoggedIn(false);
-    window.location.href = '/';
+    setActiveTurno(null);
+    window.location.href = '/login';
   };
+
 
   // Determinar qué opciones mostrar basado en el estado del turno
   const getMenuItems = (): MenuItem[] => {
@@ -121,6 +136,7 @@ export default function Navbar() {
               {/* Separador visual */}
               <div className="h-8 w-px bg-white/30 mx-2"></div>
               
+              
               <button
                 onClick={handleLogout}
                 className={`transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-md hover:shadow-lg px-5 py-2 rounded-lg text-sm font-semibold ${
@@ -171,6 +187,7 @@ export default function Navbar() {
                   ))}
                   
                   <hr className="my-2 border-gray-100" />
+                  
                   
                   <button
                     onClick={handleLogout}
