@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
@@ -12,6 +13,14 @@ interface CerrarTurnoFormData {
 }
 
 export default function CerrarTurno() {
+  return (
+    <TurnoProtection requiresTurno={true}>
+      <CerrarTurnoContent />
+    </TurnoProtection>
+  );
+}
+
+function CerrarTurnoContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
@@ -25,31 +34,18 @@ export default function CerrarTurno() {
   });
 
   useEffect(() => {
-    const userSession = localStorage.getItem('userSession');
-    
-    if (!userSession) {
-      router.push('/login');
-      return;
-    }
-
-    // Verificar si hay un turno activo
+    // TurnoProtection ya validó que el usuario está autenticado y tiene un turno activo
     const turnoActivo = localStorage.getItem('turnoActivo');
-    if (!turnoActivo) {
-      router.push('/');
-      return;
+    if (turnoActivo) {
+      try {
+        const turnoData = JSON.parse(turnoActivo);
+        setActiveTurno(turnoData);
+      } catch (error) {
+        console.error('Error parsing turno data:', error);
+      }
     }
-
-    try {
-      const userData = JSON.parse(userSession);
-      const turnoData = JSON.parse(turnoActivo);
-      
-      setActiveTurno(turnoData);
-      setIsAuthenticated(true);
-    } catch (error) {
-      console.error('Error parsing session data:', error);
-      router.push('/login');
-    }
-  }, [router]);
+    setIsAuthenticated(true);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

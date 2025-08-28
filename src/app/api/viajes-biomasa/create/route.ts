@@ -17,15 +17,16 @@ export async function POST(req: NextRequest) {
     console.log('📝 Datos recibidos para crear registro:', body);
 
     const fields = {
-      'Nombre Entrega': body.NombreEntrega,
-      'Punto Recoleccion': body.PuntoRecoleccion,
-      'Punto Entrega': body.PuntoEntrega,
-      'Distancia Metros': body.DistanciaMetros,
-      'Peso Biomasa Fresca': body.PesoBiomasaFresca,
-      'Combustible': body.Combustible || '',
-      'Tipo Vehiculo': body.TipoVehiculo,
-      'Realiza Registro': body.RealizaRegistro,
-      'ID_Turno': Array.isArray(body.ID_Turno) ? body.ID_Turno : [],
+      'Nombre Quien Entrega': body['Nombre Quien Entrega'],
+      'Punto Recoleccion': body['Punto Recoleccion'],
+      'Punto Entrega': body['Punto Entrega'],
+      'Distancia Metros': body['Distancia Metros'],
+      'Tipo Biomasa': body['Tipo Biomasa'],
+      'Peso entregado de masa fresca': body['Peso entregado de masa fresca'],
+      'Tipo Combustible': body['Tipo Combustible'],
+      'Tipo Vehículo': body['Tipo Vehículo'],
+      'Realiza Registro': body['Realiza Registro'],
+      'ID_Turno': Array.isArray(body['ID_Turno']) ? body['ID_Turno'] : [],
     };
 
     console.log('📝 Campos a enviar a Airtable:', fields);

@@ -13,10 +13,16 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasActiveTurno, setHasActiveTurno] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [turnoInfo, setTurnoInfo] = useState<{
+    turnoPerteneceAlUsuario: boolean;
+    mensaje: string;
+    turnoAbierto: any;
+  } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const checkAuthAndTurno = () => {
+    const checkAuthAndTurno = async () => {
       // Verificar autenticación
       const userSession = localStorage.getItem('userSession');
       if (!userSession) {
@@ -24,24 +30,137 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
         return;
       }
       
+      let userId = null;
+      try {
+        const sessionData = JSON.parse(userSession);
+        userId = sessionData.user?.id;
+      } catch (error) {
+        console.error('Error parsing user session:', error);
+        router.push('/login');
+        return;
+      }
+      
       setIsAuthenticated(true);
 
       // Verificar turno activo si es requerido
-      if (requiresTurno) {
-        const turnoActivo = localStorage.getItem('turnoActivo');
-        if (!turnoActivo) {
-          setHasActiveTurno(false);
-          setIsLoading(false);
-          return;
-        }
-        setHasActiveTurno(true);
+      if (requiresTurno && userId) {
+        await validateAndSyncTurno(userId);
       }
       
       setIsLoading(false);
     };
 
     checkAuthAndTurno();
+
+    // Configurar polling para mantener sincronización (cada 30 segundos)
+    const intervalId = setInterval(() => {
+      const userSession = localStorage.getItem('userSession');
+      if (userSession && requiresTurno) {
+        try {
+          const sessionData = JSON.parse(userSession);
+          const userId = sessionData.user?.id;
+          if (userId) {
+            validateAndSyncTurno(userId);
+          }
+        } catch (error) {
+          console.error('Error en polling de turno:', error);
+        }
+      }
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(intervalId);
   }, [router, requiresTurno]);
+
+  const validateAndSyncTurno = async (userId: string, showFeedback = false) => {
+    if (showFeedback) setSyncing(true);
+
+    try {
+      const response = await fetch(`/api/turno/check?userId=${userId}`);
+      const data = await response.json();
+
+      if (data.hasTurnoAbierto) {
+        // Guardar información del turno encontrado
+        setTurnoInfo({
+          turnoPerteneceAlUsuario: data.turnoPerteneceAlUsuario,
+          mensaje: data.mensaje,
+          turnoAbierto: data.turnoAbierto
+        });
+
+        if (data.turnoPerteneceAlUsuario) {
+          // El turno abierto pertenece al usuario actual
+          const localTurno = localStorage.getItem('turnoActivo');
+          if (localTurno) {
+            const localTurnoData = JSON.parse(localTurno);
+            if (localTurnoData.id !== data.turnoAbierto.id) {
+              // El turno local no coincide, actualizar
+              localStorage.setItem('turnoActivo', JSON.stringify(data.turnoAbierto));
+              console.log('🔄 Turno local actualizado para coincidir con BD');
+              if (showFeedback) {
+                alert('✅ Estado del turno actualizado');
+              }
+            }
+          } else {
+            // No hay turno local pero sí en BD, guardar
+            localStorage.setItem('turnoActivo', JSON.stringify(data.turnoAbierto));
+            console.log('✅ Turno encontrado en BD y guardado localmente');
+            if (showFeedback) {
+              alert('✅ Turno encontrado y sincronizado');
+            }
+          }
+          setHasActiveTurno(true);
+        } else {
+          // El turno abierto pertenece a otro usuario
+          const localTurno = localStorage.getItem('turnoActivo');
+          if (localTurno) {
+            localStorage.removeItem('turnoActivo');
+            console.log('🧹 Turno local eliminado - turno pertenece a otro usuario');
+          }
+          setHasActiveTurno(false);
+          if (showFeedback) {
+            alert(`⚠️ ${data.mensaje}`);
+          }
+        }
+      } else {
+        // No hay turno activo en BD
+        setTurnoInfo(null);
+        const localTurno = localStorage.getItem('turnoActivo');
+        if (localTurno) {
+          localStorage.removeItem('turnoActivo');
+          console.log('🧹 Turno local eliminado - no existe en BD');
+          if (showFeedback) {
+            alert('🧹 Estado local limpiado - no hay turno activo');
+          }
+        }
+        setHasActiveTurno(false);
+      }
+    } catch (error) {
+      console.error('Error validando turno:', error);
+      if (showFeedback) {
+        alert('❌ Error al sincronizar. Verifica tu conexión.');
+      }
+      // En caso de error, mantener el estado actual pero marcar para reintento
+      setHasActiveTurno(false);
+      setTurnoInfo(null);
+    } finally {
+      if (showFeedback) setSyncing(false);
+    }
+  };
+
+  const forceSyncTurno = async () => {
+    const userSession = localStorage.getItem('userSession');
+    if (userSession) {
+      try {
+        const sessionData = JSON.parse(userSession);
+        const userId = sessionData.user?.id;
+        if (userId) {
+          await validateAndSyncTurno(userId, true);
+        }
+      } catch (error) {
+        console.error('Error forzando sincronización:', error);
+        alert('❌ Error al sincronizar');
+      }
+    }
+  };
 
   if (isLoading) {
     return (
@@ -75,24 +194,87 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
           <div className="flex items-center justify-center min-h-[80vh]">
             <div className="max-w-lg mx-auto bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 text-center">
               <div className="mb-6">
-                <div className="text-6xl mb-4">🔐</div>
+                <div className="text-6xl mb-4">
+                  {turnoInfo?.turnoPerteneceAlUsuario === false ? '�' : '�🔐'}
+                </div>
                 <h1 className="text-2xl font-bold text-gray-800 mb-4">
-                  Turno Requerido
+                  {turnoInfo?.turnoPerteneceAlUsuario === false
+                    ? 'Turno en Uso'
+                    : 'Turno Requerido'
+                  }
                 </h1>
                 <p className="text-gray-600 mb-6">
-                  Para acceder a las funciones operacionales necesitas abrir un turno primero. 
-                  Esto asegura el correcto registro de todas las actividades.
+                  {turnoInfo?.turnoPerteneceAlUsuario === false
+                    ? turnoInfo.mensaje
+                    : 'Para acceder a las funciones operacionales necesitas abrir un turno primero. Esto asegura el correcto registro de todas las actividades.'
+                  }
                 </p>
               </div>
               
               <div className="space-y-3">
-                <button
-                  onClick={() => router.push('/abrir-turno')}
-                  className="w-full bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg flex items-center justify-center space-x-2"
-                >
-                  <span>🔄</span>
-                  <span>Abrir Mi Turno</span>
-                </button>
+                {turnoInfo?.turnoPerteneceAlUsuario === false ? (
+                  // Turno pertenece a otro usuario - mostrar información y esperar
+                  <div className="space-y-3">
+                    <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                      <p className="text-sm text-red-800 mb-2">
+                        <strong>⏳ Espera a que el operador actual cierre su turno</strong>
+                      </p>
+                      {turnoInfo?.turnoAbierto && (
+                        <div className="text-xs text-red-700">
+                          <p><strong>Operador:</strong> {turnoInfo.turnoAbierto.operador}</p>
+                          <p><strong>Inicio:</strong> {new Date(turnoInfo.turnoAbierto.fechaInicio).toLocaleString()}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={forceSyncTurno}
+                      disabled={syncing}
+                      className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {syncing ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Verificando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>🔄</span>
+                          <span>Verificar Estado</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  // No hay turno abierto o turno pertenece al usuario - permitir abrir turno
+                  <>
+                    <button
+                      onClick={() => router.push('/abrir-turno')}
+                      className="w-full bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg flex items-center justify-center space-x-2"
+                    >
+                      <span>🔄</span>
+                      <span>Abrir Mi Turno</span>
+                    </button>
+                    
+                    <button
+                      onClick={forceSyncTurno}
+                      disabled={syncing}
+                      className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {syncing ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Sincronizando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>🔄</span>
+                          <span>Sincronizar Estado</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
                 
                 <button
                   onClick={() => router.push('/')}
@@ -105,7 +287,10 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
 
               <div className="mt-6 p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-800">
-                  <strong>💡 Nota:</strong> Una vez que abras tu turno, podrás acceder a todas las funciones operacionales del sistema.
+                  <strong>💡 Nota:</strong> {turnoInfo?.turnoPerteneceAlUsuario === false
+                    ? 'El sistema se verifica automáticamente cada 30 segundos. Una vez que el turno actual se cierre, podrás abrir el tuyo.'
+                    : 'Una vez que abras tu turno, podrás acceder a todas las funciones operacionales del sistema. El sistema se sincroniza automáticamente cada 30 segundos.'
+                  }
                 </p>
               </div>
             </div>

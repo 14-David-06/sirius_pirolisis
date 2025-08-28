@@ -7,13 +7,17 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
 interface ViajesBiomasaFormData {
-  nombreEntrega: string;
+  nombreQuienEntrega: string;
   puntoRecoleccion: string;
   puntoEntrega: string;
   distanciaMetros: string;
-  pesoBiomasaFresca: string;
-  combustible: string;
+  tipoBiomasa: string;
+  tipoBiomasaOtro: string;
+  pesoEntregadoMasaFresca: string;
+  tipoCombustible: string;
+  tipoCombustibleOtro: string;
   tipoVehiculo: string;
+  tipoVehiculoOtro: string;
 }
 
 export default function ViajesBiomasa() {
@@ -98,7 +102,7 @@ function ViajesBiomasaContent() {
       setMensaje('Por favor ingrese el punto de entrega');
       return false;
     }
-    if (!formData.distanciaMetros || parseInt(formData.distanciaMetros) <= 0) {
+    if (!formData.distanciaMetros || parseFloat(formData.distanciaMetros) <= 0) {
       setMensaje('Por favor ingrese una distancia válida en metros');
       return false;
     }
@@ -136,30 +140,41 @@ function ViajesBiomasaContent() {
     setMensaje('');
 
     try {
-      // Obtener el turno activo
-      const turnoActivo = localStorage.getItem('turnoActivo');
-      let turnoPirolisisId = null;
-      
-      if (turnoActivo) {
-        try {
-          const turnoData = JSON.parse(turnoActivo);
-          turnoPirolisisId = turnoData.id;
-        } catch (error) {
-          console.error('Error parsing turno activo:', error);
-        }
-      }
-
-      // Obtener el usuario logueado
+      // Obtener el usuario logueado para su ID
       const userSession = localStorage.getItem('userSession');
+      let userId = null;
       let realizaRegistro = '';
       
       if (userSession) {
         try {
           const sessionData = JSON.parse(userSession);
+          userId = sessionData.user?.id;
           realizaRegistro = sessionData.user?.Nombre || 'Usuario desconocido';
         } catch (error) {
           console.error('Error parsing user session:', error);
           realizaRegistro = 'Usuario desconocido';
+        }
+      }
+
+      // Obtener el turno activo del usuario
+      let turnoPirolisisId = null;
+      if (userId) {
+        try {
+          const turnoResponse = await fetch(`/api/turno/check?userId=${userId}`);
+          const turnoData = await turnoResponse.json();
+          
+          if (turnoData.hasTurnoAbierto) {
+            turnoPirolisisId = turnoData.turnoAbierto.id;
+            // Guardar el turno activo en localStorage
+            localStorage.setItem('turnoActivo', JSON.stringify(turnoData.turnoAbierto));
+            console.log('✅ Turno activo encontrado y guardado:', turnoPirolisisId);
+          } else {
+            console.log('⚠️ No hay turno activo para este usuario');
+            localStorage.removeItem('turnoActivo');
+          }
+        } catch (error) {
+          console.error('Error obteniendo turno activo:', error);
+          localStorage.removeItem('turnoActivo');
         }
       }
 

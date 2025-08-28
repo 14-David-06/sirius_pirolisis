@@ -55,14 +55,30 @@ export default function AbrirTurno() {
         console.log('🔍 Parsed userData:', userData);
         
         // Verificar si hay turnos abiertos en Airtable
-        console.log('� Verificando turnos abiertos en Airtable...');
-        const response = await fetch('/api/turno/check');
+        console.log('🔍 Verificando turnos abiertos en Airtable...');
+        const userId = userData.user?.id;
+        if (!userId) {
+          console.error('❌ No se pudo obtener el userId del usuario');
+          setMensaje('❌ Error: No se pudo identificar al usuario');
+          return;
+        }
+        
+        const response = await fetch(`/api/turno/check?userId=${userId}`);
         const result = await response.json();
         
         if (response.ok) {
           if (result.hasTurnoAbierto) {
-            console.log('⚠️ Turno abierto encontrado:', result.turnoAbierto);
-            setOtherUserTurno(result.turnoAbierto);
+            if (result.turnoPerteneceAlUsuario) {
+              // El turno abierto pertenece al usuario actual - redirigir
+              console.log('✅ Turno abierto pertenece al usuario actual, redirigiendo...');
+              router.push('/');
+              return;
+            } else {
+              // El turno abierto pertenece a otro usuario
+              console.log('⚠️ Turno abierto pertenece a otro usuario:', result.mensaje);
+              setOtherUserTurno(result.turnoAbierto);
+              setMensaje(result.mensaje);
+            }
           } else {
             console.log('✅ No hay turnos abiertos, usuario puede proceder');
             setFormData(prev => ({
