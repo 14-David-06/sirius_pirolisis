@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        'arial': ['Arial', 'Helvetica', 'sans-serif'],
-        'sans': ['Arial', 'Helvetica', 'ui-sans-serif', 'system-ui'],
+        'quicksand': ['Quicksand', 'Arial', 'Helvetica', 'sans-serif'],
+        'sans': ['Quicksand', 'Arial', 'Helvetica', 'ui-sans-serif', 'system-ui'],
       },
       colors: {
         background: "var(--background)",
