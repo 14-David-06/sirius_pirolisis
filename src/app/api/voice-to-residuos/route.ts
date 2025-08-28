@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Verificar y obtener variables de entorno requeridas
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const AIRTABLE_RESIDUOS_TABLE_ID = process.env.AIRTABLE_RESIDUOS_TABLE_ID as string;
+const AIRTABLE_RESIDUOS_TABLE = process.env.AIRTABLE_RESIDUOS_TABLE || 'Manejo Residuos';
 
 // IDs de campos en Airtable (deben coincidir con las variables de entorno)
 const FIELD_IDS = {

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TABLE_ID = process.env.AIRTABLE_BITACORA_TABLE;
+const AIRTABLE_TABLE_NAME = process.env.AIRTABLE_BITACORA_TABLE || 'Bitacora Pirolisis';
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 
 export async function POST(request: NextRequest) {
   try {
     console.log('📋 Iniciando creación de registro de bitácora...');
 
-    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !AIRTABLE_TABLE_ID) {
+    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !AIRTABLE_TABLE_NAME) {
       return NextResponse.json({ 
         success: false, 
         error: 'Variables de entorno de Airtable no configuradas correctamente' 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     console.log('📤 Enviando a Airtable:', JSON.stringify(airtableData, null, 2));
 
     // Hacer la petición a Airtable
-    const airtableResponse = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`, {
+    const airtableResponse = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE_NAME)}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${AIRTABLE_API_KEY}`,

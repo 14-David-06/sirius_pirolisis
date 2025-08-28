@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const TABLE_ID = process.env.AIRTABLE_BALANCE_MASA_TABLE;
+const TABLE_NAME = process.env.AIRTABLE_BALANCE_MASA_TABLE || 'Balances Masa';
 
 interface AirtableRecord {
   id: string;
@@ -39,7 +39,7 @@ export async function GET(
 
     // Buscar el registro por ID de Airtable (no por ID_Balance personalizado)
     const response = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${TABLE_ID}/${balanceId}`,
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${balanceId}`,
       {
         headers: {
           'Authorization': `Bearer ${AIRTABLE_API_KEY}`,

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 
-// Usar la variable de entorno para el ID de la tabla
-const TABLE_ID = process.env.AIRTABLE_VIAJES_BIOMASA_TABLE_ID;
+// Usar el nombre de la tabla en lugar del ID
+const TABLE_NAME = process.env.AIRTABLE_VIAJES_BIOMASA_TABLE || 'Viajes Biomasa';
 
 export async function POST(req: NextRequest) {
   try {
-    if (!TABLE_ID) {
+    if (!TABLE_NAME) {
       return NextResponse.json({ 
-        error: 'ID de tabla de Viajes de Biomasa no configurado' 
+        error: 'Nombre de tabla de Viajes de Biomasa no configurado' 
       }, { status: 500 });
     }
 
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Configuración de Airtable faltante' }, { status: 500 });
     }
 
-    const res = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}`, {
+    const res = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${encodeURIComponent(TABLE_NAME)}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.airtable.token}`,
