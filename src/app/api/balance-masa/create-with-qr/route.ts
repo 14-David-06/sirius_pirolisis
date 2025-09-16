@@ -17,6 +17,74 @@ interface BalanceMasaData {
   turnoPirolisis?: string[];
 }
 
+// Funciones auxiliares para gestión de baches
+async function findIncompleteBache() {
+  const response = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Baches%20Pirolisis?filterByFormula={Estado%20Bache}="Bache%20Incompleto"&sort[0][field]=Fecha%20Creacion&sort[0][direction]=desc&maxRecords=1`,
+    {
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Error al consultar baches incompletos');
+  }
+
+  const data = await response.json();
+  return data.records?.[0] || null;
+}
+
+async function updateBache(bacheId: string, updates: any) {
+  const response = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Baches%20Pirolisis/${bacheId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fields: updates }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Error al actualizar bache');
+  }
+
+  return await response.json();
+}
+
+async function createNewBache(balanceId: string) {
+  const response = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Baches%20Pirolisis`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        records: [{
+          fields: {
+            'Estado Bache': 'Bache Incompleto',
+            'Balances Masa': [balanceId]
+          }
+        }]
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Error al crear nuevo bache');
+  }
+
+  const data = await response.json();
+  return data.records?.[0] || null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const data: BalanceMasaData = await request.json();
@@ -79,6 +147,43 @@ export async function POST(request: NextRequest) {
     const balanceId = balanceResult.id;
 
     console.log('✅ Balance creado con ID:', balanceId);
+
+    // 1.5. Gestionar agrupación en baches
+    console.log('📦 Gestionando agrupación en baches...');
+    
+    try {
+      const incompleteBache = await findIncompleteBache();
+      
+      if (incompleteBache) {
+        const currentCount = incompleteBache.fields['Recuento Lonas'] || 0;
+        console.log(`📊 Bache incompleto encontrado: ${incompleteBache.id}, lonas actuales: ${currentCount}`);
+        
+        if (currentCount < 20) {
+          // Agregar balance al bache existente
+          const existingBalances = incompleteBache.fields['Balances Masa'] || [];
+          await updateBache(incompleteBache.id, {
+            'Balances Masa': [...existingBalances, balanceId]
+          });
+          console.log(`✅ Balance agregado al bache existente: ${incompleteBache.id}`);
+        } else {
+          // Marcar bache como completo y crear nuevo
+          await updateBache(incompleteBache.id, {
+            'Estado Bache': 'Bache Completo'
+          });
+          console.log(`✅ Bache completado: ${incompleteBache.id}`);
+          
+          const newBache = await createNewBache(balanceId);
+          console.log(`✅ Nuevo bache creado: ${newBache?.id}`);
+        }
+      } else {
+        // No hay bache incompleto, crear uno nuevo
+        const newBache = await createNewBache(balanceId);
+        console.log(`✅ Primer bache creado: ${newBache?.id}`);
+      }
+    } catch (bacheError) {
+      console.error('❌ Error en gestión de baches:', bacheError);
+      // No fallar la creación del balance por error en baches
+    }
 
     // 2. Generar PDF del informe y subirlo a S3
     console.log('📄 Generando PDF del informe...');

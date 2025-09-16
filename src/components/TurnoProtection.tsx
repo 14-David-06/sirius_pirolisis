@@ -75,8 +75,23 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
     if (showFeedback) setSyncing(true);
 
     try {
-      const response = await fetch(`/api/turno/check?userId=${userId}`);
+      console.log('🔍 Validando turno para usuario:', userId);
+      
+      const response = await fetch(`/api/turno/check?userId=${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Agregar timeout para evitar esperas infinitas
+        signal: AbortSignal.timeout(10000) // 10 segundos timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('✅ Respuesta de validación de turno:', data);
 
       if (data.hasTurnoAbierto) {
         // Guardar información del turno encontrado
@@ -134,11 +149,24 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
         setHasActiveTurno(false);
       }
     } catch (error) {
-      console.error('Error validando turno:', error);
-      if (showFeedback) {
-        alert('❌ Error al sincronizar. Verifica tu conexión.');
+      console.error('❌ Error validando turno:', error);
+      
+      // Determinar el tipo de error para mejor manejo
+      let errorMessage = 'Error al sincronizar. Verifica tu conexión.';
+      
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorMessage = 'No se puede conectar al servidor. Verifica que el servidor esté ejecutándose.';
+      } else if (error instanceof Error && error.name === 'AbortError') {
+        errorMessage = 'La solicitud tardó demasiado tiempo. Reintentando...';
+      } else if (error instanceof Error) {
+        errorMessage = `Error de conexión: ${error.message}`;
       }
-      // En caso de error, mantener el estado actual pero marcar para reintento
+      
+      if (showFeedback) {
+        alert(`❌ ${errorMessage}`);
+      }
+      
+      // En caso de error de red, mantener el estado actual pero marcar para reintento
       setHasActiveTurno(false);
       setTurnoInfo(null);
     } finally {
