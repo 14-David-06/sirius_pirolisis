@@ -15,7 +15,7 @@ interface BitacoraFormData {
 
 export default function BitacoraPirolisis() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <BitacoraContent />
     </TurnoProtection>
   );

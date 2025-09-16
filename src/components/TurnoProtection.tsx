@@ -7,9 +7,22 @@ import Navbar from './Navbar';
 interface TurnoProtectionProps {
   children: React.ReactNode;
   requiresTurno?: boolean;
+  allowBitacoraUsers?: boolean;
 }
 
-export default function TurnoProtection({ children, requiresTurno = true }: TurnoProtectionProps) {
+// Usuarios autorizados para acceder a bitácora sin turno
+const BITACORA_AUTHORIZED_USERS = [
+  'Santiago Amaya',
+  'Don Martin', 
+  'David Hernandez',
+  'Pablo Acebedo'
+];
+
+export default function TurnoProtection({ 
+  children, 
+  requiresTurno = true, 
+  allowBitacoraUsers = false 
+}: TurnoProtectionProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasActiveTurno, setHasActiveTurno] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,6 +34,11 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
   } | null>(null);
   const router = useRouter();
 
+  // Función para verificar si el usuario está autorizado para bitácora sin turno
+  const isUserAuthorizedForBitacora = (userName: string): boolean => {
+    return BITACORA_AUTHORIZED_USERS.includes(userName);
+  };
+
   useEffect(() => {
     const checkAuthAndTurno = async () => {
       // Verificar autenticación
@@ -31,9 +49,11 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
       }
       
       let userId = null;
+      let userName = null;
       try {
         const sessionData = JSON.parse(userSession);
         userId = sessionData.user?.id;
+        userName = sessionData.user?.Nombre || sessionData.user?.name;
       } catch (error) {
         console.error('Error parsing user session:', error);
         router.push('/login');
@@ -43,8 +63,20 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
       setIsAuthenticated(true);
 
       // Verificar turno activo si es requerido
-      if (requiresTurno && userId) {
+      // Si allowBitacoraUsers es true y el usuario está autorizado, no requerir turno
+      const shouldRequireTurno = requiresTurno && !(allowBitacoraUsers && isUserAuthorizedForBitacora(userName));
+      
+      if (shouldRequireTurno && userId) {
         await validateAndSyncTurno(userId);
+      } else if (shouldRequireTurno && !userId) {
+        // Si se requiere turno pero no hay userId, marcar como sin turno
+        setHasActiveTurno(false);
+      } else {
+        // No se requiere turno o usuario autorizado para bitácora
+        setHasActiveTurno(true);
+        console.log('✅ Acceso permitido:', allowBitacoraUsers && isUserAuthorizedForBitacora(userName) 
+          ? `Usuario ${userName} autorizado para bitácora sin turno` 
+          : 'Turno no requerido');
       }
       
       setIsLoading(false);
@@ -55,11 +87,16 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
     // Configurar polling para mantener sincronización (cada 30 segundos)
     const intervalId = setInterval(() => {
       const userSession = localStorage.getItem('userSession');
-      if (userSession && requiresTurno) {
+      if (userSession) {
         try {
           const sessionData = JSON.parse(userSession);
           const userId = sessionData.user?.id;
-          if (userId) {
+          const userName = sessionData.user?.Nombre || sessionData.user?.name;
+          
+          // Solo hacer polling si se requiere turno y el usuario no está autorizado para bitácora
+          const shouldRequireTurno = requiresTurno && !(allowBitacoraUsers && isUserAuthorizedForBitacora(userName));
+          
+          if (shouldRequireTurno && userId) {
             validateAndSyncTurno(userId);
           }
         } catch (error) {
@@ -206,7 +243,21 @@ export default function TurnoProtection({ children, requiresTurno = true }: Turn
   }
 
   // Si requiere turno pero no hay turno activo
-  if (requiresTurno && !hasActiveTurno) {
+  // Excepción: usuarios autorizados para bitácora pueden acceder sin turno
+  const userSession = localStorage.getItem('userSession');
+  let userName = null;
+  if (userSession) {
+    try {
+      const sessionData = JSON.parse(userSession);
+      userName = sessionData.user?.Nombre || sessionData.user?.name;
+    } catch (error) {
+      // Ignorar error de parsing
+    }
+  }
+  
+  const shouldRequireTurno = requiresTurno && !(allowBitacoraUsers && isUserAuthorizedForBitacora(userName));
+  
+  if (shouldRequireTurno && !hasActiveTurno) {
     return (
       <div 
         className="min-h-screen bg-cover bg-center bg-no-repeat relative"
