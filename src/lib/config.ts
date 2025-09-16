@@ -6,6 +6,7 @@ export const config = {
     token: process.env.AIRTABLE_TOKEN,
     baseId: process.env.AIRTABLE_BASE_ID,
     tableName: process.env.AIRTABLE_TABLE_NAME,
+    bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
   },
   security: {
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12'),
@@ -21,7 +22,8 @@ export function validateEnvVars() {
   const requiredVars = [
     'AIRTABLE_TOKEN',
     'AIRTABLE_BASE_ID', 
-    'AIRTABLE_TABLE_NAME'
+    'AIRTABLE_TABLE_NAME',
+    'AIRTABLE_BACHES_TABLE_ID'
   ];
 
   const missingVars = requiredVars.filter(varName => !process.env[varName]);
@@ -42,6 +44,7 @@ export function logConfigSafely() {
   console.log('🔧 Configuración del sistema:');
   console.log(`📊 Base ID: ${config.airtable.baseId ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`📋 Tabla: ${config.airtable.tableName ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`🏗️ Tabla Baches: ${config.airtable.bachesTableId ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`🔐 Salt rounds: ${config.security.bcryptSaltRounds}`);
   console.log(`🌍 Entorno: ${config.app.env}`);

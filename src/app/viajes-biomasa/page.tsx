@@ -167,9 +167,7 @@ function ViajesBiomasaContent() {
             turnoPirolisisId = turnoData.turnoAbierto.id;
             // Guardar el turno activo en localStorage
             localStorage.setItem('turnoActivo', JSON.stringify(turnoData.turnoAbierto));
-            console.log('✅ Turno activo encontrado y guardado:', turnoPirolisisId);
           } else {
-            console.log('⚠️ No hay turno activo para este usuario');
             localStorage.removeItem('turnoActivo');
           }
         } catch (error) {

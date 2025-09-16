@@ -73,8 +73,6 @@ function CerrarTurnoContent() {
         consumoGasFinal: parseFloat(formData.consumoGasFinal) || 0
       };
 
-      console.log('🔄 Enviando datos de cierre:', dataToSend);
-
       const response = await fetch('/api/turno/close', {
         method: 'PATCH',
         headers: {
@@ -84,7 +82,6 @@ function CerrarTurnoContent() {
       });
 
       const result = await response.json();
-      console.log('📡 Respuesta del servidor:', result);
 
       if (response.ok) {
         setMensaje('✅ ¡Turno cerrado exitosamente! Redirigiendo...');

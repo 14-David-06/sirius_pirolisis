@@ -102,8 +102,6 @@ function BitacoraContent() {
         fechaHora: new Date().toISOString(),
       };
 
-      console.log('📋 Enviando registro de bitácora:', dataToSend);
-
       const response = await fetch('/api/bitacora/create', {
         method: 'POST',
         headers: {
@@ -144,7 +142,6 @@ function BitacoraContent() {
   };
 
   const handleEventoExtraido = (eventData: { evento: string; descripcion: string }) => {
-    console.log('🎤 Datos del evento extraídos del dictado:', eventData);
     
     // Actualizar el formulario con los datos extraídos
     setFormData(prev => ({

@@ -52,10 +52,7 @@ export default function AbrirTurno() {
 
       try {
         const userData = JSON.parse(userSession);
-        console.log('🔍 Parsed userData:', userData);
-        
         // Verificar si hay turnos abiertos en Airtable
-        console.log('🔍 Verificando turnos abiertos en Airtable...');
         const userId = userData.user?.id;
         if (!userId) {
           console.error('❌ No se pudo obtener el userId del usuario');
@@ -70,17 +67,14 @@ export default function AbrirTurno() {
           if (result.hasTurnoAbierto) {
             if (result.turnoPerteneceAlUsuario) {
               // El turno abierto pertenece al usuario actual - redirigir
-              console.log('✅ Turno abierto pertenece al usuario actual, redirigiendo...');
               router.push('/');
               return;
             } else {
               // El turno abierto pertenece a otro usuario
-              console.log('⚠️ Turno abierto pertenece a otro usuario:', result.mensaje);
               setOtherUserTurno(result.turnoAbierto);
               setMensaje(result.mensaje);
             }
           } else {
-            console.log('✅ No hay turnos abiertos, usuario puede proceder');
             setFormData(prev => ({
               ...prev,
               operador: userData.user?.Nombre || ''
@@ -120,11 +114,6 @@ export default function AbrirTurno() {
       const userSession = localStorage.getItem('userSession');
       const sessionData = userSession ? JSON.parse(userSession) : {};
       const userData = sessionData.user || {};
-      
-      console.log('🔍 Datos del usuario para turno:', userData);
-      console.log('🆔 ID del usuario:', userData.id);
-      console.log('👤 Nombre del usuario:', userData.Nombre);
-      console.log('📝 Operador del formulario:', formData.operador);
 
       // Validar que tengamos los datos del usuario
       if (!userData.Nombre || !userData.id) {
@@ -142,8 +131,6 @@ export default function AbrirTurno() {
         realizaRegistro: userData.Nombre || 'Usuario no identificado',
         usuarioId: userData.id || ''
       };
-
-      console.log('📤 Datos que se enviarán a la API:', dataToSend);
 
       const response = await fetch('/api/turno/create', {
         method: 'POST',

@@ -32,199 +32,65 @@ function SistemaBachesContent() {
               Gestión y control de baches en el proceso de pirólisis por lotes
             </p>
 
-            {/* Crear Nuevo Bache */}
-            <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
-                 Crear Nuevo Bache
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-white mb-2 drop-shadow">
-                     ID del Bache
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="BAT-2025-001"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2 drop-shadow">
-                     Temperatura Objetivo (°C)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="450"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2 drop-shadow">
-                     Peso Inicial (kg)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="1000"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2 drop-shadow">
-                     Duración Estimada (horas)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="8"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-white mb-2 drop-shadow">
-                     Tipo de Biomasa
-                  </label>
-                  <select className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900">
-                    <option value="">Seleccionar tipo de biomasa</option>
-                    <option value="residuos_forestales">Residuos Forestales</option>
-                    <option value="cascara_nueces">Cáscara de Nueces</option>
-                    <option value="bagazo_cana">Bagazo de Caña</option>
-                    <option value="residuos_agricolas">Residuos Agrícolas</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-center mt-6">
-                <button className="px-8 py-3 bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white rounded-lg hover:from-[#4a6429] hover:to-[#3d5422] transition-all duration-300 transform hover:scale-105 font-semibold shadow-lg">
-                   Crear Bache
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Estadísticas y Estado Actual */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-[#5A7836] mb-2">Estadísticas del Día</h4>
-              <div className="space-y-2 text-sm">
+            {/* Estadísticas Generales */}
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
+              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Estadísticas Generales</h2>
+              <div className="space-y-3 text-white">
                 <div className="flex justify-between">
-                  <span>Baches Activos:</span>
+                  <span className="drop-shadow">Total de Baches:</span>
                   <span className="font-semibold">2</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Completados:</span>
-                  <span className="font-semibold">5</span>
+                  <span className="drop-shadow">Baches Activos:</span>
+                  <span className="font-semibold">1</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Biomasa Procesada:</span>
-                  <span className="font-semibold">4,200 kg</span>
+                  <span className="drop-shadow">Baches Completados:</span>
+                  <span className="font-semibold">1</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="drop-shadow">Total Biochar Producido:</span>
+                  <span className="font-semibold">550 kg</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-yellow-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-[#5A7836] mb-2">Bache Activo</h4>
-              <div className="space-y-2 text-sm">
-                <div className="font-medium">BAT-2025-012</div>
+            {/* Bache Actual */}
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
+              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Bache Actual</h2>
+              <div className="space-y-3 text-white">
+                <div className="font-bold text-lg drop-shadow">S-00201</div>
                 <div className="flex justify-between">
-                  <span>Progreso:</span>
-                  <span>75%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-[#5A7836] h-2 rounded-full" style={{width: '75%'}}></div>
+                  <span className="drop-shadow">Estado:</span>
+                  <span className="font-semibold px-2 py-1 bg-yellow-500/20 text-yellow-200 rounded-full text-xs">
+                    Bache Incompleto
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Tiempo restante:</span>
-                  <span>2h 15m</span>
+                  <span className="drop-shadow">Progreso:</span>
+                  <span className="font-semibold">0.0%</span>
+                </div>
+                <div className="w-full bg-white/20 rounded-full h-3">
+                  <div className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] h-3 rounded-full transition-all duration-500" style={{width: '0%'}}></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="text-center">
+                    <div className="text-sm drop-shadow">Total</div>
+                    <div className="font-bold">50 kg</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm drop-shadow">Vendido</div>
+                    <div className="font-bold">0 kg</div>
+                  </div>
+                </div>
+                <div className="text-xs text-white/70 mt-2 drop-shadow">
+                  Creado: 16/09/2025, 09:14
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Lista de Baches */}
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-6xl mx-auto border border-white/30 mt-8">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-white drop-shadow-lg">Lista de Baches</h3>
-              <div className="flex space-x-2">
-                <select className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent bg-white text-gray-900">
-                  <option value="">Todos los estados</option>
-                  <option value="programado">Programado</option>
-                  <option value="en_proceso">En Proceso</option>
-                  <option value="completado">Completado</option>
-                  <option value="cancelado">Cancelado</option>
-                </select>
-                <input
-                  type="date"
-                  className="p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-transparent bg-white text-gray-900"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full bg-white rounded-lg shadow-md">
-                <thead className="bg-[#5A7836] text-white">
-                  <tr>
-                    <th className="px-4 py-3 text-left">ID Bache</th>
-                    <th className="px-4 py-3 text-left">Estado</th>
-                    <th className="px-4 py-3 text-left">Tipo Biomasa</th>
-                    <th className="px-4 py-3 text-left">Peso Inicial</th>
-                    <th className="px-4 py-3 text-left">Temperatura</th>
-                    <th className="px-4 py-3 text-left">Inicio</th>
-                    <th className="px-4 py-3 text-left">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">BAT-2025-012</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                        En Proceso
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">Residuos Forestales</td>
-                    <td className="px-4 py-3">1,200 kg</td>
-                    <td className="px-4 py-3">450°C</td>
-                    <td className="px-4 py-3">14:30</td>
-                    <td className="px-4 py-3">
-                      <div className="flex space-x-2">
-                        <button className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
-                          Ver
-                        </button>
-                        <button className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm">
-                          Editar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">BAT-2025-011</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                        Completado
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">Cáscara de Nueces</td>
-                    <td className="px-4 py-3">950 kg</td>
-                    <td className="px-4 py-3">440°C</td>
-                    <td className="px-4 py-3">08:15</td>
-                    <td className="px-4 py-3">
-                      <div className="flex space-x-2">
-                        <button className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
-                          Ver
-                        </button>
-                        <button className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm">
-                          Reporte
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </main>
         <Footer />
       </div>

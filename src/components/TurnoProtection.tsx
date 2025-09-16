@@ -74,9 +74,6 @@ export default function TurnoProtection({
       } else {
         // No se requiere turno o usuario autorizado para bitácora
         setHasActiveTurno(true);
-        console.log('✅ Acceso permitido:', allowBitacoraUsers && isUserAuthorizedForBitacora(userName) 
-          ? `Usuario ${userName} autorizado para bitácora sin turno` 
-          : 'Turno no requerido');
       }
       
       setIsLoading(false);
@@ -112,8 +109,6 @@ export default function TurnoProtection({
     if (showFeedback) setSyncing(true);
 
     try {
-      console.log('🔍 Validando turno para usuario:', userId);
-      
       const response = await fetch(`/api/turno/check?userId=${userId}`, {
         method: 'GET',
         headers: {
@@ -128,7 +123,6 @@ export default function TurnoProtection({
       }
       
       const data = await response.json();
-      console.log('✅ Respuesta de validación de turno:', data);
 
       if (data.hasTurnoAbierto) {
         // Guardar información del turno encontrado
@@ -146,7 +140,6 @@ export default function TurnoProtection({
             if (localTurnoData.id !== data.turnoAbierto.id) {
               // El turno local no coincide, actualizar
               localStorage.setItem('turnoActivo', JSON.stringify(data.turnoAbierto));
-              console.log('🔄 Turno local actualizado para coincidir con BD');
               if (showFeedback) {
                 alert('✅ Estado del turno actualizado');
               }
@@ -154,7 +147,6 @@ export default function TurnoProtection({
           } else {
             // No hay turno local pero sí en BD, guardar
             localStorage.setItem('turnoActivo', JSON.stringify(data.turnoAbierto));
-            console.log('✅ Turno encontrado en BD y guardado localmente');
             if (showFeedback) {
               alert('✅ Turno encontrado y sincronizado');
             }
@@ -165,7 +157,6 @@ export default function TurnoProtection({
           const localTurno = localStorage.getItem('turnoActivo');
           if (localTurno) {
             localStorage.removeItem('turnoActivo');
-            console.log('🧹 Turno local eliminado - turno pertenece a otro usuario');
           }
           setHasActiveTurno(false);
           if (showFeedback) {
@@ -178,7 +169,6 @@ export default function TurnoProtection({
         const localTurno = localStorage.getItem('turnoActivo');
         if (localTurno) {
           localStorage.removeItem('turnoActivo');
-          console.log('🧹 Turno local eliminado - no existe en BD');
           if (showFeedback) {
             alert('🧹 Estado local limpiado - no hay turno activo');
           }

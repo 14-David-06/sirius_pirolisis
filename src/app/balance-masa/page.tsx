@@ -109,19 +109,14 @@ function BalanceMasaContent() {
       if (userSession) {
         try {
           const sessionData = JSON.parse(userSession);
-          console.log('🔍 Datos de sesión completos:', sessionData);
           
           // La estructura es: { user: { Nombre, Cedula, Cargo, etc }, loginTime }
           realizaRegistro = sessionData.user?.Nombre || 'Usuario desconocido';
-          
-          console.log('👤 Nombre extraído:', realizaRegistro);
         } catch (error) {
           console.error('Error parsing user session:', error);
           realizaRegistro = 'Usuario desconocido';
         }
       }
-
-      console.log('👤 Usuario que realiza registro:', realizaRegistro);
 
       const dataToSend = {
         pesoBiochar: 25.00, // Valor estático de 25kg
@@ -136,8 +131,6 @@ function BalanceMasaContent() {
         realizaRegistro: realizaRegistro,
         ...(turnoPirolisisId && { turnoPirolisis: [turnoPirolisisId] })
       };
-
-      console.log('📊 Enviando datos de balance de masa:', dataToSend);
 
       const response = await fetch('/api/balance-masa/create-with-qr', {
         method: 'POST',

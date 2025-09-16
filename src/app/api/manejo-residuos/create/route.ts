@@ -4,14 +4,24 @@ import { config } from '../../../../lib/config';
 // Usar el nombre de la tabla en lugar del ID
 const TABLE_NAME = process.env.AIRTABLE_RESIDUOS_TABLE || 'Manejo Residuos';
 
-export async function POST(req: NextRequest) {
+interface ResiduoRecord {
+  Residuo: string;
+  'Cantidad Residuo KG': number;
+  'Tipo Residuo': string;
+  'Entregado a': string;
+  Observaciones?: string;
+  'Realiza Registro': string;
+  ID_Turno: string;
+}
+
+export async function POST(request: NextRequest) {
   if (!TABLE_NAME) {
     return NextResponse.json({ 
       error: 'Nombre de tabla de Manejo de Residuos no configurado' 
     }, { status: 500 });
   }
   try {
-    const body = await req.json();
+    const body = await request.json();
 
     // Basic validation
     console.log('Datos a guardar:', body);
@@ -22,7 +32,7 @@ export async function POST(req: NextRequest) {
     let records = [];
     if (body.records && Array.isArray(body.records)) {
       // Nuevo formato: array de registros con subtipos
-      records = body.records.map(record => ({
+      records = body.records.map((record: ResiduoRecord) => ({
         fields: {
           'Residuo': record.Residuo,
           'Cantidad Residuo KG': record['Cantidad Residuo KG'],

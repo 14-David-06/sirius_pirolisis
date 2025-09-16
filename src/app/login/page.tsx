@@ -28,10 +28,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   const validateCedula = async (cedulaValue: string) => {
-    console.log('🔍 [Frontend] Validando cédula:', cedulaValue);
     
     if (!cedulaValue.trim()) {
-      console.log('❌ [Frontend] Cédula vacía');
       setError('Por favor ingresa tu cédula');
       return;
     }
@@ -51,14 +49,11 @@ export default function LoginPage() {
 
       console.log('📡 [Frontend] Respuesta recibida - Status:', response.status);
       const data = await response.json();
-      console.log('📊 [Frontend] Datos recibidos:', data);
 
       if (response.ok && data.exists) {
-        console.log('✅ [Frontend] Usuario válido encontrado');
         setUserData(data.user);
         setStep(data.hasPassword ? 'password' : 'setPassword');
       } else {
-        console.log('❌ [Frontend] Usuario no encontrado o error');
         setError(data.message || 'Cédula no encontrada en el sistema');
       }
     } catch (error) {

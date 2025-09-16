@@ -163,10 +163,8 @@ function ManejoResiduosContent() {
       if (userSession) {
         try {
           const sessionData = JSON.parse(userSession);
-          console.log('🔍 Datos de sesión completos:', sessionData);
           
           realizaRegistro = sessionData.user?.Nombre || 'Usuario desconocido';
-          console.log('👤 Nombre extraído:', realizaRegistro);
         } catch (error) {
           console.error('Error parsing user session:', error);
           realizaRegistro = 'Usuario desconocido';
@@ -243,8 +241,6 @@ function ManejoResiduosContent() {
           });
         }
       });
-
-      console.log('📝 Registros a crear:', recordsToCreate);
 
       // Validar que hay registros para crear
       if (recordsToCreate.length === 0) {
@@ -362,7 +358,6 @@ function ManejoResiduosContent() {
               {/* Grabación por Voz */}
               <ManejoResiduosVoiceRecorder 
                 onDataExtracted={(data) => {
-                  console.log('💭 Datos recibidos del reconocimiento de voz:', data);
                   setFormData(prev => ({
                     subtiposAprovechables: data.subtiposAprovechables || [],
                     subtiposOrganicos: data.subtiposOrganicos || [],
