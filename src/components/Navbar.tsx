@@ -11,10 +11,17 @@ interface MenuItem {
   description: string;
 }
 
+interface MenuCategory {
+  title: string;
+  icon: string;
+  items: MenuItem[];
+}
+
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeTurno, setActiveTurno] = useState<any>(null);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     // Verificar si hay una sesión activa
@@ -52,38 +59,49 @@ export default function Navbar() {
     window.location.href = '/login';
   };
 
-
-  // Determinar qué opciones mostrar basado en el estado del turno
-  const getMenuItems = (): MenuItem[] => {
-    const baseItems: MenuItem[] = [
-      { label: "⚖️ Balance de Masa", href: "/balance-masa", icon: "⚖️", description: "Control de materiales" },
-      { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
-      { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
-      { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
-      { label: "♻️ Manejo Residuos", href: "/manejo-residuos", icon: "♻️", description: "Gestión de residuos" },
-    ];
-
-    if (activeTurno) {
-      // Si hay turno activo, mostrar "Cerrar Turno"
-      return [
-        { 
-          label: "🛑 Cerrar Turno", 
-          href: "/cerrar-turno", 
-          icon: "🛑", 
-          description: "Finalizar turno activo"
-        },
-        ...baseItems
-      ];
-    } else {
-      // Si no hay turno activo, mostrar "Abrir Turno"
-      return [
-        { label: "🔄 Abrir Turno", href: "/abrir-turno", icon: "🔄", description: "Gestión de turnos" },
-        ...baseItems
-      ];
-    }
+  // Función para manejar hover en menús desplegables
+  const handleMouseEnter = (category: string) => {
+    setOpenDropdown(category);
   };
 
-  const menuItems = getMenuItems();
+  const handleMouseLeave = () => {
+    setOpenDropdown(null);
+  };
+
+  // Determinar qué opciones mostrar basado en el estado del turno
+  const getMenuCategories = (): MenuCategory[] => {
+    const turnoItem = activeTurno 
+      ? { label: "🛑 Cerrar Turno", href: "/cerrar-turno", icon: "🛑", description: "Finalizar turno activo" }
+      : { label: "🔄 Abrir Turno", href: "/abrir-turno", icon: "🔄", description: "Iniciar nuevo turno" };
+
+    return [
+      {
+        title: "Turnos",
+        icon: "⏰",
+        items: [turnoItem]
+      },
+      {
+        title: "Operaciones",
+        icon: "⚙️",
+        items: [
+          { label: "⚖️ Balance de Masa", href: "/balance-masa", icon: "⚖️", description: "Control de materiales" },
+          { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
+          { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
+        ]
+      },
+      {
+        title: "Recursos",
+        icon: "🛄",
+        items: [
+          { label: "📦 Inventario Pirolisis", href: "/inventario-pirolisis", icon: "📦", description: "Gestión de inventario" },
+          { label: "♻️ Manejo Residuos", href: "/manejo-residuos", icon: "♻️", description: "Gestión de residuos" },
+          { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
+        ]
+      }
+    ];
+  };
+
+  const menuCategories = getMenuCategories();
 
   return (
     <header className="w-full px-6 py-4 relative z-30 bg-transparent backdrop-blur-sm">
@@ -116,22 +134,43 @@ export default function Navbar() {
           <div className="flex items-center space-x-6">
             {/* Menú desplegable para pantallas grandes */}
             <div className="hidden lg:flex items-center space-x-2">
-              {menuItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="group relative bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white hover:from-[#4a6429] hover:to-[#3d5422] px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-md hover:shadow-lg hover:shadow-[#5A7836]/30"
-                  title={item.description}
+              {menuCategories.map((category) => (
+                <div 
+                  key={category.title}
+                  className="relative"
+                  onMouseEnter={() => handleMouseEnter(category.title)}
+                  onMouseLeave={handleMouseLeave}
                 >
-                  <span className="text-lg">{item.icon}</span>
-                  <span className="hidden xl:inline">{item.label.replace(/^.+?\s/, '')}</span>
-                  <span className="xl:hidden">{item.label}</span>
-                  
-                  {/* Tooltip para pantallas grandes */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none xl:hidden shadow-lg">
-                    {item.description}
-                  </div>
-                </Link>
+                  <button
+                    className="group relative bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white hover:from-[#4a6429] hover:to-[#3d5422] px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-md hover:shadow-lg hover:shadow-[#5A7836]/30"
+                  >
+                    <span className="text-lg">{category.icon}</span>
+                    <span>{category.title}</span>
+                    <svg className="w-4 h-4 ml-1 transition-transform duration-200 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Menú desplegable */}
+                  {openDropdown === category.title && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 backdrop-blur-sm">
+                      {category.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="flex items-center px-4 py-3 text-[#5A7836] hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg mx-2"
+                          title={item.description}
+                        >
+                          <span className="text-xl mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
+                          <div className="flex-1">
+                            <div className="font-semibold">{item.label.replace(/^.+?\s/, '')}</div>
+                            <div className="text-xs text-gray-500 group-hover:text-white/80">{item.description}</div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
               
               {/* Separador visual */}
@@ -172,19 +211,29 @@ export default function Navbar() {
                     <p className="text-sm font-semibold text-gray-600">🔧 Panel de Control</p>
                   </div>
                   
-                  {menuItems.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="flex items-center px-4 py-3 text-[#5A7836] hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg mx-2"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      <span className="text-xl mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
-                      <div className="flex-1">
-                        <div className="font-semibold">{item.label.replace(/^.+?\s/, '')}</div>
-                        <div className="text-xs text-gray-500 group-hover:text-white/80">{item.description}</div>
+                  {menuCategories.map((category) => (
+                    <div key={category.title} className="border-b border-gray-50 last:border-b-0">
+                      <div className="px-4 py-2">
+                        <h3 className="text-sm font-semibold text-[#5A7836] flex items-center">
+                          <span className="mr-2">{category.icon}</span>
+                          {category.title}
+                        </h3>
                       </div>
-                    </Link>
+                      {category.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="flex items-center px-6 py-2 text-[#5A7836] hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg mx-2"
+                          onClick={() => setIsMenuOpen(false)}
+                        >
+                          <span className="text-lg mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
+                          <div className="flex-1">
+                            <div className="font-semibold text-sm">{item.label.replace(/^.+?\s/, '')}</div>
+                            <div className="text-xs text-gray-500 group-hover:text-white/80">{item.description}</div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
                   ))}
                   
                   <hr className="my-2 border-gray-100" />
