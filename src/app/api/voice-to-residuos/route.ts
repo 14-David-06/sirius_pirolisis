@@ -80,10 +80,10 @@ export async function POST(req: NextRequest) {
             Analiza el texto transcrito y extrae la siguiente información:
             
             Campos requeridos (todos los valores numéricos deben ser números, no texto):
-            - cantidadAprovechables: cantidad en kilos de residuos aprovechables
-            - cantidadPeligrosos: cantidad en kilos de residuos peligrosos
-            - cantidadNoAprovechables: cantidad en kilos de residuos no aprovechables
-            - cantidadOrganicos: cantidad en kilos de residuos orgánicos
+            - subtiposAprovechables: array de objetos con subtipo y cantidad para residuos aprovechables
+            - subtiposOrganicos: array de objetos con subtipo y cantidad para residuos orgánicos
+            - subtiposPeligrosos: array de objetos con subtipo y cantidad para residuos peligrosos
+            - subtiposNoAprovechables: array de objetos con subtipo y cantidad para residuos no aprovechables
             
             Campos opcionales:
             - entregadoA: nombre de la empresa o entidad a la que se entregaron los residuos
@@ -94,10 +94,13 @@ export async function POST(req: NextRequest) {
             
             Ejemplo de respuesta:
             {
-              "cantidadAprovechables": 12.5,
-              "cantidadPeligrosos": 3,
-              "cantidadNoAprovechables": 2,
-              "cantidadOrganicos": 5,
+              "subtiposAprovechables": [
+                {"subtipo": "Papel", "cantidad": 2},
+                {"subtipo": "Cartón", "cantidad": 3}
+              ],
+              "subtiposOrganicos": [
+                {"subtipo": "Restos de comida", "cantidad": 4}
+              ],
               "entregadoA": "Empresa XYZ",
               "observaciones": "residuos separados correctamente"
             }`
@@ -134,10 +137,10 @@ export async function POST(req: NextRequest) {
 
     // Devolver los datos en el formato que espera el formulario
     const formattedData = {
-      cantidadAprovechables: extractedData.cantidadAprovechables?.toString() || '',
-      cantidadPeligrosos: extractedData.cantidadPeligrosos?.toString() || '',
-      cantidadNoAprovechables: extractedData.cantidadNoAprovechables?.toString() || '',
-      cantidadOrganicos: extractedData.cantidadOrganicos?.toString() || '',
+      subtiposAprovechables: extractedData.subtiposAprovechables || [],
+      subtiposOrganicos: extractedData.subtiposOrganicos || [],
+      subtiposPeligrosos: extractedData.subtiposPeligrosos || [],
+      subtiposNoAprovechables: extractedData.subtiposNoAprovechables || [],
       entregadoA: extractedData.entregadoA || '',
       observaciones: extractedData.observaciones || ''
     };
@@ -161,10 +164,10 @@ export async function POST(req: NextRequest) {
 
 // Typing auxiliar para TypeScript
 interface ResiduosData {
-  cantidadAprovechables: number;
-  cantidadPeligrosos: number;
-  cantidadNoAprovechables: number;
-  cantidadOrganicos: number;
+  subtiposAprovechables?: Array<{subtipo: string, cantidad: number}>;
+  subtiposOrganicos?: Array<{subtipo: string, cantidad: number}>;
+  subtiposPeligrosos?: Array<{subtipo: string, cantidad: number}>;
+  subtiposNoAprovechables?: Array<{subtipo: string, cantidad: number}>;
   entregadoA?: string;
   observaciones?: string;
 }

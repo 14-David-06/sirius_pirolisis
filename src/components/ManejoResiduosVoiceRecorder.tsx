@@ -3,10 +3,10 @@
 import { useState, useRef } from 'react';
 
 interface ManejoResiduosData {
-  cantidadAprovechables?: string;
-  cantidadPeligrosos?: string;
-  cantidadNoAprovechables?: string;
-  cantidadOrganicos?: string;
+  subtiposAprovechables?: Array<{subtipo: string, cantidad: string}>;
+  subtiposOrganicos?: Array<{subtipo: string, cantidad: string}>;
+  subtiposPeligrosos?: Array<{subtipo: string, cantidad: string}>;
+  subtiposNoAprovechables?: Array<{subtipo: string, cantidad: string}>;
   entregadoA?: string;
   observaciones?: string;
 }
@@ -28,16 +28,21 @@ export default function ManejoResiduosVoiceRecorder({ onDataExtracted, isLoading
     🎙️ Instrucciones para el registro por voz:
     
     Diga claramente los siguientes campos en orden:
-    1. "Aprovechables [número] kilos" para residuos aprovechables
-    2. "Peligrosos [número] kilos" para residuos peligrosos
-    3. "No aprovechables [número] kilos" para no aprovechables
-    4. "Orgánicos [número] kilos" para residuos orgánicos
+    1. Para residuos aprovechables: "[subtipo] [cantidad] kilos aprovechables"
+       Ejemplo: "Papel 2 kilos aprovechables, Cartón 3 kilos aprovechables"
+    2. Para residuos orgánicos: "[subtipo] [cantidad] kilos orgánicos"
+       Ejemplo: "Restos de comida 4 kilos orgánicos, Cáscaras de fruta 2 kilos orgánicos"
+    3. Para residuos peligrosos: "[subtipo] [cantidad] kilos peligrosos"
+       Ejemplo: "Aceite usado 5 kilos peligrosos"
+    4. Para residuos no aprovechables: "[subtipo] [cantidad] kilos no aprovechables"
+       Ejemplo: "Plástico contaminado 1 kilo no aprovechables"
     5. "Entregado a [nombre]" para especificar el destinatario
     6. "Observaciones: [texto]" para agregar comentarios
 
-    Ejemplo:
-    "Aprovechables 12.5 kilos, peligrosos 3 kilos, no aprovechables 2 kilos, 
-    orgánicos 5 kilos, entregado a Empresa XYZ, observaciones: residuos separados correctamente"
+    Ejemplo completo:
+    "Papel 2 kilos aprovechables, cartón 3 kilos aprovechables, restos de comida 4 kilos orgánicos, 
+    cáscaras de fruta 2 kilos orgánicos, aceite usado 5 kilos peligrosos, entregado a Empresa XYZ, 
+    observaciones: residuos separados correctamente"
   `;
 
   const startRecording = async () => {

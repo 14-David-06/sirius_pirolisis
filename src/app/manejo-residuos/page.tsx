@@ -8,10 +8,10 @@ import Footer from '@/components/Footer';
 import ManejoResiduosVoiceRecorder from '@/components/ManejoResiduosVoiceRecorder';
 
 interface ManejoResiduosFormData {
-  cantidadAprovechables: string;
-  cantidadPeligrosos: string;
-  cantidadNoAprovechables: string;
-  cantidadOrganicos: string;
+  subtiposAprovechables: Array<{subtipo: string, cantidad: string}>;
+  subtiposOrganicos: Array<{subtipo: string, cantidad: string}>;
+  subtiposPeligrosos: Array<{subtipo: string, cantidad: string}>;
+  subtiposNoAprovechables: Array<{subtipo: string, cantidad: string}>;
   entregadoA: string;
   observaciones: string;
 }
@@ -34,10 +34,10 @@ function ManejoResiduosContent() {
     // Actualizar el formulario con los datos del reconocimiento de voz
     if (data && typeof data === 'object') {
       setFormData({
-        cantidadAprovechables: data.cantidadAprovechables?.toString() || '',
-        cantidadPeligrosos: data.cantidadPeligrosos?.toString() || '',
-        cantidadNoAprovechables: data.cantidadNoAprovechables?.toString() || '',
-        cantidadOrganicos: data.cantidadOrganicos?.toString() || '',
+        subtiposAprovechables: data.subtiposAprovechables || [],
+        subtiposOrganicos: data.subtiposOrganicos || [],
+        subtiposPeligrosos: data.subtiposPeligrosos || [],
+        subtiposNoAprovechables: data.subtiposNoAprovechables || [],
         entregadoA: data.entregadoA || '',
         observaciones: data.observaciones || ''
       });
@@ -45,10 +45,10 @@ function ManejoResiduosContent() {
   };
 
   const [formData, setFormData] = useState<ManejoResiduosFormData>({
-    cantidadAprovechables: '',
-    cantidadPeligrosos: '',
-    cantidadNoAprovechables: '',
-    cantidadOrganicos: '',
+    subtiposAprovechables: [],
+    subtiposOrganicos: [],
+    subtiposPeligrosos: [],
+    subtiposNoAprovechables: [],
     entregadoA: '',
     observaciones: ''
   });
@@ -77,16 +77,50 @@ function ManejoResiduosContent() {
     }));
   };
 
-  const validateForm = () => {
-    const hasAtLeastOneQuantity = [
-      'cantidadAprovechables',
-      'cantidadPeligrosos', 
-      'cantidadNoAprovechables',
-      'cantidadOrganicos'
-    ].some(field => formData[field as keyof ManejoResiduosFormData] && parseFloat(formData[field as keyof ManejoResiduosFormData]) > 0);
+  const agregarSubtipo = (categoria: keyof Pick<ManejoResiduosFormData, 'subtiposAprovechables' | 'subtiposOrganicos' | 'subtiposPeligrosos' | 'subtiposNoAprovechables'>) => {
+    setFormData(prev => ({
+      ...prev,
+      [categoria]: [...prev[categoria], { subtipo: '', cantidad: '' }]
+    }));
+  };
 
-    if (!hasAtLeastOneQuantity) {
-      setMensaje('Por favor ingrese al menos una cantidad de residuos mayor a 0');
+  const actualizarSubtipo = (
+    categoria: keyof Pick<ManejoResiduosFormData, 'subtiposAprovechables' | 'subtiposOrganicos' | 'subtiposPeligrosos' | 'subtiposNoAprovechables'>,
+    index: number,
+    campo: 'subtipo' | 'cantidad',
+    valor: string
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      [categoria]: prev[categoria].map((item, i) => 
+        i === index ? { ...item, [campo]: valor } : item
+      )
+    }));
+  };
+
+  const eliminarSubtipo = (
+    categoria: keyof Pick<ManejoResiduosFormData, 'subtiposAprovechables' | 'subtiposOrganicos' | 'subtiposPeligrosos' | 'subtiposNoAprovechables'>,
+    index: number
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      [categoria]: prev[categoria].filter((_, i) => i !== index)
+    }));
+  };
+
+  const validateForm = () => {
+    const hasAtLeastOneSubtipo = [
+      'subtiposAprovechables',
+      'subtiposOrganicos',
+      'subtiposPeligrosos',
+      'subtiposNoAprovechables'
+    ].some(field => {
+      const subtipos = formData[field as keyof ManejoResiduosFormData] as Array<{subtipo: string, cantidad: string}>;
+      return subtipos.length > 0 && subtipos.some(subtipo => subtipo.subtipo.trim() && parseFloat(subtipo.cantidad) > 0);
+    });
+
+    if (!hasAtLeastOneSubtipo) {
+      setMensaje('Por favor ingrese al menos un subtipo de residuo con cantidad mayor a 0');
       return false;
     }
 
@@ -139,41 +173,133 @@ function ManejoResiduosContent() {
         }
       }
 
-      const dataToSend = {
-        CantidadResiduosAprovechablesKg: parseFloat(formData.cantidadAprovechables) || 0,
-        CantidadResiduosPeligrososKg: parseFloat(formData.cantidadPeligrosos) || 0,
-        CantidadResiduosNoAprovechablesKg: parseFloat(formData.cantidadNoAprovechables) || 0,
-        CantidadResiduosOrganicosKg: parseFloat(formData.cantidadOrganicos) || 0,
-        EntregadoA: formData.entregadoA.trim(),
-        RealizaRegistro: realizaRegistro,
-        Observaciones: formData.observaciones.trim(),
-        ...(turnoPirolisisId && { ID_Turno: [turnoPirolisisId] })
-      };
+      // Crear registros individuales para cada subtipo
+      const recordsToCreate: Array<{
+        Residuo: string;
+        'Cantidad Residuo KG': number;
+        'Tipo Residuo': string;
+        'Entregado a': string;
+        'Observaciones': string;
+        'Realiza Registro': string;
+        'ID_Turno': string;
+      }> = [];
 
-      console.log('♻️ Enviando datos de manejo de residuos:', dataToSend);
+      // Procesar subtipos aprovechables
+      formData.subtiposAprovechables.forEach(subtipo => {
+        if (subtipo.subtipo.trim() && parseFloat(subtipo.cantidad) > 0) {
+          recordsToCreate.push({
+            Residuo: subtipo.subtipo.trim(),
+            'Cantidad Residuo KG': parseFloat(subtipo.cantidad),
+            'Tipo Residuo': '♻️ Residuos Aprovechables', // Valor con emoji que existe en Airtable
+            'Entregado a': formData.entregadoA.trim(),
+            'Observaciones': formData.observaciones.trim(),
+            'Realiza Registro': realizaRegistro,
+            'ID_Turno': turnoPirolisisId ? turnoPirolisisId : '' // String directo, no array
+          });
+        }
+      });
+
+      // Procesar subtipos orgánicos
+      formData.subtiposOrganicos.forEach(subtipo => {
+        if (subtipo.subtipo.trim() && parseFloat(subtipo.cantidad) > 0) {
+          recordsToCreate.push({
+            Residuo: subtipo.subtipo.trim(),
+            'Cantidad Residuo KG': parseFloat(subtipo.cantidad),
+            'Tipo Residuo': '🥬 Residuos Orgánicos', // Valor con emoji que existe en Airtable
+            'Entregado a': formData.entregadoA.trim(),
+            'Observaciones': formData.observaciones.trim(),
+            'Realiza Registro': realizaRegistro,
+            'ID_Turno': turnoPirolisisId ? turnoPirolisisId : '' // String directo, no array
+          });
+        }
+      });
+
+      // Procesar subtipos peligrosos
+      formData.subtiposPeligrosos.forEach(subtipo => {
+        if (subtipo.subtipo.trim() && parseFloat(subtipo.cantidad) > 0) {
+          recordsToCreate.push({
+            Residuo: subtipo.subtipo.trim(),
+            'Cantidad Residuo KG': parseFloat(subtipo.cantidad),
+            'Tipo Residuo': '☢️ Residuos Peligrosos', // Valor con emoji que existe en Airtable
+            'Entregado a': formData.entregadoA.trim(),
+            'Observaciones': formData.observaciones.trim(),
+            'Realiza Registro': realizaRegistro,
+            'ID_Turno': turnoPirolisisId ? turnoPirolisisId : '' // String directo, no array
+          });
+        }
+      });
+
+      // Procesar subtipos no aprovechables
+      formData.subtiposNoAprovechables.forEach(subtipo => {
+        if (subtipo.subtipo.trim() && parseFloat(subtipo.cantidad) > 0) {
+          recordsToCreate.push({
+            Residuo: subtipo.subtipo.trim(),
+            'Cantidad Residuo KG': parseFloat(subtipo.cantidad),
+            'Tipo Residuo': '🗑️ Residuos No Aprovechables', // Valor con emoji que existe en Airtable
+            'Entregado a': formData.entregadoA.trim(),
+            'Observaciones': formData.observaciones.trim(),
+            'Realiza Registro': realizaRegistro,
+            'ID_Turno': turnoPirolisisId ? turnoPirolisisId : '' // String directo, no array
+          });
+        }
+      });
+
+      console.log('📝 Registros a crear:', recordsToCreate);
+
+      // Validar que hay registros para crear
+      if (recordsToCreate.length === 0) {
+        setMensaje('❌ No hay subtipos válidos para registrar');
+        setIsLoading(false);
+        return;
+      }
+
+      // Validar cada registro
+      for (const record of recordsToCreate) {
+        if (!record.Residuo || record.Residuo.trim() === '') {
+          setMensaje('❌ Todos los subtipos deben tener un nombre válido');
+          setIsLoading(false);
+          return;
+        }
+        if (!record['Cantidad Residuo KG'] || record['Cantidad Residuo KG'] <= 0) {
+          setMensaje('❌ Todas las cantidades deben ser mayores a 0');
+          setIsLoading(false);
+          return;
+        }
+        if (!record['Entregado a'] || record['Entregado a'].trim() === '') {
+          setMensaje('❌ El campo "Entregado a" es obligatorio');
+          setIsLoading(false);
+          return;
+        }
+        // Validar que el Tipo Residuo sea válido según Airtable
+        const tiposValidos = ['♻️ Residuos Aprovechables', '🥬 Residuos Orgánicos', '☢️ Residuos Peligrosos', '🗑️ Residuos No Aprovechables'];
+        if (!record['Tipo Residuo'] || !tiposValidos.includes(record['Tipo Residuo'])) {
+          setMensaje(`❌ Tipo de residuo inválido: ${record['Tipo Residuo']}. Debe ser uno de: ${tiposValidos.join(', ')}`);
+          setIsLoading(false);
+          return;
+        }
+        // Validar que ID_Turno esté presente
+        if (!record.ID_Turno || record.ID_Turno.trim() === '') {
+          setMensaje('❌ Falta el ID del turno. Por favor, abre un turno primero.');
+          setIsLoading(false);
+          return;
+        }
+      }
 
       const response = await fetch('/api/manejo-residuos/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(dataToSend),
+        body: JSON.stringify({ records: recordsToCreate }),
       });
 
       const result = await response.json();
 
       if (response.ok && result.records) {
-        setMensaje(`✅ Registro de manejo de residuos creado exitosamente (ID: ${result.records[0]?.id})`);
+        setMensaje(`✅ Registro de manejo de residuos creado exitosamente (${recordsToCreate.length} registros)`);
         
         // Limpiar formulario
-        setFormData({
-          cantidadAprovechables: '',
-          cantidadPeligrosos: '',
-          cantidadNoAprovechables: '',
-          cantidadOrganicos: '',
-          entregadoA: '',
-          observaciones: ''
-        });
+        limpiarFormulario();
       } else {
         setMensaje(`❌ Error: ${result.error || 'Error desconocido'}`);
       }
@@ -187,10 +313,10 @@ function ManejoResiduosContent() {
 
   const limpiarFormulario = () => {
     setFormData({
-      cantidadAprovechables: '',
-      cantidadPeligrosos: '',
-      cantidadNoAprovechables: '',
-      cantidadOrganicos: '',
+      subtiposAprovechables: [],
+      subtiposOrganicos: [],
+      subtiposPeligrosos: [],
+      subtiposNoAprovechables: [],
       entregadoA: '',
       observaciones: ''
     });
@@ -238,10 +364,10 @@ function ManejoResiduosContent() {
                 onDataExtracted={(data) => {
                   console.log('💭 Datos recibidos del reconocimiento de voz:', data);
                   setFormData(prev => ({
-                    cantidadAprovechables: data.cantidadAprovechables || '',
-                    cantidadPeligrosos: data.cantidadPeligrosos || '',
-                    cantidadNoAprovechables: data.cantidadNoAprovechables || '',
-                    cantidadOrganicos: data.cantidadOrganicos || '',
+                    subtiposAprovechables: data.subtiposAprovechables || [],
+                    subtiposOrganicos: data.subtiposOrganicos || [],
+                    subtiposPeligrosos: data.subtiposPeligrosos || [],
+                    subtiposNoAprovechables: data.subtiposNoAprovechables || [],
                     entregadoA: data.entregadoA || '',
                     observaciones: data.observaciones || ''
                   }));
@@ -250,89 +376,239 @@ function ManejoResiduosContent() {
                 isLoading={isLoading}
               />
 
-              {/* Residuos Aprovechables y Orgánicos */}
+              {/* Residuos Aprovechables */}
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
-                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
-                  🌱 Residuos Aprovechables y Orgánicos (KG)
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label htmlFor="cantidadAprovechables" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      ♻️ Residuos Aprovechables
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="cantidadAprovechables"
-                      name="cantidadAprovechables"
-                      value={formData.cantidadAprovechables}
-                      onChange={handleInputChange}
-                      min="0"
-                      placeholder="Ej: 15.50"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="cantidadOrganicos" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      🥬 Residuos Orgánicos
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="cantidadOrganicos"
-                      name="cantidadOrganicos"
-                      value={formData.cantidadOrganicos}
-                      onChange={handleInputChange}
-                      min="0"
-                      placeholder="Ej: 8.25"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
-                  </div>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-white flex items-center drop-shadow">
+                    ♻️ Residuos Aprovechables
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => agregarSubtipo('subtiposAprovechables')}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                  >
+                    <span>+ Agregar Subtipo</span>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.subtiposAprovechables.map((subtipo, index) => (
+                    <div key={index} className="flex space-x-4 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          Subtipo {index + 1}
+                        </label>
+                        <input
+                          type="text"
+                          value={subtipo.subtipo}
+                          onChange={(e) => actualizarSubtipo('subtiposAprovechables', index, 'subtipo', e.target.value)}
+                          placeholder="Ej: Papel, Cartón, Botellas plásticas"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <div className="w-32">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          KG
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={subtipo.cantidad}
+                          onChange={(e) => actualizarSubtipo('subtiposAprovechables', index, 'cantidad', e.target.value)}
+                          min="0"
+                          placeholder="0.00"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => eliminarSubtipo('subtiposAprovechables', index)}
+                        className="px-3 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                  {formData.subtiposAprovechables.length === 0 && (
+                    <p className="text-white/70 text-center py-4">No hay subtipos agregados</p>
+                  )}
                 </div>
               </div>
 
-              {/* Residuos Peligrosos y No Aprovechables */}
+              {/* Residuos Orgánicos */}
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
-                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
-                  ⚠️ Residuos Peligrosos y No Aprovechables (KG)
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label htmlFor="cantidadPeligrosos" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      ☢️ Residuos Peligrosos
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="cantidadPeligrosos"
-                      name="cantidadPeligrosos"
-                      value={formData.cantidadPeligrosos}
-                      onChange={handleInputChange}
-                      min="0"
-                      placeholder="Ej: 2.75"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="cantidadNoAprovechables" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      🗑️ Residuos No Aprovechables
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="cantidadNoAprovechables"
-                      name="cantidadNoAprovechables"
-                      value={formData.cantidadNoAprovechables}
-                      onChange={handleInputChange}
-                      min="0"
-                      placeholder="Ej: 5.00"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
-                  </div>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-white flex items-center drop-shadow">
+                    🥬 Residuos Orgánicos
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => agregarSubtipo('subtiposOrganicos')}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                  >
+                    <span>+ Agregar Subtipo</span>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.subtiposOrganicos.map((subtipo, index) => (
+                    <div key={index} className="flex space-x-4 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          Subtipo {index + 1}
+                        </label>
+                        <input
+                          type="text"
+                          value={subtipo.subtipo}
+                          onChange={(e) => actualizarSubtipo('subtiposOrganicos', index, 'subtipo', e.target.value)}
+                          placeholder="Ej: Restos de comida, Cáscaras de fruta"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <div className="w-32">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          KG
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={subtipo.cantidad}
+                          onChange={(e) => actualizarSubtipo('subtiposOrganicos', index, 'cantidad', e.target.value)}
+                          min="0"
+                          placeholder="0.00"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => eliminarSubtipo('subtiposOrganicos', index)}
+                        className="px-3 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                  {formData.subtiposOrganicos.length === 0 && (
+                    <p className="text-white/70 text-center py-4">No hay subtipos agregados</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Residuos Peligrosos */}
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-white flex items-center drop-shadow">
+                    ☢️ Residuos Peligrosos
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => agregarSubtipo('subtiposPeligrosos')}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                  >
+                    <span>+ Agregar Subtipo</span>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.subtiposPeligrosos.map((subtipo, index) => (
+                    <div key={index} className="flex space-x-4 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          Subtipo {index + 1}
+                        </label>
+                        <input
+                          type="text"
+                          value={subtipo.subtipo}
+                          onChange={(e) => actualizarSubtipo('subtiposPeligrosos', index, 'subtipo', e.target.value)}
+                          placeholder="Ej: Aceite usado, Baterías, Químicos"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <div className="w-32">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          KG
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={subtipo.cantidad}
+                          onChange={(e) => actualizarSubtipo('subtiposPeligrosos', index, 'cantidad', e.target.value)}
+                          min="0"
+                          placeholder="0.00"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => eliminarSubtipo('subtiposPeligrosos', index)}
+                        className="px-3 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                  {formData.subtiposPeligrosos.length === 0 && (
+                    <p className="text-white/70 text-center py-4">No hay subtipos agregados</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Residuos No Aprovechables */}
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-white flex items-center drop-shadow">
+                    🗑️ Residuos No Aprovechables
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => agregarSubtipo('subtiposNoAprovechables')}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                  >
+                    <span>+ Agregar Subtipo</span>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.subtiposNoAprovechables.map((subtipo, index) => (
+                    <div key={index} className="flex space-x-4 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          Subtipo {index + 1}
+                        </label>
+                        <input
+                          type="text"
+                          value={subtipo.subtipo}
+                          onChange={(e) => actualizarSubtipo('subtiposNoAprovechables', index, 'subtipo', e.target.value)}
+                          placeholder="Ej: Plástico contaminado, Mezclas complejas"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <div className="w-32">
+                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                          KG
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={subtipo.cantidad}
+                          onChange={(e) => actualizarSubtipo('subtiposNoAprovechables', index, 'cantidad', e.target.value)}
+                          min="0"
+                          placeholder="0.00"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => eliminarSubtipo('subtiposNoAprovechables', index)}
+                        className="px-3 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                  {formData.subtiposNoAprovechables.length === 0 && (
+                    <p className="text-white/70 text-center py-4">No hay subtipos agregados</p>
+                  )}
                 </div>
               </div>
 
