@@ -32,7 +32,6 @@ function SistemaBachesContent() {
               Gestión y control de baches en el proceso de pirólisis por lotes
             </p>
 
-                <div>
             {/* Estadísticas Generales */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
               <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Estadísticas Generales</h2>
