@@ -3,6 +3,7 @@
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { useBaches } from '@/lib/useBaches';
 
 export default function SistemaBaches() {
   return (
@@ -13,6 +14,50 @@ export default function SistemaBaches() {
 }
 
 function SistemaBachesContent() {
+  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getNumericValue, getDateValue, getTotalBiochar, getBiocharVendido } = useBaches();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
+        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+      }}>
+        <div className="absolute inset-0 bg-black/40"></div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-white/30">
+            <div className="text-white text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+              <p className="text-lg">Cargando datos de baches...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
+        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+      }}>
+        <div className="absolute inset-0 bg-black/40"></div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-white/30">
+            <div className="text-white text-center">
+              <p className="text-lg mb-4">Error al cargar datos</p>
+              <p className="text-sm text-white/70">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const latestBache = getLatestBache();
+  const totalBaches = data?.records?.length || 0;
+  const bachesActivos = data?.records?.filter(b => getBacheStatus(b) !== 'Completado').length || 0;
+  const bachesCompletados = totalBaches - bachesActivos;
+  const totalBiochar = data?.records?.reduce((sum, b) => sum + getTotalBiochar(b), 0) || 0;
+
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat relative"
@@ -38,56 +83,96 @@ function SistemaBachesContent() {
               <div className="space-y-3 text-white">
                 <div className="flex justify-between">
                   <span className="drop-shadow">Total de Baches:</span>
-                  <span className="font-semibold">2</span>
+                  <span className="font-semibold">{totalBaches}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="drop-shadow">Baches Activos:</span>
-                  <span className="font-semibold">1</span>
+                  <span className="font-semibold">{bachesActivos}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="drop-shadow">Baches Completados:</span>
-                  <span className="font-semibold">1</span>
+                  <span className="font-semibold">{bachesCompletados}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="drop-shadow">Total Biochar Producido:</span>
-                  <span className="font-semibold">550 kg</span>
+                  <span className="font-semibold">{totalBiochar} kg</span>
                 </div>
               </div>
             </div>
 
             {/* Bache Actual */}
-            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Bache Actual</h2>
-              <div className="space-y-3 text-white">
-                <div className="font-bold text-lg drop-shadow">S-00201</div>
-                <div className="flex justify-between">
-                  <span className="drop-shadow">Estado:</span>
-                  <span className="font-semibold px-2 py-1 bg-yellow-500/20 text-yellow-200 rounded-full text-xs">
-                    Bache Incompleto
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="drop-shadow">Progreso:</span>
-                  <span className="font-semibold">0.0%</span>
-                </div>
-                <div className="w-full bg-white/20 rounded-full h-3">
-                  <div className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] h-3 rounded-full transition-all duration-500" style={{width: '0%'}}></div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div className="text-center">
-                    <div className="text-sm drop-shadow">Total</div>
-                    <div className="font-bold">50 kg</div>
+            {latestBache ? (
+              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
+                <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Bache Actual</h2>
+                <div className="space-y-3 text-white">
+                  <div className="font-bold text-lg drop-shadow">
+                    {getBacheId(latestBache)}
                   </div>
-                  <div className="text-center">
-                    <div className="text-sm drop-shadow">Vendido</div>
-                    <div className="font-bold">0 kg</div>
+                  <div className="flex justify-between">
+                    <span className="drop-shadow">Estado:</span>
+                    <span className={`font-semibold px-2 py-1 rounded-full text-xs ${
+                      getBacheStatus(latestBache) === 'Completado'
+                        ? 'bg-green-500/20 text-green-200'
+                        : getBacheStatus(latestBache) === 'En Progreso'
+                        ? 'bg-blue-500/20 text-blue-200'
+                        : 'bg-yellow-500/20 text-yellow-200'
+                    }`}>
+                      {getBacheStatus(latestBache)}
+                    </span>
                   </div>
-                </div>
-                <div className="text-xs text-white/70 mt-2 drop-shadow">
-                  Creado: 16/09/2025, 09:14
+                  <div className="flex justify-between">
+                    <span className="drop-shadow">Progreso Lonas:</span>
+                    <span className="font-semibold">
+                      {calculateProgress(latestBache).lonasUsadas} / {calculateProgress(latestBache).totalLonas} lonas
+                    </span>
+                  </div>
+                  <div className="w-full bg-white/20 rounded-full h-3">
+                    <div
+                      className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] h-3 rounded-full transition-all duration-500"
+                      style={{width: `${calculateProgress(latestBache).progressPercentage}%`}}
+                    ></div>
+                  </div>
+                  <div className="text-center text-sm text-white/70 mb-2 drop-shadow">
+                    {calculateProgress(latestBache).progressPercentage.toFixed(1)}% completado
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div className="text-center">
+                      <div className="text-sm drop-shadow">Total</div>
+                      <div className="font-bold">{getTotalBiochar(latestBache)} kg</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-sm drop-shadow">Vendido</div>
+                      <div className="font-bold">{getBiocharVendido(latestBache)} kg</div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-white/70 mt-2 drop-shadow">
+                    Creado: {getDateValue(latestBache) ?
+                      new Date(getDateValue(latestBache)).toLocaleDateString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      }) :
+                      new Date(latestBache.createdTime).toLocaleDateString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    }
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
+                <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Bache Actual</h2>
+                <div className="text-center text-white/70 py-8">
+                  <p>No hay baches registrados en el sistema</p>
+                </div>
+              </div>
+            )}
           </div>
 
         </main>
