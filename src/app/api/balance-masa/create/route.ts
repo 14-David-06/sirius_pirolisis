@@ -71,7 +71,7 @@ async function createNewBache(balanceId: string) {
       body: JSON.stringify({
         records: [{
           fields: {
-            'Estado Bache': 'Bache Incompleto',
+            'Estado Bache': 'Bache en proceso',
             'Balances Masa': [balanceId]
           }
         }]
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
       
       if (incompleteBache) {
         const currentCount = incompleteBache.fields['Recuento Lonas'] || 0;
-        console.log(`📊 Bache incompleto encontrado: ${incompleteBache.id}, lonas actuales: ${currentCount}`);
+        console.log(`📊 Bache en proceso encontrado: ${incompleteBache.id}, lonas actuales: ${currentCount}`);
         
         if (currentCount < 20) {
           // Agregar balance al bache existente
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
           console.log(`✅ Nuevo bache creado: ${newBache?.id}`);
         }
       } else {
-        // No hay bache incompleto, crear uno nuevo
+        // No hay Bache en proceso, crear uno nuevo
         const newBache = await createNewBache(balanceId);
         console.log(`✅ Primer bache creado: ${newBache?.id}`);
       }

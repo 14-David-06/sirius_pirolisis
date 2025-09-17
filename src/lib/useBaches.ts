@@ -50,25 +50,10 @@ export function useBaches() {
           throw new Error(result.error || 'Error al obtener datos de baches');
         }
 
-        // Si no hay registros, crear datos de ejemplo para testing
+        // Si no hay registros, no usar datos de ejemplo - mostrar estado vacío
         if (!result.records || result.records.length === 0) {
-          console.log('No hay baches en Airtable, usando datos de ejemplo');
-          setData({
-            records: [{
-              id: 'rec_example_001',
-              createdTime: new Date().toISOString(),
-              fields: {
-                'ID': 'rec_example_001',
-                'Auto Number': 1,
-                'Fecha Creacion': new Date().toISOString(),
-                'Recuento Lonas': 2,
-                'Total Biochar Bache (KG)': 50,
-                'Codigo Bache': 'S-00201',
-                'Estado Bache': 'Bache Incompleto',
-                'Balances Masa': ''
-              }
-            }]
-          });
+          console.log('No hay baches registrados en Airtable');
+          setData({ records: [] });
         } else {
           setData(result);
         }
@@ -117,7 +102,7 @@ export function useBaches() {
     const progress = calculateProgress(bache);
     if (progress.isComplete) return 'Completado';
     if (progress.lonasUsadas > 0) return 'En Progreso';
-    return 'Bache Incompleto';
+    return 'Bache en proceso';
   };
 
   // Función para obtener el ID del bache
