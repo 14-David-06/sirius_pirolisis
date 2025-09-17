@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
         } else {
           // Marcar bache como completo y crear nuevo
           await updateBache(incompleteBache.id, {
-            'Estado Bache': 'Bache Completo'
+            'Estado Bache': 'Bache Completo Planta'
           });
           console.log(`✅ Bache completado: ${incompleteBache.id}`);
           
