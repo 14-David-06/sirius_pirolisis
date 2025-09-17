@@ -87,6 +87,7 @@ export default function Navbar() {
           { label: "⚖️ Balance de Masa", href: "/balance-masa", icon: "⚖️", description: "Control de materiales" },
           { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
           { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
+          { label: "🔧 Mantenimientos", href: "/mantenimientos", icon: "🔧", description: "Registro de mantenimientos" },
         ]
       },
       {
