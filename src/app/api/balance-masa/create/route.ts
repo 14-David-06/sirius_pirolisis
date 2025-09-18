@@ -20,9 +20,9 @@ interface BalanceMasaData {
 }
 
 // Funciones auxiliares para gestión de baches
-async function findIncompleteBache() {
+async function findLastBache() {
   const response = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Baches%20Pirolisis?filterByFormula={Estado%20Bache}="Bache%20Incompleto"&sort[0][field]=Fecha%20Creacion&sort[0][direction]=desc&maxRecords=1`,
+    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Baches%20Pirolisis?sort[0][field]=Fecha%20Creacion&sort[0][direction]=desc&maxRecords=1`,
     {
       headers: {
         'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
@@ -32,7 +32,7 @@ async function findIncompleteBache() {
   );
 
   if (!response.ok) {
-    throw new Error('Error al consultar baches incompletos');
+    throw new Error('Error al consultar el último bache');
   }
 
   const data = await response.json();
@@ -161,31 +161,36 @@ export async function POST(request: NextRequest) {
     console.log('📦 Gestionando agrupación en baches...');
     
     try {
-      const incompleteBache = await findIncompleteBache();
+      const lastBache = await findLastBache();
       
-      if (incompleteBache) {
-        const currentCount = incompleteBache.fields['Recuento Lonas'] || 0;
-        console.log(`📊 Bache en proceso encontrado: ${incompleteBache.id}, lonas actuales: ${currentCount}`);
+      if (lastBache) {
+        const currentCount = lastBache.fields['Recuento Lonas'] || 0;
+        const estadoBache = lastBache.fields['Estado Bache'];
+        console.log(`📊 Último bache encontrado: ${lastBache.id}, estado: ${estadoBache}, lonas actuales: ${currentCount}`);
         
-        if (currentCount < 20) {
+        if (estadoBache === 'Bache en proceso' && currentCount < 20) {
           // Agregar balance al bache existente
-          const existingBalances = incompleteBache.fields['Balances Masa'] || [];
-          await updateBache(incompleteBache.id, {
+          const existingBalances = lastBache.fields['Balances Masa'] || [];
+          await updateBache(lastBache.id, {
             'Balances Masa': [...existingBalances, balanceId]
           });
-          console.log(`✅ Balance agregado al bache existente: ${incompleteBache.id}`);
-        } else {
+          console.log(`✅ Balance agregado al bache existente: ${lastBache.id}`);
+        } else if (estadoBache === 'Bache en proceso' && currentCount >= 20) {
           // Marcar bache como completo y crear nuevo
-          await updateBache(incompleteBache.id, {
+          await updateBache(lastBache.id, {
             'Estado Bache': 'Bache Completo Planta'
           });
-          console.log(`✅ Bache completado: ${incompleteBache.id}`);
+          console.log(`✅ Bache completado: ${lastBache.id}`);
           
+          const newBache = await createNewBache(balanceId);
+          console.log(`✅ Nuevo bache creado: ${newBache?.id}`);
+        } else {
+          // Bache completo o estado diferente, crear uno nuevo
           const newBache = await createNewBache(balanceId);
           console.log(`✅ Nuevo bache creado: ${newBache?.id}`);
         }
       } else {
-        // No hay Bache en proceso, crear uno nuevo
+        // No hay baches, crear uno nuevo
         const newBache = await createNewBache(balanceId);
         console.log(`✅ Primer bache creado: ${newBache?.id}`);
       }
