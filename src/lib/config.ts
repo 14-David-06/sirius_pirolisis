@@ -1,6 +1,9 @@
 // src/lib/config.ts
 // Configuración centralizada y segura de variables de entorno
 
+// src/lib/config.ts
+// Configuración centralizada y segura de variables de entorno
+
 export const config = {
   airtable: {
     token: process.env.AIRTABLE_TOKEN,
@@ -9,6 +12,7 @@ export const config = {
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
     inventarioTableId: process.env.AIRTABLE_INVENTARIO_TABLE_ID,
   },
+  // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12'),
   },
@@ -26,6 +30,8 @@ export function validateEnvVars() {
     'AIRTABLE_TABLE_NAME',
     'AIRTABLE_BACHES_TABLE_ID',
     'AIRTABLE_INVENTARIO_TABLE_ID'
+    // ❌ REMOVIDO: AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY
+    // Ahora solo se requieren en server-side, no en validación global
   ];
 
   const missingVars = requiredVars.filter(varName => !process.env[varName]);
@@ -35,6 +41,7 @@ export function validateEnvVars() {
       `❌ Variables de entorno faltantes: ${missingVars.join(', ')}\n` +
       `💡 Asegúrate de tener un archivo .env.local con todas las variables necesarias.\n` +
       `📝 Consulta .env.example para ver el formato correcto.`
+      // ❌ REMOVIDO: Referencia a variables AWS - ahora solo server-side
     );
   }
 
@@ -47,8 +54,9 @@ export function logConfigSafely() {
   console.log(`📊 Base ID: ${config.airtable.baseId ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`📋 Tabla: ${config.airtable.tableName ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`🏗️ Tabla Baches: ${config.airtable.bachesTableId ? '✅ Configurado' : '❌ Faltante'}`);
-  console.log(`� Tabla Inventario: ${config.airtable.inventarioTableId ? '✅ Configurado' : '❌ Faltante'}`);
-  console.log(`�🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`📦 Tabla Inventario: ${config.airtable.inventarioTableId ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
+  // ❌ REMOVIDO: AWS logging - credenciales no deben loggearse por seguridad
   console.log(`🔐 Salt rounds: ${config.security.bcryptSaltRounds}`);
   console.log(`🌍 Entorno: ${config.app.env}`);
 }

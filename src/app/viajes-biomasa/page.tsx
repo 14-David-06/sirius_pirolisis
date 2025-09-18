@@ -52,6 +52,13 @@ function ViajesBiomasaContent() {
   const [showTipoCombustibleOtro, setShowTipoCombustibleOtro] = useState(false);
   const [showTipoVehiculoOtro, setShowTipoVehiculoOtro] = useState(false);
 
+  // Estados para rutas S3
+  const [rutasS3, setRutasS3] = useState<any[]>([]);
+  const [rutaSeleccionada, setRutaSeleccionada] = useState('');
+  const [imagenUrl, setImagenUrl] = useState('');
+  const [cargandoRutas, setCargandoRutas] = useState(false);
+  const [cargandoImagen, setCargandoImagen] = useState(false);
+
   useEffect(() => {
     const userSession = localStorage.getItem('userSession');
     if (!userSession) {
@@ -67,6 +74,31 @@ function ViajesBiomasaContent() {
       router.push('/login');
     }
   }, [router]);
+
+  // Cargar rutas de S3 al montar el componente
+  useEffect(() => {
+    const cargarRutasS3 = async () => {
+      if (!isAuthenticated) return;
+
+      setCargandoRutas(true);
+      try {
+        const response = await fetch('/api/s3/list-routes');
+        const data = await response.json();
+
+        if (data.success) {
+          setRutasS3(data.files);
+        } else {
+          console.error('Error cargando rutas S3:', data.error);
+        }
+      } catch (error) {
+        console.error('Error al cargar rutas de S3:', error);
+      } finally {
+        setCargandoRutas(false);
+      }
+    };
+
+    cargarRutasS3();
+  }, [isAuthenticated]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -86,6 +118,35 @@ function ViajesBiomasaContent() {
     if (name === 'tipoVehiculo') {
       setShowTipoVehiculoOtro(value === 'Otro');
       if (value !== 'Otro') setFormData(prev => ({ ...prev, tipoVehiculoOtro: '' }));
+    }
+  };
+
+  // Función para manejar cambio de ruta S3
+  const handleRutaChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedKey = e.target.value;
+    setRutaSeleccionada(selectedKey);
+
+    if (!selectedKey) {
+      setImagenUrl('');
+      return;
+    }
+
+    setCargandoImagen(true);
+    try {
+      const response = await fetch(`/api/s3/get-image-url?key=${encodeURIComponent(selectedKey)}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setImagenUrl(data.signedUrl);
+      } else {
+        console.error('Error obteniendo URL de imagen:', data.error);
+        setImagenUrl('');
+      }
+    } catch (error) {
+      console.error('Error al cargar imagen:', error);
+      setImagenUrl('');
+    } finally {
+      setCargandoImagen(false);
     }
   };
 
@@ -259,6 +320,62 @@ function ViajesBiomasaContent() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Visualización de Rutas S3 */}
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
+                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
+                  🗺️ Mapas de Rutas de Biomasa
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label htmlFor="rutaSeleccionada" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                      Seleccionar Ruta
+                    </label>
+                    <select
+                      id="rutaSeleccionada"
+                      name="rutaSeleccionada"
+                      value={rutaSeleccionada}
+                      onChange={handleRutaChange}
+                      disabled={cargandoRutas}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
+                    >
+                      <option value="">
+                        {cargandoRutas ? 'Cargando rutas...' : 'Seleccione una ruta'}
+                      </option>
+                      {rutasS3.map((ruta) => (
+                        <option key={ruta.key} value={ruta.key}>
+                          {ruta.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    {cargandoImagen && (
+                      <div className="text-white">Cargando imagen...</div>
+                    )}
+                  </div>
+                </div>
+                {imagenUrl && (
+                  <div className="mt-6">
+                    <div className="bg-white/20 backdrop-blur-sm p-4 rounded-lg border border-white/30">
+                      <h3 className="text-lg font-medium text-white mb-3 drop-shadow">
+                        Vista Previa de la Ruta
+                      </h3>
+                      <div className="flex justify-center">
+                        <img
+                          src={imagenUrl}
+                          alt={`Ruta ${rutaSeleccionada}`}
+                          className="max-w-full h-auto max-h-96 rounded-lg shadow-lg border border-white/20"
+                          onError={() => {
+                            console.error('Error cargando imagen');
+                            setImagenUrl('');
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Información de Entrega */}
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
                 <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">

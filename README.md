@@ -97,7 +97,59 @@ NEXT_PUBLIC_API_URL=https://api.ejemplo.com
 # Variables privadas (solo servidor)
 DATABASE_URL=
 SECRET_KEY=
+
+# AWS S3 Configuration (para mapas de rutas)
+AWS_ACCESS_KEY_ID=tu_access_key_id_aqui
+AWS_SECRET_ACCESS_KEY=tu_secret_access_key_aqui
+AWS_REGION=us-east-1
 ```
+
+## ☁️ Configuración de AWS S3 (Mapas de Rutas)
+
+Para habilitar la funcionalidad de visualización de mapas de rutas en la página de Viajes de Biomasa:
+
+### 1. Crear Bucket S3
+1. Ve a la consola de AWS S3
+2. Crea un bucket llamado `siriuspirolisis`
+3. Dentro del bucket, crea la carpeta `rutas-biomasa/`
+4. Sube tus archivos de imagen (.png, .jpg, .jpeg) a esta carpeta
+
+### 2. Configurar Usuario IAM
+1. Ve a IAM en la consola de AWS
+2. Crea un usuario con permisos para S3
+3. Asigna la política `AmazonS3ReadOnlyAccess` o crea una política personalizada:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::siriuspirolisis",
+        "arn:aws:s3:::siriuspirolisis/*"
+      ]
+    }
+  ]
+}
+```
+
+### 3. Obtener Credenciales
+1. Crea una Access Key para el usuario IAM
+2. Configura las variables de entorno en `.env.local`:
+```env
+AWS_ACCESS_KEY_ID=tu_access_key_id
+AWS_SECRET_ACCESS_KEY=tu_secret_access_key
+AWS_REGION=us-east-1
+```
+
+### 4. Verificar Configuración
+- Las rutas se cargarán automáticamente al abrir la página de Viajes de Biomasa
+- Los archivos de imagen deben estar en el formato correcto (.png, .jpg, .jpeg)
+- Las URLs firmadas tienen una validez de 1 hora por seguridad
 
 ## 📜 Aviso Legal y Copyright | Legal Notice and Copyright
 
