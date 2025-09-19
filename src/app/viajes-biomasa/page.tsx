@@ -15,6 +15,12 @@ interface ViajesBiomasaFormData {
   tipoCombustibleOtro: string;
   tipoVehiculo: string;
   tipoVehiculoOtro: string;
+  // Nuevos campos para rutas
+  rutaSeleccionada: string;
+  nuevaRutaNombre: string;
+  nuevaRutaDistancia: string;
+  nuevaRutaCoordenadas: File | null;
+  nuevaRutaImagen: File | null;
 }
 
 export default function ViajesBiomasa() {
@@ -39,19 +45,25 @@ function ViajesBiomasaContent() {
     tipoCombustible: '',
     tipoCombustibleOtro: '',
     tipoVehiculo: '',
-    tipoVehiculoOtro: ''
+    tipoVehiculoOtro: '',
+    // Nuevos campos para rutas
+    rutaSeleccionada: '',
+    nuevaRutaNombre: '',
+    nuevaRutaDistancia: '',
+    nuevaRutaCoordenadas: null as File | null,
+    nuevaRutaImagen: null as File | null
   });
 
   const [showTipoBiomasaOtro, setShowTipoBiomasaOtro] = useState(false);
   const [showTipoCombustibleOtro, setShowTipoCombustibleOtro] = useState(false);
   const [showTipoVehiculoOtro, setShowTipoVehiculoOtro] = useState(false);
 
-  // Estados para rutas S3
-  const [rutasS3, setRutasS3] = useState<any[]>([]);
+  // Estados para rutas de Airtable
+  const [rutasAirtable, setRutasAirtable] = useState<any[]>([]);
   const [rutaSeleccionada, setRutaSeleccionada] = useState('');
-  const [imagenUrl, setImagenUrl] = useState('');
+  const [imagenRutaUrl, setImagenRutaUrl] = useState('');
   const [cargandoRutas, setCargandoRutas] = useState(false);
-  const [cargandoImagen, setCargandoImagen] = useState(false);
+  const [showNuevaRuta, setShowNuevaRuta] = useState(false);
 
   useEffect(() => {
     const userSession = localStorage.getItem('userSession');
@@ -69,29 +81,29 @@ function ViajesBiomasaContent() {
     }
   }, [router]);
 
-  // Cargar rutas de S3 al montar el componente
+  // Cargar rutas de Airtable al montar el componente
   useEffect(() => {
-    const cargarRutasS3 = async () => {
+    const cargarRutasAirtable = async () => {
       if (!isAuthenticated) return;
 
       setCargandoRutas(true);
       try {
-        const response = await fetch('/api/s3/list-routes');
+        const response = await fetch('/api/rutas-biomasa/list');
         const data = await response.json();
 
         if (data.success) {
-          setRutasS3(data.files);
+          setRutasAirtable(data.records);
         } else {
-          console.error('Error cargando rutas S3:', data.error);
+          console.error('Error cargando rutas Airtable:', data.error);
         }
       } catch (error) {
-        console.error('Error al cargar rutas de S3:', error);
+        console.error('Error al cargar rutas de Airtable:', error);
       } finally {
         setCargandoRutas(false);
       }
     };
 
-    cargarRutasS3();
+    cargarRutasAirtable();
   }, [isAuthenticated]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -115,32 +127,27 @@ function ViajesBiomasaContent() {
     }
   };
 
-  // Función para manejar cambio de ruta S3
-  const handleRutaChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedKey = e.target.value;
-    setRutaSeleccionada(selectedKey);
+  // Función para manejar cambio de ruta Airtable
+  const handleRutaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedValue = e.target.value;
+    setRutaSeleccionada(selectedValue);
+    setFormData(prev => ({ ...prev, rutaSeleccionada: selectedValue }));
 
-    if (!selectedKey) {
-      setImagenUrl('');
-      return;
-    }
-
-    setCargandoImagen(true);
-    try {
-      const response = await fetch(`/api/s3/get-image-url?key=${encodeURIComponent(selectedKey)}`);
-      const data = await response.json();
-
-      if (data.success) {
-        setImagenUrl(data.signedUrl);
+    if (selectedValue === 'otra') {
+      setShowNuevaRuta(true);
+      setImagenRutaUrl('');
+    } else if (selectedValue) {
+      setShowNuevaRuta(false);
+      // Buscar la ruta seleccionada y mostrar su imagen
+      const rutaSeleccionada = rutasAirtable.find(ruta => ruta.id === selectedValue);
+      if (rutaSeleccionada && rutaSeleccionada.fields['Imagen Ruta'] && rutaSeleccionada.fields['Imagen Ruta'].length > 0) {
+        setImagenRutaUrl(rutaSeleccionada.fields['Imagen Ruta'][0].url);
       } else {
-        console.error('Error obteniendo URL de imagen:', data.error);
-        setImagenUrl('');
+        setImagenRutaUrl('');
       }
-    } catch (error) {
-      console.error('Error al cargar imagen:', error);
-      setImagenUrl('');
-    } finally {
-      setCargandoImagen(false);
+    } else {
+      setShowNuevaRuta(false);
+      setImagenRutaUrl('');
     }
   };
 
@@ -169,6 +176,19 @@ function ViajesBiomasaContent() {
       setMensaje('Por favor ingrese el nombre del tipo de vehículo');
       return false;
     }
+
+    // Validaciones para nueva ruta
+    if (showNuevaRuta) {
+      if (!formData.nuevaRutaNombre.trim()) {
+        setMensaje('Por favor ingrese el nombre de la nueva ruta');
+        return false;
+      }
+      if (!formData.nuevaRutaDistancia || parseFloat(formData.nuevaRutaDistancia) <= 0) {
+        setMensaje('Por favor ingrese la distancia de la nueva ruta');
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -226,7 +246,16 @@ function ViajesBiomasaContent() {
         "Tipo Combustible": showTipoCombustibleOtro ? formData.tipoCombustibleOtro.trim() : formData.tipoCombustible.trim(),
         "Tipo Vehículo": showTipoVehiculoOtro ? formData.tipoVehiculoOtro.trim() : formData.tipoVehiculo.trim(),
         "Realiza Registro": realizaRegistro,
-        ...(turnoPirolisisId && { "ID_Turno": [turnoPirolisisId] })
+        ...(turnoPirolisisId && { "ID_Turno": [turnoPirolisisId] }),
+        // Información de ruta
+        ...(formData.rutaSeleccionada && formData.rutaSeleccionada !== 'otra' && { "ID_Ruta": formData.rutaSeleccionada }),
+        // Información de nueva ruta (se manejará en el backend)
+        ...(showNuevaRuta && {
+          "Nueva Ruta": {
+            "Nombre": formData.nuevaRutaNombre.trim(),
+            "Distancia Metros": parseFloat(formData.nuevaRutaDistancia)
+          }
+        })
       };
 
       const response = await fetch('/api/viajes-biomasa/create', {
@@ -249,8 +278,16 @@ function ViajesBiomasaContent() {
           tipoCombustible: '',
           tipoCombustibleOtro: '',
           tipoVehiculo: '',
-          tipoVehiculoOtro: ''
+          tipoVehiculoOtro: '',
+          rutaSeleccionada: '',
+          nuevaRutaNombre: '',
+          nuevaRutaDistancia: '',
+          nuevaRutaCoordenadas: null,
+          nuevaRutaImagen: null
         });
+        setRutaSeleccionada('');
+        setImagenRutaUrl('');
+        setShowNuevaRuta(false);
       } else {
         setMensaje(`❌ Error: ${result.error || 'Error desconocido'}`);
       }
@@ -317,20 +354,21 @@ function ViajesBiomasaContent() {
                       <option value="">
                         {cargandoRutas ? 'Cargando rutas...' : 'Seleccione una ruta'}
                       </option>
-                      {rutasS3.map((ruta) => (
-                        <option key={ruta.key} value={ruta.key}>
-                          {ruta.name}
+                      {rutasAirtable.map((ruta: any) => (
+                        <option key={ruta.id} value={ruta.id}>
+                          {ruta.fields.Ruta}
                         </option>
                       ))}
+                      <option value="otra">Otra ruta</option>
                     </select>
                   </div>
                   <div className="flex items-end">
-                    {cargandoImagen && (
-                      <div className="text-white">Cargando imagen...</div>
+                    {cargandoRutas && (
+                      <div className="text-white">Cargando rutas...</div>
                     )}
                   </div>
                 </div>
-                {imagenUrl && (
+                {imagenRutaUrl && (
                   <div className="mt-6">
                     <div className="bg-white/20 backdrop-blur-sm p-4 rounded-lg border border-white/30">
                       <h3 className="text-lg font-medium text-white mb-3 drop-shadow">
@@ -338,12 +376,12 @@ function ViajesBiomasaContent() {
                       </h3>
                       <div className="flex justify-center">
                         <img
-                          src={imagenUrl}
-                          alt={`Ruta ${rutaSeleccionada}`}
+                          src={imagenRutaUrl}
+                          alt={`Ruta seleccionada`}
                           className="max-w-full h-auto max-h-96 rounded-lg shadow-lg border border-white/20"
                           onError={() => {
                             console.error('Error cargando imagen');
-                            setImagenUrl('');
+                            setImagenRutaUrl('');
                           }}
                         />
                       </div>
@@ -351,6 +389,81 @@ function ViajesBiomasaContent() {
                   </div>
                 )}
               </div>
+
+              {/* Campos para nueva ruta */}
+              {showNuevaRuta && (
+                <div className="mt-6 bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
+                  <h3 className="text-lg font-medium text-white mb-4 drop-shadow">
+                    📍 Registrar Nueva Ruta
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="nuevaRutaNombre" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Nombre de la Ruta *
+                      </label>
+                      <input
+                        type="text"
+                        id="nuevaRutaNombre"
+                        name="nuevaRutaNombre"
+                        value={formData.nuevaRutaNombre}
+                        onChange={handleInputChange}
+                        required
+                        placeholder="Ej: Ruta de PKO a Planta de Pirolisis"
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="nuevaRutaDistancia" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Distancia en Metros *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        id="nuevaRutaDistancia"
+                        name="nuevaRutaDistancia"
+                        value={formData.nuevaRutaDistancia}
+                        onChange={handleInputChange}
+                        required
+                        min="0"
+                        placeholder="Ej: 247.86"
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="nuevaRutaCoordenadas" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Archivo de Coordenadas (KML/GPX)
+                      </label>
+                      <input
+                        type="file"
+                        id="nuevaRutaCoordenadas"
+                        name="nuevaRutaCoordenadas"
+                        accept=".kml,.gpx"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setFormData(prev => ({ ...prev, nuevaRutaCoordenadas: file }));
+                        }}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="nuevaRutaImagen" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Imagen de la Ruta (PNG/JPG)
+                      </label>
+                      <input
+                        type="file"
+                        id="nuevaRutaImagen"
+                        name="nuevaRutaImagen"
+                        accept=".png,.jpg,.jpeg"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setFormData(prev => ({ ...prev, nuevaRutaImagen: file }));
+                        }}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Información de Entrega */}
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
@@ -390,7 +503,7 @@ function ViajesBiomasaContent() {
                       <option value="Tractomula">Tractomula</option>
                       <option value="Volqueta">Volqueta</option>
                       <option value="Camioneta">Camioneta</option>
-                      <option value="Motocicleta">Motocicleta</option>
+                      <option value="Tractor">Tractor</option>
                       <option value="Otro">Otro</option>
                     </select>
                     {showTipoVehiculoOtro && (
@@ -405,63 +518,6 @@ function ViajesBiomasaContent() {
                         className="mt-2 w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
                       />
                     )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Información de Carga y Biomasa */}
-              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
-                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
-                  ⚖️ Información de Carga y Biomasa
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label htmlFor="tipoBiomasa" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      Tipo Biomasa
-                    </label>
-                    <select
-                      id="tipoBiomasa"
-                      name="tipoBiomasa"
-                      value={formData.tipoBiomasa}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
-                    >
-                      <option value="">Seleccione un tipo de biomasa</option>
-                      <option value="Residuos Forestales">Residuos Forestales</option>
-                      <option value="Residuos Agrícolas">Residuos Agrícolas</option>
-                      <option value="Residuos Urbanos">Residuos Urbanos</option>
-                      <option value="Residuos Industriales">Residuos Industriales</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                    {showTipoBiomasaOtro && (
-                      <input
-                        type="text"
-                        id="tipoBiomasaOtro"
-                        name="tipoBiomasaOtro"
-                        value={formData.tipoBiomasaOtro}
-                        onChange={handleInputChange}
-                        required
-                        placeholder="Especifique el tipo de biomasa"
-                        className="mt-2 w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <label htmlFor="pesoEntregadoMasaFresca" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      Peso entregado de masa fresca (kg) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="pesoEntregadoMasaFresca"
-                      name="pesoEntregadoMasaFresca"
-                      value={formData.pesoEntregadoMasaFresca}
-                      onChange={handleInputChange}
-                      required
-                      min="0"
-                      placeholder="Ej: 500.00"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
                   </div>
                   <div>
                     <label htmlFor="tipoCombustible" className="block text-sm font-medium text-white mb-2 drop-shadow">
@@ -493,6 +549,67 @@ function ViajesBiomasaContent() {
                         className="mt-2 w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
                       />
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Información de Carga y Biomasa */}
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
+                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
+                  ⚖️ Información de Carga y Biomasa
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label htmlFor="tipoBiomasa" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                      Tipo Biomasa
+                    </label>
+                    <select
+                      id="tipoBiomasa"
+                      name="tipoBiomasa"
+                      value={formData.tipoBiomasa}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
+                    >
+                      <option value="">Seleccione un tipo de biomasa</option>
+                      <option value="Cascarilla de Palma">Cascarilla de Palma</option>
+                      <option value="Tusa de Palma">Tusa de Palma</option>
+                      <option value="Cascarilla de Arroz">Cascarilla de Arroz</option>
+                      <option value="Semilla de Mango">Semilla de Mango</option>
+                      <option value="Cáscara de Café">Cáscara de Café</option>
+                      <option value="Bagazo de Caña">Bagazo de Caña</option>
+                      <option value="Cascarilla de Coco">Cascarilla de Coco</option>
+                      <option value="Paja de Arroz">Paja de Arroz</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                    {showTipoBiomasaOtro && (
+                      <input
+                        type="text"
+                        id="tipoBiomasaOtro"
+                        name="tipoBiomasaOtro"
+                        value={formData.tipoBiomasaOtro}
+                        onChange={handleInputChange}
+                        required
+                        placeholder="Especifique el tipo de biomasa"
+                        className="mt-2 w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="pesoEntregadoMasaFresca" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                      Peso entregado de masa fresca (kg) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      id="pesoEntregadoMasaFresca"
+                      name="pesoEntregadoMasaFresca"
+                      value={formData.pesoEntregadoMasaFresca}
+                      onChange={handleInputChange}
+                      required
+                      min="0"
+                      placeholder="Ej: 500.00"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                    />
                   </div>
                 </div>
               </div>
