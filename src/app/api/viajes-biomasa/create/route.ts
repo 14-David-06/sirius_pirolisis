@@ -18,9 +18,6 @@ export async function POST(req: NextRequest) {
 
     const fields = {
       'Nombre Quien Entrega': body['Nombre Quien Entrega'],
-      'Punto Recoleccion': body['Punto Recoleccion'],
-      'Punto Entrega': body['Punto Entrega'],
-      'Distancia Metros': body['Distancia Metros'],
       'Tipo Biomasa': body['Tipo Biomasa'],
       'Peso entregado de masa fresca': body['Peso entregado de masa fresca'],
       'Tipo Combustible': body['Tipo Combustible'],

@@ -8,9 +8,6 @@ import Footer from '@/components/Footer';
 
 interface ViajesBiomasaFormData {
   nombreQuienEntrega: string;
-  puntoRecoleccion: string;
-  puntoEntrega: string;
-  distanciaMetros: string;
   tipoBiomasa: string;
   tipoBiomasaOtro: string;
   pesoEntregadoMasaFresca: string;
@@ -36,9 +33,6 @@ function ViajesBiomasaContent() {
 
   const [formData, setFormData] = useState({
     nombreQuienEntrega: '',
-    puntoRecoleccion: '',
-    puntoEntrega: '',
-    distanciaMetros: '',
     tipoBiomasa: '',
     tipoBiomasaOtro: '',
     pesoEntregadoMasaFresca: '',
@@ -155,18 +149,6 @@ function ViajesBiomasaContent() {
       setMensaje('Por favor ingrese el nombre de quien entrega la biomasa');
       return false;
     }
-    if (!formData.puntoRecoleccion.trim()) {
-      setMensaje('Por favor ingrese el punto de recolección');
-      return false;
-    }
-    if (!formData.puntoEntrega.trim()) {
-      setMensaje('Por favor ingrese el punto de entrega');
-      return false;
-    }
-    if (!formData.distanciaMetros || parseFloat(formData.distanciaMetros) <= 0) {
-      setMensaje('Por favor ingrese una distancia válida en metros');
-      return false;
-    }
     if (!formData.pesoEntregadoMasaFresca || parseFloat(formData.pesoEntregadoMasaFresca) <= 0) {
       setMensaje('Por favor ingrese el peso de la biomasa fresca');
       return false;
@@ -239,9 +221,6 @@ function ViajesBiomasaContent() {
 
       const dataToSend = {
         "Nombre Quien Entrega": formData.nombreQuienEntrega.trim(),
-        "Punto Recoleccion": formData.puntoRecoleccion.trim(),
-        "Punto Entrega": formData.puntoEntrega.trim(),
-        "Distancia Metros": parseFloat(formData.distanciaMetros),
         "Tipo Biomasa": showTipoBiomasaOtro ? formData.tipoBiomasaOtro.trim() : formData.tipoBiomasa.trim(),
         "Peso entregado de masa fresca": parseFloat(formData.pesoEntregadoMasaFresca),
         "Tipo Combustible": showTipoCombustibleOtro ? formData.tipoCombustibleOtro.trim() : formData.tipoCombustible.trim(),
@@ -264,9 +243,6 @@ function ViajesBiomasaContent() {
         setMensaje('✅ Viaje de biomasa registrado exitosamente');
         setFormData({
           nombreQuienEntrega: '',
-          puntoRecoleccion: '',
-          puntoEntrega: '',
-          distanciaMetros: '',
           tipoBiomasa: '',
           tipoBiomasaOtro: '',
           pesoEntregadoMasaFresca: '',
@@ -429,62 +405,6 @@ function ViajesBiomasaContent() {
                         className="mt-2 w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
                       />
                     )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Información de Ubicación */}
-              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
-                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
-                  📍 Información de Ubicación
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label htmlFor="puntoRecoleccion" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      Punto Recolección *
-                    </label>
-                    <input
-                      type="text"
-                      id="puntoRecoleccion"
-                      name="puntoRecoleccion"
-                      value={formData.puntoRecoleccion}
-                      onChange={handleInputChange}
-                      required
-                      placeholder="Ej: Recolección Norte"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="puntoEntrega" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      Punto Entrega *
-                    </label>
-                    <input
-                      type="text"
-                      id="puntoEntrega"
-                      name="puntoEntrega"
-                      value={formData.puntoEntrega}
-                      onChange={handleInputChange}
-                      required
-                      placeholder="Ej: Planta Sur"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="distanciaMetros" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      Distancia Metros *
-                    </label>
-                    <input
-                      type="number"
-                      id="distanciaMetros"
-                      name="distanciaMetros"
-                      value={formData.distanciaMetros}
-                      onChange={handleInputChange}
-                      required
-                      min="0"
-                      step="0.01"
-                      placeholder="Ej: 15.00"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                    />
                   </div>
                 </div>
               </div>
