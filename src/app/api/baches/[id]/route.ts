@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '../../../../../lib/config';
+import { config } from '../../../../lib/config';
 
 // Usar el ID de la tabla de Baches Pirolisis desde variables de entorno
 const TABLE_ID = config.airtable.bachesTableId;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!TABLE_ID) {
     return NextResponse.json({
@@ -15,7 +15,7 @@ export async function GET(
   }
 
   try {
-    const { id } = params;
+    const { id } = await params;
 
     if (!config.airtable.token || !config.airtable.baseId) {
       return NextResponse.json({ error: 'Airtable config missing' }, { status: 500 });
