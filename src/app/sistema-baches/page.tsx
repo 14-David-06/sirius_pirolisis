@@ -21,6 +21,7 @@ function SistemaBachesContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
   const [fechaFilter, setFechaFilter] = useState('');
+  const [categoriaFilter, setCategoriaFilter] = useState('Todos');
 
   // Filtered baches based on search and filters
   const filteredBaches = useMemo(() => {
@@ -35,9 +36,45 @@ function SistemaBachesContent() {
 
       const matchesFecha = fechaFilter === '' || getDateValue(bache)?.includes(fechaFilter);
 
-      return matchesSearch && matchesEstado && matchesFecha;
+      const status = getBacheStatus(bache);
+      const matchesCategoria = categoriaFilter === 'Todos' ||
+        (categoriaFilter === 'En Proceso' && status === 'Bache en proceso') ||
+        (categoriaFilter === 'Completos Planta' && status === 'Bache Completo Planta') ||
+        (categoriaFilter === 'Completos Bodega' && status === 'Bache Completo Bodega') ||
+        (categoriaFilter === 'Agotados' && status === 'Bache Agotado') ||
+        (categoriaFilter === 'Incompletos' && status === 'Bache Incompleto');
+
+      return matchesSearch && matchesEstado && matchesFecha && matchesCategoria;
     });
-  }, [data, searchTerm, estadoFilter, fechaFilter, getBacheId, getBacheStatus, getDateValue]);
+  }, [data, searchTerm, estadoFilter, fechaFilter, categoriaFilter, getBacheId, getBacheStatus, getDateValue]);
+
+  // Group baches by category for dashboard blocks
+  const groupedBaches = useMemo(() => {
+    const groups: Record<string, any[]> = {
+      'En Proceso': [],
+      'Completos Planta': [],
+      'Completos Bodega': [],
+      'Agotados': [],
+      'Incompletos': []
+    };
+
+    filteredBaches.forEach(bache => {
+      const status = getBacheStatus(bache);
+      if (status === 'Bache en proceso') {
+        groups['En Proceso'].push(bache);
+      } else if (status === 'Bache Completo Planta') {
+        groups['Completos Planta'].push(bache);
+      } else if (status === 'Bache Completo Bodega') {
+        groups['Completos Bodega'].push(bache);
+      } else if (status === 'Bache Agotado') {
+        groups['Agotados'].push(bache);
+      } else if (status === 'Bache Incompleto') {
+        groups['Incompletos'].push(bache);
+      }
+    });
+
+    return groups;
+  }, [filteredBaches, getBacheStatus]);
 
   if (loading) {
     return (
@@ -197,8 +234,24 @@ function SistemaBachesContent() {
               </div>
             )}
 
+            {/* Filtros Superiores */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Buscar y Filtrar Baches</h2>
+              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Filtros</h2>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {['Todos', 'En Proceso', 'Completos Planta', 'Completos Bodega', 'Agotados', 'Incompletos'].map((categoria) => (
+                  <button
+                    key={categoria}
+                    onClick={() => setCategoriaFilter(categoria)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+                      categoriaFilter === categoria
+                        ? 'bg-[#5A7836] text-white shadow-lg'
+                        : 'bg-white/10 text-white/80 hover:bg-white/20 border border-white/30'
+                    }`}
+                  >
+                    {categoria} ({categoria === 'Todos' ? filteredBaches.length : groupedBaches[categoria]?.length || 0})
+                  </button>
+                ))}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-white/90 mb-2 drop-shadow">Buscar por Código o Estado</label>
@@ -238,68 +291,101 @@ function SistemaBachesContent() {
               </div>
             </div>
 
-            {/* Tabla de Baches */}
-            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Lista de Baches</h2>
-              {filteredBaches.length === 0 ? (
-                <div className="text-center text-white/70 py-8">
-                  <p>No se encontraron baches que coincidan con los criterios de búsqueda</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-white">
-                    <thead>
-                      <tr className="border-b border-white/30">
-                        <th className="text-left py-3 px-4 font-semibold drop-shadow">Código</th>
-                        <th className="text-left py-3 px-4 font-semibold drop-shadow">Fecha Creación</th>
-                        <th className="text-left py-3 px-4 font-semibold drop-shadow">Estado</th>
-                        <th className="text-center py-3 px-4 font-semibold drop-shadow">Lonas</th>
-                        <th className="text-center py-3 px-4 font-semibold drop-shadow">Biochar Total (KG)</th>
-                        <th className="text-center py-3 px-4 font-semibold drop-shadow">Biochar Vendido (KG)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBaches.map((bache) => (
-                        <tr key={bache.id} className="border-b border-white/10 hover:bg-white/10 transition-colors">
-                          <td className="py-3 px-4 drop-shadow">{getBacheId(bache)}</td>
-                          <td className="py-3 px-4 drop-shadow">
-                            {getDateValue(bache) ?
-                              new Date(getDateValue(bache)).toLocaleDateString('es-ES', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric'
-                              }) :
-                              new Date(bache.createdTime).toLocaleDateString('es-ES', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric'
-                              })
-                            }
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              getBacheStatus(bache) === 'Bache Agotado'
-                                ? 'bg-red-500/20 text-red-200'
-                                : getBacheStatus(bache) === 'Bache Completo Planta' || getBacheStatus(bache) === 'Bache Completo Bodega'
-                                ? 'bg-green-500/20 text-green-200'
-                                : getBacheStatus(bache) === 'Bache en proceso'
-                                ? 'bg-blue-500/20 text-blue-200'
-                                : 'bg-yellow-500/20 text-yellow-200'
-                            }`}>
-                              {getBacheStatus(bache)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center drop-shadow">
-                            {calculateProgress(bache).lonasUsadas} / {calculateProgress(bache).totalLonas}
-                          </td>
-                          <td className="py-3 px-4 text-center drop-shadow">{getTotalBiochar(bache)}</td>
-                          <td className="py-3 px-4 text-center drop-shadow">{getBiocharVendido(bache)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            {/* Dashboard de Baches */}
+            <div className="space-y-6">
+              {Object.entries(groupedBaches).map(([categoria, baches]) => {
+                if (categoriaFilter !== 'Todos' && categoria !== categoriaFilter) return null;
+                
+                const blockColors = {
+                  'En Proceso': 'bg-blue-500/20 border-blue-400/50',
+                  'Completos Planta': 'bg-green-500/20 border-green-400/50',
+                  'Completos Bodega': 'bg-emerald-500/20 border-emerald-400/50',
+                  'Agotados': 'bg-red-500/20 border-red-400/50',
+                  'Incompletos': 'bg-yellow-500/20 border-yellow-400/50'
+                };
+
+                return (
+                  <div key={categoria} className={`bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6 border ${blockColors[categoria as keyof typeof blockColors]}`}>
+                    <h3 className="text-xl font-semibold text-white mb-4 drop-shadow-lg flex items-center">
+                      <span className={`w-4 h-4 rounded-full mr-3 ${
+                        categoria === 'En Proceso' ? 'bg-blue-400' :
+                        categoria === 'Completos Planta' ? 'bg-green-400' :
+                        categoria === 'Completos Bodega' ? 'bg-emerald-400' :
+                        categoria === 'Agotados' ? 'bg-red-400' : 'bg-yellow-400'
+                      }`}></span>
+                      {categoria} ({baches.length})
+                    </h3>
+                    
+                    {baches.length === 0 ? (
+                      <div className="text-center text-white/70 py-8">
+                        <p>No hay baches en esta categoría</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {baches.map((bache) => (
+                          <div key={bache.id} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 hover:bg-white/20 transition-all duration-200">
+                            <div className="mb-3">
+                              <h4 className="font-bold text-white text-lg drop-shadow">{getBacheId(bache)}</h4>
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
+                                getBacheStatus(bache) === 'Bache Agotado' ? 'bg-red-500/20 text-red-200' :
+                                getBacheStatus(bache) === 'Bache Completo Planta' || getBacheStatus(bache) === 'Bache Completo Bodega' ? 'bg-green-500/20 text-green-200' :
+                                getBacheStatus(bache) === 'Bache en proceso' ? 'bg-blue-500/20 text-blue-200' : 'bg-yellow-500/20 text-yellow-200'
+                              }`}>
+                                {getBacheStatus(bache)}
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-2 mb-4">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-white/80 drop-shadow">Lonas:</span>
+                                <span className="text-white font-semibold">{calculateProgress(bache).lonasUsadas} / {calculateProgress(bache).totalLonas}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-white/80 drop-shadow">Biochar Total:</span>
+                                <span className="text-white font-semibold">{getTotalBiochar(bache)} kg</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-white/80 drop-shadow">Biochar Vendido:</span>
+                                <span className="text-white font-semibold">{getBiocharVendido(bache)} kg</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-white/80 drop-shadow">Fecha:</span>
+                                <span className="text-white font-semibold">
+                                  {getDateValue(bache) ?
+                                    new Date(getDateValue(bache)).toLocaleDateString('es-ES', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric'
+                                    }) :
+                                    new Date(bache.createdTime).toLocaleDateString('es-ES', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric'
+                                    })
+                                  }
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-white/80 drop-shadow">Responsable:</span>
+                                <span className="text-white font-semibold">Sistema</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <button className="flex-1 bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200">
+                                Ver Detalle
+                              </button>
+                              <button className="flex-1 bg-white/20 hover:bg-white/30 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 border border-white/30">
+                                Editar
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
           </div>
