@@ -113,8 +113,11 @@ export async function POST(req: NextRequest) {
         console.log('✅ Nombre de ruta obtenido:', nombreRuta);
         
         // Subir archivos de la ruta a S3 si existen
-        const archivoCoordenadas = rutaJson.fields?.['Archivo Coordenadas'];
+        const archivoCoordenadas = rutaJson.fields?.['Coordenadas Ruta'];
         const imagenRuta = rutaJson.fields?.['Imagen Ruta'];
+        
+        let coordenadasUrl = '';
+        let imagenUrl = '';
         
         if (archivoCoordenadas && archivoCoordenadas.length > 0) {
           try {
@@ -132,7 +135,8 @@ export async function POST(req: NextRequest) {
             });
             
             await getS3Client().send(command);
-            console.log('✅ Archivo coordenadas subido a S3:', `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`);
+            coordenadasUrl = `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`;
+            console.log('✅ Archivo coordenadas subido a S3:', coordenadasUrl);
           } catch (error) {
             console.error('Error subiendo coordenadas de ruta existente:', error);
           }
@@ -154,9 +158,38 @@ export async function POST(req: NextRequest) {
             });
             
             await getS3Client().send(command);
-            console.log('✅ Imagen de ruta subida a S3:', `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`);
+            imagenUrl = `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`;
+            console.log('✅ Imagen de ruta subida a S3:', imagenUrl);
           } catch (error) {
             console.error('Error subiendo imagen de ruta existente:', error);
+          }
+        }
+        
+        // Actualizar el registro de la ruta en Airtable con las nuevas URLs de S3
+        if (coordenadasUrl || imagenUrl) {
+          const updateFields: any = {
+            'Realiza Registro': validationData['Realiza Registro']
+          };
+          if (coordenadasUrl) {
+            updateFields['Coordenadas Ruta'] = [{ url: coordenadasUrl }];
+          }
+          if (imagenUrl) {
+            updateFields['Imagen Ruta'] = [{ url: imagenUrl }];
+          }
+          
+          const updateRes = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${encodeURIComponent(RUTAS_TABLE_NAME)}/${idRuta}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${config.airtable.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ fields: updateFields }),
+          });
+          
+          if (!updateRes.ok) {
+            console.error('Error actualizando ruta en Airtable:', await updateRes.text());
+          } else {
+            console.log('✅ Ruta actualizada en Airtable con URLs de S3');
           }
         }
       } else {
@@ -172,7 +205,8 @@ export async function POST(req: NextRequest) {
       
       const nuevaRutaFields: any = {
         'Ruta': nombreRuta,
-        'Distancia Metros': parseFloat(body['Nueva Ruta Distancia Metros'] as string)
+        'Distancia Metros': parseFloat(body['Nueva Ruta Distancia Metros'] as string),
+        'Realiza Registro': validationData['Realiza Registro']
       };
 
       // Subir archivos si existen
@@ -182,7 +216,7 @@ export async function POST(req: NextRequest) {
       if (coordenadasFile) {
         try {
           const coordenadasUrl = await uploadFileToS3(coordenadasFile, nombreRuta, 'coordenadas');
-          nuevaRutaFields['Archivo Coordenadas'] = [{ url: coordenadasUrl }];
+          nuevaRutaFields['Coordenadas Ruta'] = [{ url: coordenadasUrl }];
           console.log('✅ Coordenadas subidas:', coordenadasUrl);
         } catch (error) {
           console.error('Error subiendo coordenadas:', error);
