@@ -239,31 +239,40 @@ function ViajesBiomasaContent() {
         }
       }
 
-      const dataToSend = {
-        "Nombre Quien Entrega": formData.nombreQuienEntrega.trim(),
-        "Tipo Biomasa": showTipoBiomasaOtro ? formData.tipoBiomasaOtro.trim() : formData.tipoBiomasa.trim(),
-        "Peso entregado de masa fresca": parseFloat(formData.pesoEntregadoMasaFresca),
-        "Tipo Combustible": showTipoCombustibleOtro ? formData.tipoCombustibleOtro.trim() : formData.tipoCombustible.trim(),
-        "Tipo Vehículo": showTipoVehiculoOtro ? formData.tipoVehiculoOtro.trim() : formData.tipoVehiculo.trim(),
-        "Realiza Registro": realizaRegistro,
-        ...(turnoPirolisisId && { "ID_Turno": [turnoPirolisisId] }),
-        // Información de ruta
-        ...(formData.rutaSeleccionada && formData.rutaSeleccionada !== 'otra' && { "ID_Ruta": formData.rutaSeleccionada }),
-        // Información de nueva ruta (se manejará en el backend)
-        ...(showNuevaRuta && {
-          "Nueva Ruta": {
-            "Nombre": formData.nuevaRutaNombre.trim(),
-            "Distancia Metros": parseFloat(formData.nuevaRutaDistancia)
-          }
-        })
-      };
+      if (!turnoPirolisisId) {
+        setMensaje('❌ Debe tener un turno activo para registrar viajes');
+        return;
+      }
+
+      const formDataToSend = new FormData();
+      formDataToSend.append('Nombre Quien Entrega', formData.nombreQuienEntrega.trim());
+      formDataToSend.append('Tipo Biomasa', showTipoBiomasaOtro ? formData.tipoBiomasaOtro.trim() : formData.tipoBiomasa.trim());
+      formDataToSend.append('Peso entregado de masa fresca', formData.pesoEntregadoMasaFresca);
+      formDataToSend.append('Tipo Combustible', showTipoCombustibleOtro ? formData.tipoCombustibleOtro.trim() : formData.tipoCombustible.trim());
+      formDataToSend.append('Tipo Vehículo', showTipoVehiculoOtro ? formData.tipoVehiculoOtro.trim() : formData.tipoVehiculo.trim());
+      formDataToSend.append('Realiza Registro', realizaRegistro);
+      if (turnoPirolisisId) {
+        formDataToSend.append('ID_Turno', JSON.stringify([turnoPirolisisId]));
+      }
+      // Información de ruta
+      if (formData.rutaSeleccionada && formData.rutaSeleccionada !== 'otra') {
+        formDataToSend.append('ID_Ruta', formData.rutaSeleccionada);
+      }
+      // Información de nueva ruta
+      if (showNuevaRuta) {
+        formDataToSend.append('Nueva Ruta Nombre', formData.nuevaRutaNombre.trim());
+        formDataToSend.append('Nueva Ruta Distancia Metros', formData.nuevaRutaDistancia);
+        if (formData.nuevaRutaCoordenadas) {
+          formDataToSend.append('nuevaRutaCoordenadas', formData.nuevaRutaCoordenadas);
+        }
+        if (formData.nuevaRutaImagen) {
+          formDataToSend.append('nuevaRutaImagen', formData.nuevaRutaImagen);
+        }
+      }
 
       const response = await fetch('/api/viajes-biomasa/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend),
+        body: formDataToSend,
       });
 
       const result = await response.json();

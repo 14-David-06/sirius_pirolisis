@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 
 // Usar el nombre de la tabla en lugar del ID
-const TABLE_NAME = process.env.AIRTABLE_RUTAS_BIOMASA_TABLE || 'tblMjAh0bB9Jdhhh0';
+const TABLE_NAME = process.env.AIRTABLE_RUTAS_BIOMASA_TABLE || 'Rutas Biomasa';
 
 export async function GET(req: NextRequest) {
   try {
