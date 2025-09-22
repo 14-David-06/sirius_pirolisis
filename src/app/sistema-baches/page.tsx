@@ -79,7 +79,7 @@ function SistemaBachesContent() {
   if (loading) {
     return (
       <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752096934/18032025-DSCF8092_mpdwvs.jpg')"
       }}>
         <div className="absolute inset-0 bg-black/40"></div>
         <div className="relative z-10 flex items-center justify-center min-h-screen">
@@ -97,7 +97,7 @@ function SistemaBachesContent() {
   if (error) {
     return (
       <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752096934/18032025-DSCF8092_mpdwvs.jpg')"
       }}>
         <div className="absolute inset-0 bg-black/40"></div>
         <div className="relative z-10 flex items-center justify-center min-h-screen">
@@ -122,7 +122,7 @@ function SistemaBachesContent() {
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat relative"
       style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
+        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752096934/18032025-DSCF8092_mpdwvs.jpg')"
       }}
     >
       {/* Overlay para mejorar la legibilidad */}
