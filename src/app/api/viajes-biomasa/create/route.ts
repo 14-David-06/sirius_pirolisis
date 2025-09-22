@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 import { z } from 'zod';
+import { getS3Client, awsServerConfig } from '../../../../lib/aws-config.server';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 
 // Usar el nombre de la tabla en lugar del ID
 const TABLE_NAME = process.env.AIRTABLE_VIAJES_BIOMASA_TABLE || 'Viajes Biomasa';
@@ -19,6 +21,33 @@ const viajeSchema = z.object({
   'Nueva Ruta Nombre': z.string().optional(),
   'Nueva Ruta Distancia Metros': z.string().optional(),
 });
+
+// Función para subir archivo a S3
+async function uploadFileToS3(file: File, rutaNombre: string, tipoArchivo: string): Promise<string> {
+  const s3Client = getS3Client();
+  
+  // Generar nombre único para el archivo
+  const timestamp = Date.now();
+  const extension = file.name.split('.').pop() || 'bin';
+  const fileName = `${rutaNombre}_${tipoArchivo}_${timestamp}.${extension}`;
+  const key = `${awsServerConfig.routesPrefix}${fileName}`;
+  
+  // Convertir File a Buffer
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  
+  const command = new PutObjectCommand({
+    Bucket: awsServerConfig.bucketName,
+    Key: key,
+    Body: buffer,
+    ContentType: file.type || 'application/octet-stream',
+  });
+  
+  await s3Client.send(command);
+  
+  // Retornar la URL del archivo
+  return `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -67,13 +96,82 @@ export async function POST(req: NextRequest) {
     }
 
     let idRuta = body['ID_Ruta'] as string || null;
+    let nombreRuta = '';
+
+    // Si hay ID_Ruta, obtener el nombre de la ruta y subir archivos a S3
+    if (idRuta) {
+      console.log('📍 Obteniendo nombre de ruta existente y subiendo archivos');
+      const rutaRes = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${encodeURIComponent(RUTAS_TABLE_NAME)}/${idRuta}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${config.airtable.token}`,
+        },
+      });
+      const rutaJson = await rutaRes.json();
+      if (rutaRes.ok) {
+        nombreRuta = rutaJson.fields?.['Ruta'] || 'Ruta sin nombre';
+        console.log('✅ Nombre de ruta obtenido:', nombreRuta);
+        
+        // Subir archivos de la ruta a S3 si existen
+        const archivoCoordenadas = rutaJson.fields?.['Archivo Coordenadas'];
+        const imagenRuta = rutaJson.fields?.['Imagen Ruta'];
+        
+        if (archivoCoordenadas && archivoCoordenadas.length > 0) {
+          try {
+            const url = archivoCoordenadas[0].url;
+            const response = await fetch(url);
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const fileName = `${nombreRuta}_coordenadas_${Date.now()}.${url.split('.').pop() || 'bin'}`;
+            const key = `${awsServerConfig.routesPrefix}${fileName}`;
+            
+            const command = new PutObjectCommand({
+              Bucket: awsServerConfig.bucketName,
+              Key: key,
+              Body: buffer,
+              ContentType: response.headers.get('content-type') || 'application/octet-stream',
+            });
+            
+            await getS3Client().send(command);
+            console.log('✅ Archivo coordenadas subido a S3:', `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`);
+          } catch (error) {
+            console.error('Error subiendo coordenadas de ruta existente:', error);
+          }
+        }
+        
+        if (imagenRuta && imagenRuta.length > 0) {
+          try {
+            const url = imagenRuta[0].url;
+            const response = await fetch(url);
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const fileName = `${nombreRuta}_imagen_${Date.now()}.${url.split('.').pop() || 'bin'}`;
+            const key = `${awsServerConfig.routesPrefix}${fileName}`;
+            
+            const command = new PutObjectCommand({
+              Bucket: awsServerConfig.bucketName,
+              Key: key,
+              Body: buffer,
+              ContentType: response.headers.get('content-type') || 'application/octet-stream',
+            });
+            
+            await getS3Client().send(command);
+            console.log('✅ Imagen de ruta subida a S3:', `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`);
+          } catch (error) {
+            console.error('Error subiendo imagen de ruta existente:', error);
+          }
+        }
+      } else {
+        console.error('Error obteniendo ruta:', rutaJson);
+        nombreRuta = 'Ruta sin nombre';
+      }
+    }
 
     // Si hay nueva ruta, crearla primero
     if (body['Nueva Ruta Nombre']) {
       console.log('📍 Creando nueva ruta');
+      nombreRuta = body['Nueva Ruta Nombre'] as string;
       
       const nuevaRutaFields: any = {
-        'Ruta': body['Nueva Ruta Nombre'],
+        'Ruta': nombreRuta,
         'Distancia Metros': parseFloat(body['Nueva Ruta Distancia Metros'] as string)
       };
 
@@ -82,34 +180,22 @@ export async function POST(req: NextRequest) {
       const imagenFile = formData.get('nuevaRutaImagen') as File | null;
 
       if (coordenadasFile) {
-        // Subir coordenadas a S3
-        const coordenadasFormData = new FormData();
-        coordenadasFormData.append('file', coordenadasFile);
-        const s3ResCoordenadas = await fetch(`${req.nextUrl.origin}/api/s3/upload`, {
-          method: 'POST',
-          body: coordenadasFormData,
-        });
-        const s3DataCoordenadas = await s3ResCoordenadas.json();
-        if (s3ResCoordenadas.ok) {
-          nuevaRutaFields['Archivo Coordenadas'] = [{ url: s3DataCoordenadas.url }];
-        } else {
-          console.error('Error subiendo coordenadas:', s3DataCoordenadas);
+        try {
+          const coordenadasUrl = await uploadFileToS3(coordenadasFile, nombreRuta, 'coordenadas');
+          nuevaRutaFields['Archivo Coordenadas'] = [{ url: coordenadasUrl }];
+          console.log('✅ Coordenadas subidas:', coordenadasUrl);
+        } catch (error) {
+          console.error('Error subiendo coordenadas:', error);
         }
       }
 
       if (imagenFile) {
-        // Subir imagen a S3
-        const imagenFormData = new FormData();
-        imagenFormData.append('file', imagenFile);
-        const s3ResImagen = await fetch(`${req.nextUrl.origin}/api/s3/upload`, {
-          method: 'POST',
-          body: imagenFormData,
-        });
-        const s3DataImagen = await s3ResImagen.json();
-        if (s3ResImagen.ok) {
-          nuevaRutaFields['Imagen Ruta'] = [{ url: s3DataImagen.url }];
-        } else {
-          console.error('Error subiendo imagen:', s3DataImagen);
+        try {
+          const imagenUrl = await uploadFileToS3(imagenFile, nombreRuta, 'imagen');
+          nuevaRutaFields['Imagen Ruta'] = [{ url: imagenUrl }];
+          console.log('✅ Imagen subida:', imagenUrl);
+        } catch (error) {
+          console.error('Error subiendo imagen:', error);
         }
       }
 
@@ -131,7 +217,7 @@ export async function POST(req: NextRequest) {
       console.log('✅ Nueva ruta creada con ID:', idRuta);
     }
 
-    let fields: any = {
+    const fields: any = {
       'Nombre Quien Entrega': body['Nombre Quien Entrega'],
       'Tipo Biomasa': body['Tipo Biomasa'],
       'Peso entregado de masa fresca': parseFloat(body['Peso entregado de masa fresca'] as string),
