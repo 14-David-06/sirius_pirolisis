@@ -11,6 +11,9 @@ export const config = {
     tableName: process.env.AIRTABLE_TABLE_NAME,
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
     inventarioTableId: process.env.AIRTABLE_INVENTARIO_TABLE_ID,
+    laboratoriosTableId: process.env.AIRTABLE_LABORATORIOS_TABLE_ID,
+    laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
+    laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {
@@ -29,7 +32,10 @@ export function validateEnvVars() {
     'AIRTABLE_BASE_ID',
     'AIRTABLE_TABLE_NAME',
     'AIRTABLE_BACHES_TABLE_ID',
-    'AIRTABLE_INVENTARIO_TABLE_ID'
+    'AIRTABLE_INVENTARIO_TABLE_ID',
+    'AIRTABLE_LABORATORIOS_TABLE_ID',
+    'AIRTABLE_LABORATORIOS_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID'
     // ❌ REMOVIDO: AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY
     // Ahora solo se requieren en server-side, no en validación global
   ];

@@ -4,7 +4,7 @@ import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { useBaches } from '@/lib/useBaches';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 export default function SistemaBaches() {
   return (
@@ -22,6 +22,40 @@ function SistemaBachesContent() {
   const [estadoFilter, setEstadoFilter] = useState('');
   const [fechaFilter, setFechaFilter] = useState('');
   const [categoriaFilter, setCategoriaFilter] = useState('Todos');
+
+  // State for monitoreo modal
+  const [showMonitoreoModal, setShowMonitoreoModal] = useState(false);
+  const [selectedBache, setSelectedBache] = useState<any>(null);
+  const [monitoreoForm, setMonitoreoForm] = useState({
+    idBigBag: '',
+    humedadMC: '',
+    masaSecaDM: '',
+    referenciaLaboratorio: '',
+    resultadosLaboratorio: '',
+    observaciones: '',
+    laboratorio: ''
+  });
+  const [isSubmittingMonitoreo, setIsSubmittingMonitoreo] = useState(false);
+  const [updatingBacheId, setUpdatingBacheId] = useState<string | null>(null);
+
+  // State for laboratorios
+  const [laboratorios, setLaboratorios] = useState<any[]>([]);
+  const [loadingLaboratorios, setLoadingLaboratorios] = useState(false);
+  const [nuevoLaboratorioForm, setNuevoLaboratorioForm] = useState({
+    nombreLaboratorio: '',
+    tipoLaboratorio: '',
+    responsable: '',
+    telefono: '',
+    correoElectronico: '',
+    direccion: '',
+    ciudad: '',
+    pais: '',
+    certificaciones: '',
+    acreditaciones: '',
+    metodosAnaliticos: '',
+    fechaVigenciaCertificaciones: '',
+    observaciones: ''
+  });
 
   // Filtered baches based on search and filters
   const filteredBaches = useMemo(() => {
@@ -75,6 +109,248 @@ function SistemaBachesContent() {
 
     return groups;
   }, [filteredBaches, getBacheStatus]);
+
+  // Handle monitoreo modal
+  const openMonitoreoModal = (bache: any) => {
+    setSelectedBache(bache);
+    setShowMonitoreoModal(true);
+    // Pre-fill some fields
+    setMonitoreoForm({
+      idBigBag: getBacheId(bache),
+      humedadMC: '',
+      masaSecaDM: '',
+      referenciaLaboratorio: '',
+      resultadosLaboratorio: '',
+      observaciones: '',
+      laboratorio: ''
+    });
+    setNuevoLaboratorioForm({
+      nombreLaboratorio: '',
+      tipoLaboratorio: '',
+      responsable: '',
+      telefono: '',
+      correoElectronico: '',
+      direccion: '',
+      ciudad: '',
+      pais: '',
+      certificaciones: '',
+      acreditaciones: '',
+      metodosAnaliticos: '',
+      fechaVigenciaCertificaciones: '',
+      observaciones: ''
+    });
+  };
+
+  const closeMonitoreoModal = () => {
+    setShowMonitoreoModal(false);
+    setSelectedBache(null);
+    setMonitoreoForm({
+      idBigBag: '',
+      humedadMC: '',
+      masaSecaDM: '',
+      referenciaLaboratorio: '',
+      resultadosLaboratorio: '',
+      observaciones: '',
+      laboratorio: ''
+    });
+    setNuevoLaboratorioForm({
+      nombreLaboratorio: '',
+      tipoLaboratorio: '',
+      responsable: '',
+      telefono: '',
+      correoElectronico: '',
+      direccion: '',
+      ciudad: '',
+      pais: '',
+      certificaciones: '',
+      acreditaciones: '',
+      metodosAnaliticos: '',
+      fechaVigenciaCertificaciones: '',
+      observaciones: ''
+    });
+  };
+
+  const handleMonitoreoInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setMonitoreoForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+
+    // Si se cambia el laboratorio seleccionado, limpiar el campo de nuevo laboratorio
+    if (name === 'laboratorio' && value !== 'nuevo-laboratorio') {
+      setNuevoLaboratorioForm({
+        nombreLaboratorio: '',
+        tipoLaboratorio: '',
+        responsable: '',
+        telefono: '',
+        correoElectronico: '',
+        direccion: '',
+        ciudad: '',
+        pais: '',
+        certificaciones: '',
+        acreditaciones: '',
+        metodosAnaliticos: '',
+        fechaVigenciaCertificaciones: '',
+        observaciones: ''
+      });
+    }
+  };
+
+  const submitMonitoreo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingMonitoreo(true);
+
+    try {
+      let laboratorioId = monitoreoForm.laboratorio;
+
+      // Si se seleccionó "nuevo-laboratorio", crear el laboratorio primero
+      if (monitoreoForm.laboratorio === 'nuevo-laboratorio') {
+        if (!nuevoLaboratorioForm.nombreLaboratorio.trim()) {
+          alert('❌ Debe ingresar el nombre del nuevo laboratorio');
+          setIsSubmittingMonitoreo(false);
+          return;
+        }
+
+        // Crear el nuevo laboratorio
+        const laboratorioData = {
+          records: [{
+            fields: {
+              'Nombre Laboratorio': nuevoLaboratorioForm.nombreLaboratorio.trim(),
+              'Tipo Laboratorio': nuevoLaboratorioForm.tipoLaboratorio.trim(),
+              'Responsable': nuevoLaboratorioForm.responsable.trim(),
+              'Teléfono': nuevoLaboratorioForm.telefono.trim(),
+              'Correo Electrónico': nuevoLaboratorioForm.correoElectronico.trim(),
+              'Dirección': nuevoLaboratorioForm.direccion.trim(),
+              'Ciudad': nuevoLaboratorioForm.ciudad.trim(),
+              'País': nuevoLaboratorioForm.pais.trim(),
+              'Certificaciones': nuevoLaboratorioForm.certificaciones.trim(),
+              'Acreditaciones': nuevoLaboratorioForm.acreditaciones.trim(),
+              'Métodos Analíticos': nuevoLaboratorioForm.metodosAnaliticos.trim(),
+              'Fecha Vigencia Certificaciones': nuevoLaboratorioForm.fechaVigenciaCertificaciones.trim(),
+              'Observaciones': nuevoLaboratorioForm.observaciones.trim()
+            }
+          }]
+        };
+
+        const createLabResponse = await fetch('/api/laboratorios/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(laboratorioData)
+        });
+
+        if (!createLabResponse.ok) {
+          throw new Error('Error al crear el laboratorio');
+        }
+
+        const createLabResult = await createLabResponse.json();
+        laboratorioId = createLabResult.records[0].id;
+
+        // Recargar la lista de laboratorios
+        await loadLaboratorios();
+      }
+
+      const monitoreoData = {
+        records: [{
+          fields: {
+            'ID BigBag': monitoreoForm.idBigBag,
+            '% Humedad (MC)': monitoreoForm.humedadMC,
+            'Masa Seca (DM kg)': monitoreoForm.masaSecaDM,
+            'No. Referencia Laboratorio': monitoreoForm.referenciaLaboratorio,
+            'Resultados Laboratorio': monitoreoForm.resultadosLaboratorio,
+            'Observaciones': monitoreoForm.observaciones,
+            'Bache': [selectedBache.id], // Link to the bache record
+            'Laboratorio': laboratorioId && laboratorioId !== 'nuevo-laboratorio' ? [laboratorioId] : []
+          }
+        }]
+      };
+
+      const response = await fetch('/api/monitoreo-baches/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(monitoreoData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al registrar monitoreo');
+      }
+
+      alert('✅ Monitoreo registrado exitosamente');
+      closeMonitoreoModal();
+    } catch (error) {
+      console.error('Error submitting monitoreo:', error);
+      alert('❌ Error al registrar el monitoreo');
+    } finally {
+      setIsSubmittingMonitoreo(false);
+    }
+  };
+
+  // Load laboratorios
+  const loadLaboratorios = async () => {
+    setLoadingLaboratorios(true);
+    try {
+      const response = await fetch('/api/laboratorios/list');
+      if (!response.ok) {
+        throw new Error('Error al cargar laboratorios');
+      }
+      const data = await response.json();
+      setLaboratorios(data.laboratorios || []);
+    } catch (error) {
+      console.error('Error loading laboratorios:', error);
+      setLaboratorios([]);
+    } finally {
+      setLoadingLaboratorios(false);
+    }
+  };
+
+  // Load laboratorios on component mount
+  useEffect(() => {
+    loadLaboratorios();
+  }, []);
+
+  // Handle pasar a bodega
+  const handlePasarABodega = async (bache: any) => {
+    setUpdatingBacheId(bache.id);
+    try {
+      console.log('🚀 Iniciando actualización de bache:', bache.id);
+
+      // Enviar datos en el formato que espera la API
+      const updateData = {
+        id: bache.id,
+        "Estado Bache": 'Bache Completo Bodega'
+      };
+
+      console.log('📤 Enviando datos a API:', updateData);
+
+      const response = await fetch('/api/baches/update', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      const responseData = await response.json();
+      console.log('📥 Respuesta de API:', response.status, responseData);
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${responseData.error || 'Error desconocido'}`);
+      }
+
+      alert('✅ Bache movido a bodega exitosamente');
+      // Recargar los datos
+      window.location.reload();
+    } catch (error) {
+      console.error('❌ Error updating bache:', error);
+      alert(`❌ Error al mover el bache a bodega: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+    } finally {
+      setUpdatingBacheId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -371,14 +647,30 @@ function SistemaBachesContent() {
                               </div>
                             </div>
                             
-                            <div className="flex gap-2">
-                              <button className="flex-1 bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200">
-                                Ver Detalle
-                              </button>
-                              <button className="flex-1 bg-white/20 hover:bg-white/30 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 border border-white/30">
-                                Editar
-                              </button>
-                            </div>
+                            {categoria === 'Completos Planta' && (
+                              <div className="flex gap-2 mt-3">
+                                <button 
+                                  onClick={() => openMonitoreoModal(bache)}
+                                  className="flex-1 bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
+                                >
+                                  📊 Registrar Monitoreo
+                                </button>
+                                <button 
+                                  onClick={() => handlePasarABodega(bache)}
+                                  disabled={updatingBacheId === bache.id}
+                                  className="flex-1 bg-blue-600/80 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {updatingBacheId === bache.id ? (
+                                    <>
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
+                                      <span className="ml-1">Moviendo...</span>
+                                    </>
+                                  ) : (
+                                    '📦 Pasar a Bodega'
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -391,6 +683,341 @@ function SistemaBachesContent() {
           </div>
 
         </main>
+
+        {/* Modal de Monitoreo */}
+        {showMonitoreoModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">📊 Registrar Monitoreo</h2>
+                <button
+                  onClick={closeMonitoreoModal}
+                  className="text-white/70 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={submitMonitoreo} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    ID BigBag
+                  </label>
+                  <input
+                    type="text"
+                    name="idBigBag"
+                    value={monitoreoForm.idBigBag}
+                    readOnly
+                    className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-xl text-gray-600 cursor-not-allowed"
+                    placeholder="ID del BigBag"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                      % Humedad (MC)
+                    </label>
+                    <textarea
+                      name="humedadMC"
+                      value={monitoreoForm.humedadMC}
+                      onChange={handleMonitoreoInputChange}
+                      rows={3}
+                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                      placeholder="Porcentaje de humedad"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                      Masa Seca (DM kg)
+                    </label>
+                    <textarea
+                      name="masaSecaDM"
+                      value={monitoreoForm.masaSecaDM}
+                      onChange={handleMonitoreoInputChange}
+                      rows={3}
+                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                      placeholder="Masa seca en kg"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    No. Referencia Laboratorio
+                  </label>
+                  <textarea
+                    name="referenciaLaboratorio"
+                    value={monitoreoForm.referenciaLaboratorio}
+                    onChange={handleMonitoreoInputChange}
+                    rows={2}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                    placeholder="Número de referencia del laboratorio"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Resultados Laboratorio
+                  </label>
+                  <textarea
+                    name="resultadosLaboratorio"
+                    value={monitoreoForm.resultadosLaboratorio}
+                    onChange={handleMonitoreoInputChange}
+                    rows={3}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                    placeholder="Resultados del laboratorio"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Observaciones
+                  </label>
+                  <textarea
+                    name="observaciones"
+                    value={monitoreoForm.observaciones}
+                    onChange={handleMonitoreoInputChange}
+                    rows={3}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                    placeholder="Observaciones adicionales"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Laboratorio
+                  </label>
+                  <select
+                    name="laboratorio"
+                    value={monitoreoForm.laboratorio}
+                    onChange={handleMonitoreoInputChange}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                    disabled={loadingLaboratorios}
+                  >
+                    <option value="">
+                      {loadingLaboratorios ? 'Cargando laboratorios...' : 'Seleccionar laboratorio (opcional)'}
+                    </option>
+                    {laboratorios.map((lab) => (
+                      <option key={lab.id} value={lab.id}>
+                        {lab.nombre}
+                      </option>
+                    ))}
+                    <option value="nuevo-laboratorio" className="font-semibold text-green-600">
+                      ➕ Registrar nuevo laboratorio
+                    </option>
+                  </select>
+
+                  {monitoreoForm.laboratorio === 'nuevo-laboratorio' && (
+                    <div className="mt-4 p-4 bg-white/10 rounded-lg border border-white/20">
+                      <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">📋 Datos del Nuevo Laboratorio</h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Nombre Laboratorio *
+                          </label>
+                          <input
+                            type="text"
+                            value={nuevoLaboratorioForm.nombreLaboratorio}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, nombreLaboratorio: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="Nombre del laboratorio"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Tipo Laboratorio
+                          </label>
+                          <input
+                            type="text"
+                            value={nuevoLaboratorioForm.tipoLaboratorio}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, tipoLaboratorio: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="Tipo de laboratorio"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Responsable
+                          </label>
+                          <input
+                            type="text"
+                            value={nuevoLaboratorioForm.responsable}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, responsable: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="Nombre del responsable"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Teléfono
+                          </label>
+                          <input
+                            type="tel"
+                            value={nuevoLaboratorioForm.telefono}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, telefono: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="Número de teléfono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Correo Electrónico
+                          </label>
+                          <input
+                            type="email"
+                            value={nuevoLaboratorioForm.correoElectronico}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, correoElectronico: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="correo@ejemplo.com"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Ciudad
+                          </label>
+                          <input
+                            type="text"
+                            value={nuevoLaboratorioForm.ciudad}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, ciudad: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="Ciudad"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            País
+                          </label>
+                          <input
+                            type="text"
+                            value={nuevoLaboratorioForm.pais}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, pais: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="País"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Fecha Vigencia Certificaciones
+                          </label>
+                          <input
+                            type="text"
+                            value={nuevoLaboratorioForm.fechaVigenciaCertificaciones}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, fechaVigenciaCertificaciones: e.target.value }))}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            placeholder="Fecha de vigencia"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Dirección
+                          </label>
+                          <textarea
+                            value={nuevoLaboratorioForm.direccion}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, direccion: e.target.value }))}
+                            rows={2}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                            placeholder="Dirección completa"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Certificaciones
+                          </label>
+                          <textarea
+                            value={nuevoLaboratorioForm.certificaciones}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, certificaciones: e.target.value }))}
+                            rows={2}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                            placeholder="Certificaciones del laboratorio"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Acreditaciones
+                          </label>
+                          <textarea
+                            value={nuevoLaboratorioForm.acreditaciones}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, acreditaciones: e.target.value }))}
+                            rows={2}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                            placeholder="Acreditaciones del laboratorio"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Métodos Analíticos
+                          </label>
+                          <textarea
+                            value={nuevoLaboratorioForm.metodosAnaliticos}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, metodosAnaliticos: e.target.value }))}
+                            rows={2}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                            placeholder="Métodos analíticos disponibles"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                            Observaciones
+                          </label>
+                          <textarea
+                            value={nuevoLaboratorioForm.observaciones}
+                            onChange={(e) => setNuevoLaboratorioForm(prev => ({ ...prev, observaciones: e.target.value }))}
+                            rows={3}
+                            className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
+                            placeholder="Observaciones adicionales"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={closeMonitoreoModal}
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingMonitoreo}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-green-700 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {isSubmittingMonitoreo ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div>
+                        <span className="ml-2">Registrando...</span>
+                      </>
+                    ) : (
+                      '📊 Registrar Monitoreo'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         <Footer />
       </div>
     </div>
