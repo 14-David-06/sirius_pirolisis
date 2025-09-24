@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -14,7 +15,60 @@ export default function InventarioPirolisis() {
 }
 
 function InventarioPirolisisContent() {
-  const { data, loading, error, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription } = useInventario();
+  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription } = useInventario();
+
+  const [showModal, setShowModal] = useState(false);
+  const [newItem, setNewItem] = useState({
+    insumo: '',
+    categoria: '',
+    cantidad: '',
+    unidad: '',
+    descripcion: '',
+    stockMinimo: ''
+  });
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItem.insumo || !newItem.categoria || !newItem.cantidad) {
+      alert('Por favor completa los campos requeridos: Insumo, Categoría y Cantidad');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const response = await fetch('/api/inventario/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newItem),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al crear el elemento');
+      }
+
+      // Limpiar formulario y cerrar modal
+      setNewItem({
+        insumo: '',
+        categoria: '',
+        cantidad: '',
+        unidad: '',
+        descripcion: '',
+        stockMinimo: ''
+      });
+      setShowModal(false);
+
+      // Refrescar los datos
+      await refreshInventario();
+    } catch (err: any) {
+      alert('Error al crear el elemento: ' + err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -125,6 +179,16 @@ function InventarioPirolisisContent() {
               Gestión y control del inventario de materiales para el proceso de pirólisis
             </p>
 
+            {/* Botón para ingresar elemento */}
+            <div className="text-center mb-6">
+              <button
+                onClick={() => setShowModal(true)}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
+              >
+                ➕ Ingresar Elemento
+              </button>
+            </div>
+
             {isTableEmpty ? (
               /* Tabla vacía - mostrar mensaje informativo */
               <div className="bg-blue-500/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-blue-500/30 text-center">
@@ -227,6 +291,90 @@ function InventarioPirolisisContent() {
         </main>
         <Footer />
       </div>
+
+      {/* Modal para ingresar elemento */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-xl font-bold mb-4 text-black">Ingresar Nuevo Elemento</h2>
+            <form onSubmit={handleCreateItem}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-black">Insumo *</label>
+                <input
+                  type="text"
+                  value={newItem.insumo}
+                  onChange={(e) => setNewItem({...newItem, insumo: e.target.value})}
+                  className="w-full p-2 border rounded text-black"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-black">Categoría *</label>
+                <input
+                  type="text"
+                  value={newItem.categoria}
+                  onChange={(e) => setNewItem({...newItem, categoria: e.target.value})}
+                  className="w-full p-2 border rounded text-black"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-black">Cantidad *</label>
+                <input
+                  type="number"
+                  value={newItem.cantidad}
+                  onChange={(e) => setNewItem({...newItem, cantidad: e.target.value})}
+                  className="w-full p-2 border rounded text-black"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-black">Unidad</label>
+                <input
+                  type="text"
+                  value={newItem.unidad}
+                  onChange={(e) => setNewItem({...newItem, unidad: e.target.value})}
+                  className="w-full p-2 border rounded text-black"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-black">Descripción</label>
+                <textarea
+                  value={newItem.descripcion}
+                  onChange={(e) => setNewItem({...newItem, descripcion: e.target.value})}
+                  className="w-full p-2 border rounded text-black"
+                  rows={3}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-black">Stock Mínimo</label>
+                <input
+                  type="number"
+                  value={newItem.stockMinimo}
+                  onChange={(e) => setNewItem({...newItem, stockMinimo: e.target.value})}
+                  className="w-full p-2 border rounded text-black"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {creating ? 'Creando...' : 'Crear'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

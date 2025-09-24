@@ -176,10 +176,39 @@ export function useInventario() {
     });
   };
 
+  // Función para refrescar los datos
+  const refreshInventario = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/inventario/list');
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 400 && result.error?.includes('AIRTABLE_INVENTARIO_TABLE_ID')) {
+          throw new Error('Tabla de inventario no configurada. Configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local');
+        }
+        if (response.status === 403 && result.error?.type === 'INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND') {
+          throw new Error('Tabla de inventario no encontrada. Verifica que la tabla existe en Airtable y que el ID es correcto');
+        }
+        throw new Error(result.error || 'Error al obtener datos del inventario');
+      }
+
+      setData(result);
+    } catch (err: any) {
+      console.error('❌ Error al refrescar inventario:', err);
+      setError(err.message || 'Error desconocido al refrescar inventario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     data,
     loading,
     error,
+    refreshInventario,
     getTotalItems,
     getItemsByCategory,
     getLowStockItems,
