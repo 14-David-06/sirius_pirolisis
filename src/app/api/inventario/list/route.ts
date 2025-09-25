@@ -22,7 +22,7 @@ export async function GET() {
       }, { status: 500 });
     }
 
-    const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}?returnFieldsByFieldId=true`, {
+    const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${config.airtable.token}`,
@@ -36,6 +36,8 @@ export async function GET() {
       console.error('❌ Error de Airtable:', data);
       return NextResponse.json({ error: data?.error || 'Airtable error', details: data }, { status: response.status });
     }
+
+    console.log('📊 Datos de inventario obtenidos:', JSON.stringify(data, null, 2));
 
     return NextResponse.json(data, { status: 200 });
   } catch (err: any) {

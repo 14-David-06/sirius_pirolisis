@@ -11,6 +11,8 @@ export const config = {
     tableName: process.env.AIRTABLE_TABLE_NAME,
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
     inventarioTableId: process.env.AIRTABLE_INVENTARIO_TABLE_ID,
+    entradasTableId: process.env.AIRTABLE_ENTRADAS_TABLE_ID,
+    salidasTableId: process.env.AIRTABLE_SALIDAS_TABLE_ID,
     laboratoriosTableId: process.env.AIRTABLE_LABORATORIOS_TABLE_ID,
     laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
     laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
@@ -24,6 +26,22 @@ export const config = {
       cantidadPresentacionInsumo: process.env.AIRTABLE_INVENTARIO_CANTIDAD_PRESENTACION_INSUMO_FIELD_ID,
       realizaRegistro: process.env.AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID,
       fichaSeguridad: process.env.AIRTABLE_INVENTARIO_FICHA_SEGURIDAD_FIELD_ID
+    },
+    entradasFields: {
+      cantidadIngresa: process.env.AIRTABLE_ENTRADAS_CANTIDAD_INGRESA_FIELD_ID,
+      realizaRegistro: process.env.AIRTABLE_ENTRADAS_REALIZA_REGISTRO_FIELD_ID,
+      inventarioInsumos: process.env.AIRTABLE_ENTRADAS_INVENTARIO_INSUMOS_FIELD_ID,
+      turnoPirolisis: process.env.AIRTABLE_ENTRADAS_TURNO_PIROLISIS_FIELD_ID
+    },
+    salidasFields: {
+      cantidadSale: process.env.AIRTABLE_SALIDAS_CANTIDAD_SALE_FIELD_ID,
+      presentacionInsumo: process.env.AIRTABLE_SALIDAS_PRESENTACION_INSUMO_FIELD_ID,
+      observaciones: process.env.AIRTABLE_SALIDAS_OBSERVACIONES_FIELD_ID,
+      tipoSalida: process.env.AIRTABLE_SALIDAS_TIPO_SALIDA_FIELD_ID,
+      documentoSoporte: process.env.AIRTABLE_SALIDAS_DOCUMENTO_SOPORTE_FIELD_ID,
+      realizaRegistro: process.env.AIRTABLE_SALIDAS_REALIZA_REGISTRO_FIELD_ID,
+      inventarioInsumos: process.env.AIRTABLE_SALIDAS_INVENTARIO_INSUMOS_FIELD_ID,
+      turnoPirolisis: process.env.AIRTABLE_SALIDAS_TURNO_PIROLISIS_FIELD_ID
     }
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad

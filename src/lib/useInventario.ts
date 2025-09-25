@@ -64,9 +64,9 @@ export function useInventario() {
 
   // Función helper para obtener el nombre del item
   const getItemName = (record: InventarioRecord): string => {
-    return record.fields[FIELD_IDS.nombreInsumo!] || // Nombre del Insumo (field ID)
+    return record.fields['Insumo'] || // Campo principal según documentación
+           (FIELD_IDS.insumo ? record.fields[FIELD_IDS.insumo] : undefined) || // Field ID si está configurado
            record.fields['Nombre del Insumo'] ||
-           record.fields['Insumo'] ||
            record.fields['Nombre'] ||
            record.fields['Name'] ||
            'Sin nombre';
@@ -74,8 +74,8 @@ export function useInventario() {
 
   // Función helper para obtener la categoría del item
   const getItemCategory = (record: InventarioRecord): string => {
-    return record.fields[FIELD_IDS.categoria!] || // Categoría (field ID)
-           record.fields['Categoría'] ||
+    return record.fields['Categoría'] || // Campo principal según documentación
+           (FIELD_IDS.categoria ? record.fields[FIELD_IDS.categoria] : undefined) || // Field ID si está configurado
            record.fields['Categoria'] ||
            record.fields['Category'] ||
            'General';
@@ -83,7 +83,8 @@ export function useInventario() {
 
   // Función helper para obtener la cantidad/stock del item
   const getItemQuantity = (record: InventarioRecord): number => {
-    return record.fields[FIELD_IDS.cantidadActual!] ||
+    return record.fields['Cantidad Presentacion Insumo'] ||
+           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ||
            record.fields['Cantidad Actual'] ||
            record.fields['Cantidad'] ||
            record.fields['Stock'] ||
@@ -92,15 +93,17 @@ export function useInventario() {
 
   // Función helper para obtener la unidad del item
   const getItemUnit = (record: InventarioRecord): string => {
-    return record.fields['Unidad'] ||
+    return record.fields['Presentacion Insumo'] ||
+           (FIELD_IDS.presentacionInsumo ? record.fields[FIELD_IDS.presentacionInsumo] : undefined) ||
+           record.fields['Unidad'] ||
            record.fields['Unit'] ||
            'unidades';
   };
 
   // Función helper para obtener la descripción del item
   const getItemDescription = (record: InventarioRecord): string => {
-    return record.fields[FIELD_IDS.realizaRegistro!] || // Realiza Registro (field ID)
-           record.fields['Realiza Registro'] ||
+    return record.fields['Realiza Registro'] || // Campo principal según documentación
+           (FIELD_IDS.realizaRegistro ? record.fields[FIELD_IDS.realizaRegistro] : undefined) || // Field ID si está configurado
            record.fields['Descripción'] ||
            record.fields['Notas'] ||
            record.fields['Notes'] ||
@@ -109,14 +112,12 @@ export function useInventario() {
 
   // Función helper para obtener las entradas del item
   const getItemEntradas = (record: InventarioRecord): string[] => {
-    return record.fields[FIELD_IDS.entradasInsumo!] || // Entradas de Insumo (field ID)
-           record.fields['Entradas de Insumo'] || [];
+    return record.fields['Entrada Insumos Pirolisis'] || [];
   };
 
   // Función helper para obtener las salidas del item
   const getItemSalidas = (record: InventarioRecord): string[] => {
-    return record.fields[FIELD_IDS.salidasInsumo!] || // Salidas de Insumo (field ID)
-           record.fields['Salidas de Insumo'] || [];
+    return record.fields['Salida Insumos Pirolisis'] || [];
   };
 
   // Función helper para obtener la presentación del item
@@ -126,7 +127,9 @@ export function useInventario() {
 
   // Función helper para obtener la cantidad de presentación del item
   const getItemCantidadPresentacion = (record: InventarioRecord): number => {
-    return record.fields['Cantidad Presentacion'] || 0;
+    return record.fields['Cantidad Presentacion Insumo'] ||
+           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ||
+           0;
   };
 
   // Función helper para obtener el stock mínimo del item
