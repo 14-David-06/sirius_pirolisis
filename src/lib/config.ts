@@ -14,6 +14,17 @@ export const config = {
     laboratoriosTableId: process.env.AIRTABLE_LABORATORIOS_TABLE_ID,
     laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
     laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
+    // ✅ BUENA PRÁCTICA: Field IDs obtenidos de variables de entorno
+    // para evitar hardcodear IDs sensibles en el código fuente
+    // Los valores reales se configuran en .env.local
+    inventarioFields: {
+      insumo: process.env.AIRTABLE_INVENTARIO_INSUMO_FIELD_ID,
+      categoria: process.env.AIRTABLE_INVENTARIO_CATEGORIA_FIELD_ID,
+      presentacionInsumo: process.env.AIRTABLE_INVENTARIO_PRESENTACION_INSUMO_FIELD_ID,
+      cantidadPresentacionInsumo: process.env.AIRTABLE_INVENTARIO_CANTIDAD_PRESENTACION_INSUMO_FIELD_ID,
+      realizaRegistro: process.env.AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID,
+      fichaSeguridad: process.env.AIRTABLE_INVENTARIO_FICHA_SEGURIDAD_FIELD_ID
+    }
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {
@@ -35,9 +46,18 @@ export function validateEnvVars() {
     'AIRTABLE_INVENTARIO_TABLE_ID',
     'AIRTABLE_LABORATORIOS_TABLE_ID',
     'AIRTABLE_LABORATORIOS_FIELD_ID',
-    'AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID'
-    // ❌ REMOVIDO: AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY
-    // Ahora solo se requieren en server-side, no en validación global
+    'AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID',
+    // Field IDs del inventario (requeridos para campos existentes)
+    'AIRTABLE_INVENTARIO_INSUMO_FIELD_ID',
+    'AIRTABLE_INVENTARIO_CATEGORIA_FIELD_ID',
+    'AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID'
+  ];
+
+  // Variables opcionales (no causan error si faltan, pero se recomienda configurarlas)
+  const optionalVars = [
+    'AIRTABLE_INVENTARIO_PRESENTACION_INSUMO_FIELD_ID',
+    'AIRTABLE_INVENTARIO_CANTIDAD_PRESENTACION_INSUMO_FIELD_ID',
+    'AIRTABLE_INVENTARIO_FICHA_SEGURIDAD_FIELD_ID'
   ];
 
   const missingVars = requiredVars.filter(varName => !process.env[varName]);
@@ -47,7 +67,15 @@ export function validateEnvVars() {
       `❌ Variables de entorno faltantes: ${missingVars.join(', ')}\n` +
       `💡 Asegúrate de tener un archivo .env.local con todas las variables necesarias.\n` +
       `📝 Consulta .env.example para ver el formato correcto.`
-      // ❌ REMOVIDO: Referencia a variables AWS - ahora solo server-side
+    );
+  }
+
+  // Advertir sobre variables opcionales faltantes
+  const missingOptionalVars = optionalVars.filter(varName => !process.env[varName]);
+  if (missingOptionalVars.length > 0) {
+    console.warn(
+      `⚠️ Variables de entorno opcionales faltantes: ${missingOptionalVars.join(', ')}\n` +
+      `💡 Estas variables mejoran la funcionalidad pero no son críticas.`
     );
   }
 

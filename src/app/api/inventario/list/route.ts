@@ -22,7 +22,7 @@ export async function GET() {
       }, { status: 500 });
     }
 
-    const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}`, {
+    const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}?returnFieldsByFieldId=true`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${config.airtable.token}`,
