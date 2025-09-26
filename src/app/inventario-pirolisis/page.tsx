@@ -39,7 +39,8 @@ function InventarioPirolisisContent() {
     'Presentación': '',
     'Cantidad Presentacion Insumo': '',
     'Presentación Personalizada': '',
-    'Ficha Seguridad URL': ''
+    'Ficha Seguridad URL': '',
+    'Ficha Seguridad S3 Path': ''
   });
   const [safetySheetFile, setSafetySheetFile] = useState<File | null>(null);
   const [uploadingSafetySheet, setUploadingSafetySheet] = useState(false);
@@ -141,7 +142,8 @@ function InventarioPirolisisContent() {
         'Presentación': '',
         'Cantidad Presentacion Insumo': '',
         'Presentación Personalizada': '',
-        'Ficha Seguridad URL': ''
+        'Ficha Seguridad URL': '',
+        'Ficha Seguridad S3 Path': ''
       });
       setSafetySheetFile(null);
       setShowModal(false);
