@@ -591,268 +591,305 @@ function InventarioPirolisisContent() {
 
       {/* Modal para ingresar cantidades o registrar insumo */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold mb-4 text-black">
-              {modalMode === 'ingresar' ? 'Ingresar Cantidades al Inventario' : modalMode === 'salida' ? 'Salida de Insumos' : 'Registrar Nuevo Insumo'}
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              {modalMode === 'ingresar'
-                ? 'Selecciona un insumo existente y agrega cantidades al inventario.'
-                : modalMode === 'salida'
-                ? 'Registra la salida de insumos del inventario con soporte para documentos.'
-                : 'Registra un nuevo insumo en el sistema de inventario de pirolisis.'
-              }
-            </p>
-            <form onSubmit={modalMode === 'ingresar' ? handleAddQuantity : modalMode === 'salida' ? handleRemoveQuantity : handleCreateItem}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl w-full max-w-2xl mx-auto border border-white/20 max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 p-6 rounded-t-xl border-b border-white/10">
+              <h2 className="text-2xl font-bold text-white drop-shadow-lg text-center">
+                {modalMode === 'ingresar' ? '📦 Ingresar Cantidades al Inventario' : modalMode === 'salida' ? '📤 Salida de Insumos' : '📝 Registrar Nuevo Insumo'}
+              </h2>
+              <p className="text-center text-white/80 mt-2 drop-shadow text-sm">
+                {modalMode === 'ingresar'
+                  ? 'Selecciona un insumo existente y agrega cantidades al inventario.'
+                  : modalMode === 'salida'
+                  ? 'Registra la salida de insumos del inventario con soporte para documentos.'
+                  : 'Registra un nuevo insumo en el sistema de inventario de pirolisis.'
+                }
+              </p>
+            </div>
+
+            <form onSubmit={modalMode === 'ingresar' ? handleAddQuantity : modalMode === 'salida' ? handleRemoveQuantity : handleCreateItem} className="p-6">
               {modalMode === 'ingresar' ? (
-                <>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Seleccionar Insumo *</label>
+                <div className="space-y-6">
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Seleccionar Insumo *</label>
                     <select
                       value={addQuantityData.selectedItemId}
                       onChange={(e) => setAddQuantityData({...addQuantityData, selectedItemId: e.target.value})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
                       required
                     >
-                      <option value="">Seleccionar insumo existente</option>
+                      <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
                       {data?.records.map((item: any) => (
-                        <option key={item.id} value={item.id}>
+                        <option key={item.id} value={item.id} className="bg-gray-800">
                           {getItemName(item)} - {getItemCategory(item)} - Presentación: {getItemCantidadPresentacion(item)} {getItemPresentacion(item)}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Cantidad a Agregar *</label>
+
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Cantidad a Agregar *</label>
                     <input
                       type="number"
                       value={addQuantityData.cantidad}
                       onChange={(e) => setAddQuantityData({...addQuantityData, cantidad: e.target.value})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
                       placeholder="Ej: 25"
                       min="0"
                       step="0.01"
                       required
                     />
                   </div>
-                  <div className="mb-4 p-3 bg-gray-50 rounded">
-                    <label className="block text-sm font-medium mb-1 text-gray-700">Registrado por:</label>
-                    <p className="text-sm text-gray-600 font-medium">{getCurrentUserName()}</p>
+
+                  <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-lg p-4 border border-green-500/20">
+                    <label className="block text-sm font-semibold mb-2 text-green-200 drop-shadow">Registrado por:</label>
+                    <p className="text-white font-medium drop-shadow">{getCurrentUserName()}</p>
                   </div>
-                </>
+                </div>
               ) : modalMode === 'salida' ? (
-                <>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Seleccionar Insumo *</label>
+                <div className="space-y-6">
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Seleccionar Insumo *</label>
                     <select
                       value={removeQuantityData.selectedItemId}
                       onChange={(e) => {
                         setRemoveQuantityData({...removeQuantityData, selectedItemId: e.target.value});
-                        setRemoveQuantityError(''); // Limpiar error al cambiar insumo
+                        setRemoveQuantityError('');
                       }}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm"
                       required
                     >
-                      <option value="">Seleccionar insumo existente</option>
+                      <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
                       {data?.records.map((item: any) => (
-                        <option key={item.id} value={item.id}>
+                        <option key={item.id} value={item.id} className="bg-gray-800">
                           {getItemName(item)} - {getItemCategory(item)} - Presentación: {getItemQuantity(item)} {getItemPresentacion(item)}
                         </option>
                       ))}
                     </select>
                     {removeQuantityData.selectedItemId && (
-                      <p className="text-sm text-gray-600 mt-1">
-                        Stock disponible: {(() => {
-                          const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
-                          return selectedItem ? getItemStockTotal(selectedItem) : 0;
-                        })()} {(() => {
-                          const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
-                          return selectedItem ? getItemPresentacion(selectedItem) || 'unidades' : 'unidades';
-                        })()}
+                      <p className="text-sm text-blue-200 mt-2 drop-shadow">
+                        📊 Stock disponible: <span className="font-semibold">
+                          {(() => {
+                            const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
+                            return selectedItem ? getItemStockTotal(selectedItem) : 0;
+                          })()} {(() => {
+                            const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
+                            return selectedItem ? getItemPresentacion(selectedItem) || 'unidades' : 'unidades';
+                          })()}
+                        </span>
                       </p>
                     )}
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Cantidad a Remover *</label>
+
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Cantidad a Remover *</label>
                     <input
                       type="number"
                       value={removeQuantityData.cantidad}
                       onChange={(e) => {
                         setRemoveQuantityData({...removeQuantityData, cantidad: e.target.value});
-                        setRemoveQuantityError(''); // Limpiar error al cambiar cantidad
+                        setRemoveQuantityError('');
                       }}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm"
                       placeholder="Ej: 5"
                       min="0"
                       step="0.01"
                       required
                     />
                     {removeQuantityError && (
-                      <p className="text-red-600 text-sm mt-1">{removeQuantityError}</p>
+                      <div className="mt-2 p-2 bg-red-500/20 border border-red-500/30 rounded-lg">
+                        <p className="text-red-200 text-sm drop-shadow">⚠️ {removeQuantityError}</p>
+                      </div>
                     )}
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Tipo de Salida *</label>
+
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Tipo de Salida *</label>
                     <select
                       value={removeQuantityData.tipoSalida}
                       onChange={(e) => setRemoveQuantityData({...removeQuantityData, tipoSalida: e.target.value})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm"
                       required
                     >
-                      <option value="Consumo en Proceso">Consumo en Proceso</option>
-                      <option value="Devolución a Proveedor">Devolución a Proveedor</option>
-                      <option value="Ajuste">Ajuste</option>
-                      <option value="Traslado a Otro Almacén">Traslado a Otro Almacén</option>
-                      <option value="Otro">Otro</option>
+                      <option value="Consumo en Proceso" className="bg-gray-800">🔄 Consumo en Proceso</option>
+                      <option value="Devolución a Proveedor" className="bg-gray-800">↩️ Devolución a Proveedor</option>
+                      <option value="Ajuste" className="bg-gray-800">⚖️ Ajuste</option>
+                      <option value="Traslado a Otro Almacén" className="bg-gray-800">🚛 Traslado a Otro Almacén</option>
+                      <option value="Mantenimiento" className="bg-gray-800">🔧 Mantenimiento</option>
+                      <option value="Otro" className="bg-gray-800">📝 Otro</option>
                     </select>
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Observaciones</label>
+
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Observaciones</label>
                     <textarea
                       value={removeQuantityData.observaciones}
                       onChange={(e) => setRemoveQuantityData({...removeQuantityData, observaciones: e.target.value})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm resize-none"
                       placeholder="Detalles adicionales sobre la salida..."
                       rows={3}
                     />
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Documento de Soporte (Opcional)</label>
+
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">📎 Documento de Soporte (Opcional)</label>
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={(e) => setRemoveQuantityData({...removeQuantityData, documentoSoporte: e.target.files?.[0] || null})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-white/60 mt-2 drop-shadow">
                       PDF, JPG, PNG (máximo 10MB)
                     </p>
                     {removeQuantityData.documentoSoporte && (
-                      <p className="text-xs text-green-600 mt-1">
-                        Archivo seleccionado: {removeQuantityData.documentoSoporte.name}
-                      </p>
+                      <div className="mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded-lg">
+                        <p className="text-green-200 text-sm drop-shadow">
+                          ✅ Archivo seleccionado: {removeQuantityData.documentoSoporte.name}
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <div className="mb-4 p-3 bg-gray-50 rounded">
-                    <label className="block text-sm font-medium mb-1 text-gray-700">Registrado por:</label>
-                    <p className="text-sm text-gray-600 font-medium">{getCurrentUserName()}</p>
+
+                  <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-lg p-4 border border-red-500/20">
+                    <label className="block text-sm font-semibold mb-2 text-red-200 drop-shadow">Registrado por:</label>
+                    <p className="text-white font-medium drop-shadow">{getCurrentUserName()}</p>
                   </div>
-                </>
+                </div>
               ) : (
-                <>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Nombre del Insumo *</label>
+                <div className="space-y-6">
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Nombre del Insumo *</label>
                     <input
                       type="text"
                       value={newItem['Nombre del Insumo']}
                       onChange={(e) => setNewItem({...newItem, 'Nombre del Insumo': e.target.value})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
+                      placeholder="Ej: Hidróxido de Sodio"
                       required
                     />
                   </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Categoría *</label>
+
+                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Categoría *</label>
                     <select
                       value={newItem['Categoría']}
                       onChange={(e) => setNewItem({...newItem, 'Categoría': e.target.value})}
-                      className="w-full p-2 border rounded text-black"
+                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
                       required
                     >
-                      <option value="">Seleccionar categoría</option>
-                      <option value="Materiales">Materiales</option>
-                      <option value="Químicos">Químicos</option>
-                      <option value="Herramientas">Herramientas</option>
+                      <option value="" className="bg-gray-800">Seleccionar categoría</option>
+                      <option value="Materiales" className="bg-gray-800">🏭 Materiales</option>
+                      <option value="Químicos" className="bg-gray-800">⚗️ Químicos</option>
+                      <option value="Herramientas" className="bg-gray-800">🔧 Herramientas</option>
+                      <option value="Equipos" className="bg-gray-800">⚙️ Equipos</option>
+                      <option value="Consumibles" className="bg-gray-800">📦 Consumibles</option>
                     </select>
                   </div>
+
                   {newItem['Categoría'] === 'Químicos' && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium mb-1 text-black">
-                        Ficha de Seguridad (PDF) *
+                    <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg p-4 border border-yellow-500/20">
+                      <label className="block text-sm font-semibold mb-2 text-yellow-200 drop-shadow">
+                        📋 Ficha de Seguridad (PDF) *
                       </label>
                       <input
                         type="file"
                         accept=".pdf"
                         onChange={(e) => setSafetySheetFile(e.target.files?.[0] || null)}
-                        className="w-full p-2 border rounded text-black"
+                        className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-600 file:text-white hover:file:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent backdrop-blur-sm"
                         required={newItem['Categoría'] === 'Químicos'}
                       />
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-yellow-200 mt-2 drop-shadow">
                         Archivo PDF con ficha de seguridad del químico (mínimo 100KB)
                       </p>
                       {safetySheetFile && (
-                        <p className="text-xs text-green-600 mt-1">
-                          Archivo seleccionado: {safetySheetFile.name}
-                        </p>
+                        <div className="mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded-lg">
+                          <p className="text-green-200 text-sm drop-shadow">
+                            ✅ Archivo seleccionado: {safetySheetFile.name}
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Presentación</label>
-                    <select
-                      value={newItem['Presentación']}
-                      onChange={(e) => setNewItem({...newItem, 'Presentación': e.target.value})}
-                      className="w-full p-2 border rounded text-black"
-                    >
-                      <option value="">Seleccionar presentación</option>
-                      <option value="Kilogramos">Kilogramos</option>
-                      <option value="Litros">Litros</option>
-                      <option value="Unidades">Unidades</option>
-                      <option value="Bolsas">Bolsas</option>
-                      <option value="Cajas">Cajas</option>
-                      <option value="Galones">Galones</option>
-                      <option value="Metros">Metros</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                  </div>
-                  {newItem['Presentación'] === 'Otro' && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium mb-1 text-black">Especificar Presentación</label>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                      <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Presentación</label>
+                      <select
+                        value={newItem['Presentación']}
+                        onChange={(e) => setNewItem({...newItem, 'Presentación': e.target.value})}
+                        className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
+                      >
+                        <option value="" className="bg-gray-800">Seleccionar presentación</option>
+                        <option value="Kilogramos" className="bg-gray-800">⚖️ Kilogramos</option>
+                        <option value="Litros" className="bg-gray-800">🧪 Litros</option>
+                        <option value="Unidades" className="bg-gray-800">📦 Unidades</option>
+                        <option value="Bolsas" className="bg-gray-800">🛍️ Bolsas</option>
+                        <option value="Cajas" className="bg-gray-800">📦 Cajas</option>
+                        <option value="Galones" className="bg-gray-800">🪣 Galones</option>
+                        <option value="Metros" className="bg-gray-800">📏 Metros</option>
+                        <option value="Otro" className="bg-gray-800">✏️ Otro</option>
+                      </select>
+                    </div>
+
+                    {newItem['Presentación'] === 'Otro' && (
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Especificar Presentación</label>
+                        <input
+                          type="text"
+                          value={newItem['Presentación Personalizada']}
+                          onChange={(e) => setNewItem({...newItem, 'Presentación Personalizada': e.target.value})}
+                          className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
+                          placeholder="Ej: Toneladas, Barriles..."
+                        />
+                      </div>
+                    )}
+
+                    <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                      <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Cantidad por Presentación</label>
                       <input
-                        type="text"
-                        value={newItem['Presentación Personalizada']}
-                        onChange={(e) => setNewItem({...newItem, 'Presentación Personalizada': e.target.value})}
-                        className="w-full p-2 border rounded text-black"
-                        placeholder="Ej: Toneladas, Barriles, etc."
+                        type="number"
+                        value={newItem['Cantidad Presentacion Insumo']}
+                        onChange={(e) => setNewItem({...newItem, 'Cantidad Presentacion Insumo': e.target.value})}
+                        className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
+                        placeholder="Ej: 25"
+                        min="0"
+                        step="0.01"
                       />
                     </div>
-                  )}
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-1 text-black">Cantidad Presentacion Insumo</label>
-                    <input
-                      type="number"
-                      value={newItem['Cantidad Presentacion Insumo']}
-                      onChange={(e) => setNewItem({...newItem, 'Cantidad Presentacion Insumo': e.target.value})}
-                      className="w-full p-2 border rounded text-black"
-                      placeholder="Ej: 25"
-                      min="0"
-                      step="0.01"
-                    />
                   </div>
-                  <div className="mb-4 p-3 bg-gray-50 rounded">
-                    <label className="block text-sm font-medium mb-1 text-gray-700">Registrado por:</label>
-                    <p className="text-sm text-gray-600 font-medium">{getCurrentUserName()}</p>
+
+                  <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-lg p-4 border border-purple-500/20">
+                    <label className="block text-sm font-semibold mb-2 text-purple-200 drop-shadow">Registrado por:</label>
+                    <p className="text-white font-medium drop-shadow">{getCurrentUserName()}</p>
                   </div>
-                </>
+                </div>
               )}
-              <div className="flex justify-end space-x-2">
+
+              <div className="flex justify-end space-x-4 mt-8 pt-6 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-gray-600 border rounded hover:bg-gray-100"
+                  className="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-lg hover:bg-white/20 transition-all duration-200 backdrop-blur-sm font-medium"
                 >
-                  Cancelar
+                  ❌ Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={creating || uploadingSafetySheet}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                  className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 backdrop-blur-sm ${
+                    modalMode === 'ingresar'
+                      ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/25'
+                      : modalMode === 'salida'
+                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/25'
+                      : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-purple-500/25'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {uploadingSafetySheet
-                    ? 'Subiendo ficha de seguridad...'
+                    ? '⏳ Subiendo ficha de seguridad...'
                     : creating
-                    ? (modalMode === 'ingresar' ? 'Ingresando...' : modalMode === 'salida' ? 'Registrando Salida...' : 'Registrando...')
-                    : (modalMode === 'ingresar' ? 'Ingresar Elemento' : modalMode === 'salida' ? 'Registrar Salida' : 'Registrar Insumo')
+                    ? (modalMode === 'ingresar' ? '📦 Ingresando...' : modalMode === 'salida' ? '📤 Registrando Salida...' : '📝 Registrando...')
+                    : (modalMode === 'ingresar' ? '✅ Ingresar Cantidad' : modalMode === 'salida' ? '📤 Registrar Salida' : '📝 Registrar Insumo')
                   }
                 </button>
               </div>

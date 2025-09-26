@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     // Validar tipo de salida
-    const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Otro'];
+    const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Mantenimiento', 'Otro'];
     if (!tiposValidos.includes(tipoSalida)) {
       return NextResponse.json({
         error: 'Tipo de salida inválido',

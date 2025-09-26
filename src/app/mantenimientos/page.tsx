@@ -6,12 +6,14 @@ import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import VoiceToText from '@/components/VoiceToText';
+import { useInventario } from '@/lib/useInventario';
 
 interface MantenimientoFormData {
   tipoMantenimiento: string;
   descripcion: string;
   equipo: string;
   prioridad: 'Baja' | 'Media' | 'Alta' | 'Urgente';
+  insumosUtilizados: { id: string; cantidad: number }[];
 }
 
 export default function Mantenimientos() {
@@ -26,15 +28,19 @@ function MantenimientosContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
-  const [mantenimientos, setMantenimientos] = useState<any[]>([]);
+  const [mantenimientos] = useState<any[]>([]);
   const [equipos, setEquipos] = useState<any[]>([]);
   const router = useRouter();
+  const { data: inventarioData, loading: inventarioLoading, error: inventarioError } = useInventario();
+
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [formData, setFormData] = useState<MantenimientoFormData>({
     tipoMantenimiento: '',
     descripcion: '',
     equipo: '',
-    prioridad: 'Media'
+    prioridad: 'Media',
+    insumosUtilizados: []
   });
 
   useEffect(() => {
@@ -45,7 +51,7 @@ function MantenimientosContent() {
     }
 
     try {
-      const sessionData = JSON.parse(userSession);
+      JSON.parse(userSession);
       setIsAuthenticated(true);
     } catch (error) {
       console.error('Error parsing session:', error);
@@ -80,24 +86,71 @@ function MantenimientosContent() {
     }));
   };
 
+  const handleInsumoCantidadChange = (insumoId: string, cantidad: number) => {
+    setFormData(prev => ({
+      ...prev,
+      insumosUtilizados: prev.insumosUtilizados.map(item =>
+        item.id === insumoId ? { ...item, cantidad } : item
+      )
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setMensaje('');
 
     try {
+      // Obtener información del usuario actual
+      const userSession = localStorage.getItem('userSession');
+      const sessionData = JSON.parse(userSession || '{}');
+      const userName = sessionData.user?.name || 'Usuario desconocido';
+
       // Aquí irá la lógica del backend cuando esté listo
       console.log('Datos del mantenimiento:', formData);
 
       // Simulación de guardado exitoso
       setMensaje('✅ Mantenimiento registrado exitosamente');
 
+      // Registrar salidas de insumos utilizados
+      if (formData.insumosUtilizados.length > 0) {
+        for (const insumo of formData.insumosUtilizados) {
+          try {
+            const response = await fetch('/api/inventario/remove-quantity', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                itemId: insumo.id,
+                cantidad: insumo.cantidad,
+                tipoSalida: 'Mantenimiento',
+                observaciones: `Utilizado en mantenimiento: ${formData.descripcion}`,
+                'Realiza Registro': userName
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              console.error('Error al registrar salida del insumo:', insumo.id, errorData);
+              setMensaje(prev => prev + `\n⚠️ Error al registrar salida del insumo ${insumo.id}: ${errorData.error}`);
+            } else {
+              console.log('Salida registrada para insumo:', insumo.id);
+            }
+          } catch (error) {
+            console.error('Error al procesar salida del insumo:', insumo.id, error);
+            setMensaje(prev => prev + `\n⚠️ Error al procesar salida del insumo ${insumo.id}`);
+          }
+        }
+      }
+
       // Limpiar formulario
       setFormData({
         tipoMantenimiento: '',
         descripcion: '',
         equipo: '',
-        prioridad: 'Media'
+        prioridad: 'Media',
+        insumosUtilizados: []
       });
 
       // Aquí se actualizaría la lista de mantenimientos
@@ -246,6 +299,115 @@ function MantenimientosContent() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                      Insumos Utilizados (Opcional)
+                    </label>
+                    <div className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20">
+                      {inventarioLoading ? (
+                        <div className="text-center py-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto"></div>
+                          <p className="text-white/80 text-sm mt-2">Cargando inventario...</p>
+                        </div>
+                      ) : inventarioError ? (
+                        <p className="text-red-300 text-sm">Error al cargar inventario: {inventarioError}</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Lista de insumos seleccionados */}
+                          {formData.insumosUtilizados.map((insumo) => {
+                            const record = inventarioData?.records.find(r => r.id === insumo.id);
+                            const insumoNombre = record?.fields.Insumo || 'Sin nombre';
+                            const stock = record?.fields['Total Cantidad Stock'] || 0;
+                            const presentacion = record?.fields['Presentacion Insumo'] || 'Unidades';
+
+                            return (
+                              <div key={insumo.id} className="flex items-center space-x-3 bg-white/10 p-3 rounded-lg">
+                                <div className="flex-1">
+                                  <p className="text-white font-medium text-sm">{insumoNombre}</p>
+                                  <p className="text-white/70 text-xs">Stock disponible: {stock} {presentacion}</p>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <div className="flex flex-col">
+                                    <label className="text-white/80 text-xs mb-1">Cantidad a utilizar</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max={stock}
+                                      value={insumo.cantidad}
+                                      onChange={(e) => handleInsumoCantidadChange(insumo.id, parseInt(e.target.value) || 1)}
+                                      className="w-20 px-2 py-1 bg-white/90 border border-white/30 rounded text-gray-800 text-sm"
+                                      placeholder="Cant."
+                                    />
+                                    <span className="text-white/60 text-xs mt-1">Máx: {stock}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        insumosUtilizados: prev.insumosUtilizados.filter(item => item.id !== insumo.id)
+                                      }));
+                                    }}
+                                    className="text-red-300 hover:text-red-100 text-sm px-2 py-1 rounded hover:bg-red-500/20"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Selector de nuevo insumo con búsqueda */}
+                          <div className="border-t border-white/20 pt-4">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Buscar insumo..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full px-3 py-2 bg-white/90 border border-white/30 rounded text-gray-800 text-sm focus:ring-1 focus:ring-green-400"
+                              />
+                              <div className="absolute right-2 top-2 text-white/60 text-xs">
+                                🔍
+                              </div>
+                            </div>
+                            <div className="mt-2 max-h-40 overflow-y-auto">
+                              {inventarioData?.records
+                                .filter(record => !formData.insumosUtilizados.some(item => item.id === record.id))
+                                .filter(record => 
+                                  !searchTerm || 
+                                  (record.fields.Insumo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                  (record.fields['Presentacion Insumo'] || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                )
+                                .map((record) => (
+                                  <button
+                                    key={record.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        insumosUtilizados: [...prev.insumosUtilizados, { id: record.id, cantidad: 1 }]
+                                      }));
+                                    }}
+                                    className="w-full text-left px-3 py-2 bg-white/10 hover:bg-white/20 rounded text-sm text-white transition-colors mb-1"
+                                  >
+                                    <div className="font-medium">{record.fields.Insumo || 'Sin nombre'}</div>
+                                    <div className="text-xs text-white/70">Stock: {record.fields['Total Cantidad Stock'] || 0} {record.fields['Presentacion Insumo'] || 'unidades'}</div>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+
+                          {formData.insumosUtilizados.length > 0 && (
+                            <p className="text-white/80 text-xs text-center">
+                              {formData.insumosUtilizados.length} insumo{formData.insumosUtilizados.length !== 1 ? 's' : ''} seleccionado{formData.insumosUtilizados.length !== 1 ? 's' : ''}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={isLoading}
@@ -285,8 +447,8 @@ function MantenimientosContent() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {mantenimientos.map((mantenimiento, index) => (
-                      <div key={index} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 hover:bg-white/20 transition-all duration-200">
+                    {mantenimientos.map((mantenimiento) => (
+                      <div key={mantenimiento.id || Math.random()} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 hover:bg-white/20 transition-all duration-200">
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="font-semibold text-white drop-shadow">{mantenimiento.equipo}</h4>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold drop-shadow ${
