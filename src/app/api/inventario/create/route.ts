@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     console.log('📥 Datos recibidos en API:', body);
-    const { 'Nombre del Insumo': nombreInsumo, 'Categoría': categoria, 'Realiza Registro': realizaRegistro, 'Presentación': presentacion, 'Cantidad Presentacion Insumo': cantidadPresentacion, 'Ficha Seguridad URL': fichaSeguridadUrl } = body;
+    const { 'Nombre del Insumo': nombreInsumo, 'Categoría': categoria, 'Realiza Registro': realizaRegistro, 'Presentación': presentacion, 'Cantidad Presentacion Insumo': cantidadPresentacion, 'Ficha Seguridad URL': fichaSeguridadUrl, 'Ficha Seguridad S3 Path': fichaSeguridadS3Path } = body;
 
     // Validar campos requeridos
     if (!nombreInsumo || !categoria) {
@@ -66,10 +66,12 @@ export async function POST(request: Request) {
 
     // Ficha de seguridad (solo para químicos)
     if (fichaSeguridadUrl && categoria === 'Químicos') {
+      // Extraer el nombre del archivo del S3 path (última parte después del último '/')
+      const fileName = fichaSeguridadS3Path ? fichaSeguridadS3Path.split('/').pop() : `ficha-seguridad-${nombreInsumo.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
       fields['Ficha Seguridad'] = [
         {
           url: fichaSeguridadUrl,
-          filename: `ficha-seguridad-${nombreInsumo.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`
+          filename: fileName
         }
       ];
     }

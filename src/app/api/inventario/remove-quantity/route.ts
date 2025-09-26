@@ -81,13 +81,24 @@ export async function POST(request: Request) {
     });
 
     let presentacionInsumo = '';
+    let stockDisponible = 0;
     if (itemResponse.ok) {
       const itemData = await itemResponse.json();
       presentacionInsumo = itemData.fields['Presentacion Insumo'] || itemData.fields['Presentación'] || 'Unidades';
+      stockDisponible = itemData.fields['Total Cantidad Stock'] || 0;
       console.log('📦 Presentación del insumo:', presentacionInsumo);
+      console.log('📦 Stock disponible:', stockDisponible);
     } else {
       console.log('⚠️ No se pudo obtener información del item, usando "Unidades" por defecto');
       presentacionInsumo = 'Unidades';
+    }
+
+    // Validar que la cantidad a remover no sea mayor al stock disponible
+    if (cantidadNumerica > stockDisponible) {
+      return NextResponse.json({
+        error: 'Cantidad insuficiente en stock',
+        details: `No puedes remover ${cantidadNumerica} unidades. Solo hay ${stockDisponible} unidades disponibles en stock.`
+      }, { status: 400 });
     }
 
     // Preparar los campos para crear el registro de salida

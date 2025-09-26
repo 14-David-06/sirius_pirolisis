@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getS3Client, awsServerConfig } from '../../../../lib/aws-config.server';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // Configuración específica para fichas de seguridad
 const SAFETY_SHEETS_CONFIG = {
@@ -89,20 +90,27 @@ export async function POST(request: NextRequest) {
       Key: s3Key,
       Body: buffer,
       ContentType: file.type,
-      // Removido ACL para compatibilidad con buckets que no permiten ACLs
     });
 
     await s3Client.send(uploadCommand);
 
-    // Generar URL pública del archivo
-    const fileUrl = `https://${SAFETY_SHEETS_CONFIG.bucketName}.s3.amazonaws.com/${s3Key}`;
+    // Generar signed URL con expiración de 7 días (máximo permitido por AWS S3 SigV4)
+    const getObjectCommand = new GetObjectCommand({
+      Bucket: SAFETY_SHEETS_CONFIG.bucketName,
+      Key: s3Key,
+    });
+
+    const signedUrl = await getSignedUrl(s3Client, getObjectCommand, {
+      expiresIn: 7 * 24 * 60 * 60, // 7 días en segundos (máximo permitido)
+    });
 
     console.log(`✅ Ficha de seguridad subida exitosamente: ${uniqueFileName}`);
 
     return NextResponse.json({
       success: true,
-      fileUrl,
+      fileUrl: signedUrl, // URL firmada que Airtable puede usar para descargar
       fileName: uniqueFileName,
+      s3Path: `s3://${SAFETY_SHEETS_CONFIG.bucketName}/${s3Key}`, // Ruta S3 completa
       fileSize: file.size,
       uploadedAt: new Date().toISOString(),
     });

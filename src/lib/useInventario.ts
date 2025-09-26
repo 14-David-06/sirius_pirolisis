@@ -132,6 +132,13 @@ export function useInventario() {
            0;
   };
 
+  // Función helper para obtener el stock total del item
+  const getItemStockTotal = (record: InventarioRecord): number => {
+    return record.fields['Total Cantidad Stock'] ||
+           (FIELD_IDS.totalCantidadStock ? record.fields[FIELD_IDS.totalCantidadStock] : undefined) ||
+           0;
+  };
+
   // Función helper para obtener el stock mínimo del item
   const getMinStock = (record: InventarioRecord): number => {
     const minStock = record.fields['Stock Minimo'] ||
@@ -243,6 +250,7 @@ export function useInventario() {
     getItemSalidas,
     getItemPresentacion,
     getItemCantidadPresentacion,
+    getItemStockTotal,
     getMinStock
   };
 }

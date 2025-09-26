@@ -29,7 +29,7 @@ export default function InventarioPirolisis() {
 }
 
 function InventarioPirolisisContent() {
-  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription, getItemEntradas, getItemSalidas, getItemPresentacion, getItemCantidadPresentacion, getItemCategory, getItemQuantity, getItemUnit } = useInventario();
+  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription, getItemEntradas, getItemSalidas, getItemPresentacion, getItemCantidadPresentacion, getItemCategory, getItemQuantity, getItemUnit, getItemStockTotal } = useInventario();
 
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'ingresar' | 'registrar' | 'salida'>('ingresar');
@@ -56,6 +56,7 @@ function InventarioPirolisisContent() {
     observaciones: '',
     documentoSoporte: null as File | null
   });
+  const [removeQuantityError, setRemoveQuantityError] = useState('');
 
   // Limpiar campo personalizado cuando se cambia la presentación
   useEffect(() => {
@@ -65,7 +66,7 @@ function InventarioPirolisisContent() {
   }, [newItem['Presentación']]);
 
   // Función para subir ficha de seguridad
-  const uploadSafetySheet = async (file: File): Promise<string> => {
+  const uploadSafetySheet = async (file: File): Promise<{fileUrl: string, s3Path: string}> => {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -80,7 +81,10 @@ function InventarioPirolisisContent() {
     }
 
     const data = await response.json();
-    return data.fileUrl;
+    return {
+      fileUrl: data.fileUrl,
+      s3Path: data.s3Path
+    };
   };
 
   const handleCreateItem = async (e: React.FormEvent) => {
@@ -107,8 +111,9 @@ function InventarioPirolisisContent() {
       if (itemData['Categoría'] === 'Químicos' && safetySheetFile) {
         setUploadingSafetySheet(true);
         try {
-          const fileUrl = await uploadSafetySheet(safetySheetFile);
-          itemData['Ficha Seguridad URL'] = fileUrl;
+          const uploadResult = await uploadSafetySheet(safetySheetFile);
+          itemData['Ficha Seguridad URL'] = uploadResult.fileUrl;
+          itemData['Ficha Seguridad S3 Path'] = uploadResult.s3Path;
         } catch (uploadError: any) {
           throw new Error(`Error al subir ficha de seguridad: ${uploadError.message}`);
         } finally {
@@ -208,6 +213,21 @@ function InventarioPirolisisContent() {
       return;
     }
 
+    // Validar que la cantidad no sea mayor al stock disponible
+    const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
+    if (selectedItem) {
+      const stockDisponible = getItemStockTotal(selectedItem);
+      const cantidadARemover = parseFloat(removeQuantityData.cantidad);
+      
+      if (cantidadARemover > stockDisponible) {
+        setRemoveQuantityError(`No puedes remover ${cantidadARemover} unidades. Solo hay ${stockDisponible} unidades disponibles en stock.`);
+        return;
+      }
+    }
+
+    // Limpiar error si la validación pasa
+    setRemoveQuantityError('');
+
     // Validar tipo de salida
     const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Otro'];
     if (!tiposValidos.includes(removeQuantityData.tipoSalida)) {
@@ -268,6 +288,7 @@ function InventarioPirolisisContent() {
         observaciones: '',
         documentoSoporte: null
       });
+      setRemoveQuantityError('');
       setShowModal(false);
 
       // Refrescar los datos
@@ -412,6 +433,7 @@ function InventarioPirolisisContent() {
                       observaciones: '',
                       documentoSoporte: null
                     });
+                    setRemoveQuantityError('');
                     setShowModal(true);
                   }}
                   className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200 flex items-center space-x-2"
@@ -528,6 +550,9 @@ function InventarioPirolisisContent() {
                                     Presentación: {getItemCantidadPresentacion(item)} {getItemPresentacion(item)}
                                   </div>
                                 )}
+                                <div className="text-base text-white font-semibold">
+                                  Stock Disponible: {getItemStockTotal(item)} {getItemPresentacion(item) || 'unidades'}
+                                </div>
                               </div>
                             </div>
                             {getItemDescription(item) && (
@@ -620,30 +645,50 @@ function InventarioPirolisisContent() {
                     <label className="block text-sm font-medium mb-1 text-black">Seleccionar Insumo *</label>
                     <select
                       value={removeQuantityData.selectedItemId}
-                      onChange={(e) => setRemoveQuantityData({...removeQuantityData, selectedItemId: e.target.value})}
+                      onChange={(e) => {
+                        setRemoveQuantityData({...removeQuantityData, selectedItemId: e.target.value});
+                        setRemoveQuantityError(''); // Limpiar error al cambiar insumo
+                      }}
                       className="w-full p-2 border rounded text-black"
                       required
                     >
                       <option value="">Seleccionar insumo existente</option>
                       {data?.records.map((item: any) => (
                         <option key={item.id} value={item.id}>
-                          {getItemName(item)} - {getItemCategory(item)} - Stock: {getItemQuantity(item)} {getItemPresentacion(item)}
+                          {getItemName(item)} - {getItemCategory(item)} - Presentación: {getItemQuantity(item)} {getItemPresentacion(item)}
                         </option>
                       ))}
                     </select>
+                    {removeQuantityData.selectedItemId && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        Stock disponible: {(() => {
+                          const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
+                          return selectedItem ? getItemStockTotal(selectedItem) : 0;
+                        })()} {(() => {
+                          const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
+                          return selectedItem ? getItemPresentacion(selectedItem) || 'unidades' : 'unidades';
+                        })()}
+                      </p>
+                    )}
                   </div>
                   <div className="mb-4">
                     <label className="block text-sm font-medium mb-1 text-black">Cantidad a Remover *</label>
                     <input
                       type="number"
                       value={removeQuantityData.cantidad}
-                      onChange={(e) => setRemoveQuantityData({...removeQuantityData, cantidad: e.target.value})}
+                      onChange={(e) => {
+                        setRemoveQuantityData({...removeQuantityData, cantidad: e.target.value});
+                        setRemoveQuantityError(''); // Limpiar error al cambiar cantidad
+                      }}
                       className="w-full p-2 border rounded text-black"
                       placeholder="Ej: 5"
                       min="0"
                       step="0.01"
                       required
                     />
+                    {removeQuantityError && (
+                      <p className="text-red-600 text-sm mt-1">{removeQuantityError}</p>
+                    )}
                   </div>
                   <div className="mb-4">
                     <label className="block text-sm font-medium mb-1 text-black">Tipo de Salida *</label>
