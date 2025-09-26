@@ -5,12 +5,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const { user, loginTime, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
   const handleLogout = () => {
     localStorage.removeItem('userSession');
-    setUserSession(null);
     router.refresh();
   };
 
@@ -54,13 +53,13 @@ export default function Home() {
                   // Usuario logueado
                   <div className="animate-fade-in-up">
                     <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
-                      ¡Bienvenido de vuelta, {user.Nombre}!
+                      ¡Bienvenido de vuelta, {user.nombre}!
                     </h1>
                     <p className="text-lg md:text-xl text-white/90 mb-2">
-                      {user.Cargo} - Sirius Pirólisis
+                      {user.cargo} - Sirius Pirólisis
                     </p>
                     <p className="text-sm text-white/70 mb-8">
-                      Última sesión: {loginTime ? new Date(loginTime).toLocaleString('es-ES') : 'N/A'}
+                      Última sesión: {user.loginTime ? new Date(user.loginTime).toLocaleString('es-ES') : 'N/A'}
                     </p>
                   </div>
                 ) : (

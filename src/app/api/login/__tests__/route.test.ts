@@ -1,7 +1,8 @@
 // src/app/api/login/__tests__/route.test.ts
 import { NextRequest } from 'next/server';
 import { POST } from '../route';
-import { SessionManager } from '@/lib/sessionManager';
+import { ServerSessionManager } from '@/lib/serverSession';
+import bcrypt from 'bcryptjs';
 
 // Mock dependencies
 jest.mock('@/lib/config', () => ({
@@ -26,8 +27,8 @@ jest.mock('@/lib/serverSession', () => ({
   },
 }));
 
-const mockServerSessionManager = require('@/lib/serverSession').ServerSessionManager;
-const mockBcryptCompare = require('bcryptjs').compare;
+const mockServerSessionManager = ServerSessionManager as any;
+const mockBcryptCompare = bcrypt.compare as jest.MockedFunction<any>;
 
 // Mock fetch
 global.fetch = jest.fn();

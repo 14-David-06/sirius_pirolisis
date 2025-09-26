@@ -72,11 +72,11 @@ describe('SessionManager', () => {
     });
 
     it('should create secure session with cookies', async () => {
+      const { cookies } = await import('next/headers');
       const mockCookies = {
         set: jest.fn(),
       };
-      const { cookies } = require('next/headers');
-      cookies.mockResolvedValue(mockCookies);
+      (cookies as jest.Mock).mockResolvedValue(mockCookies);
 
       await SessionManager.createSecureSession(mockUser);
 
@@ -92,11 +92,11 @@ describe('SessionManager', () => {
     });
 
     it('should handle session decryption errors gracefully', async () => {
+      const { cookies } = await import('next/headers');
       const mockCookies = {
         get: jest.fn(() => ({ value: 'invalid-base64' })),
       };
-      const { cookies } = require('next/headers');
-      cookies.mockResolvedValue(mockCookies);
+      (cookies as jest.Mock).mockResolvedValue(mockCookies);
 
       const session = await SessionManager.getSession();
 

@@ -68,6 +68,7 @@ export function validateEnvVars() {
     'AIRTABLE_LABORATORIOS_TABLE_ID',
     'AIRTABLE_LABORATORIOS_FIELD_ID',
     'AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID',
+    'AIRTABLE_EQUIPOS_TABLE_ID',
     // Field IDs del inventario (requeridos para campos existentes)
     'AIRTABLE_INVENTARIO_INSUMO_FIELD_ID',
     'AIRTABLE_INVENTARIO_CATEGORIA_FIELD_ID',
@@ -110,7 +111,8 @@ export function logConfigSafely() {
   console.log(`📋 Tabla: ${config.airtable.tableName ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`🏗️ Tabla Baches: ${config.airtable.bachesTableId ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`📦 Tabla Inventario: ${config.airtable.inventarioTableId ? '✅ Configurado' : '❌ Faltante'}`);
-  console.log(`🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`� Tabla Equipos: ${config.airtable.equiposTableId ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`�🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
   // ❌ REMOVIDO: AWS logging - credenciales no deben loggearse por seguridad
   console.log(`🔐 Salt rounds: ${config.security.bcryptSaltRounds}`);
   console.log(`🌍 Entorno: ${config.app.env}`);

@@ -8,10 +8,18 @@ export async function GET() {
     const apiKey = config.airtable.token;
 
     if (!apiKey || !baseId || !tableId) {
-      return NextResponse.json({ error: 'Missing required environment variables' }, { status: 500 });
+      return NextResponse.json({
+        error: 'Missing required environment variables',
+        details: {
+          apiKey: !!apiKey,
+          baseId: !!baseId,
+          tableId: !!tableId
+        }
+      }, { status: 500 });
     }
 
-    const url = `https://api.airtable.com/v0/${baseId}/${tableId}?fields%5B%5D=fldP9WY2ulLUJ8NRZ`;
+    // URL sin field específico para obtener todos los campos
+    const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
 
     const response = await fetch(url, {
       headers: {
@@ -20,20 +28,32 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      throw new Error(`Airtable API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Airtable API error:', response.status, errorText);
+      return NextResponse.json({
+        error: `Airtable API error: ${response.status}`,
+        details: errorText
+      }, { status: 500 });
     }
 
     const data = await response.json();
 
-    // Extract equipment names
+    // Extract equipment names - intentar múltiples campos posibles
     const equipos = data.records.map((record: any) => ({
       id: record.id,
-      nombre: record.fields['Nombre del equipo'] || record.fields.fldP9WY2ulLUJ8NRZ,
+      nombre: record.fields['Nombre del equipo'] ||
+              record.fields['Nombre'] ||
+              record.fields['Equipo'] ||
+              record.fields.fldP9WY2ulLUJ8NRZ ||
+              `Equipo ${record.id.slice(-4)}`, // fallback
     }));
 
     return NextResponse.json({ equipos });
   } catch (error) {
     console.error('Error fetching equipos:', error);
-    return NextResponse.json({ error: 'Failed to fetch equipos' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Failed to fetch equipos',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
