@@ -1,48 +1,12 @@
 "use client";
 
 import { Navbar, Footer } from "@/components";
-import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 
-interface UserData {
-  id: string;
-  Cedula: string;
-  Nombre: string;
-  Apellido: string;
-  Email: string;
-  Telefono: string;
-  Cargo: string;
-}
-
-interface UserSession {
-  user: UserData;
-  loginTime: string;
-}
-
 export default function Home() {
-  const [userSession, setUserSession] = useState<UserSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loginTime, isAuthenticated, loading } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    // Verificar si hay una sesión activa
-    const checkSession = () => {
-      try {
-        const savedSession = localStorage.getItem('userSession');
-        if (savedSession) {
-          const session: UserSession = JSON.parse(savedSession);
-          setUserSession(session);
-        }
-      } catch (error) {
-        console.error('Error loading session:', error);
-        localStorage.removeItem('userSession');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkSession();
-  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('userSession');
@@ -86,17 +50,17 @@ export default function Home() {
               </div>
             ) : (
               <div className="max-w-7xl mx-auto px-6 text-center">
-                {userSession ? (
+                {isAuthenticated && user ? (
                   // Usuario logueado
                   <div className="animate-fade-in-up">
                     <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
-                      ¡Bienvenido de vuelta, {userSession.user.Nombre}!
+                      ¡Bienvenido de vuelta, {user.Nombre}!
                     </h1>
                     <p className="text-lg md:text-xl text-white/90 mb-2">
-                      {userSession.user.Cargo} - Sirius Pirólisis
+                      {user.Cargo} - Sirius Pirólisis
                     </p>
                     <p className="text-sm text-white/70 mb-8">
-                      Última sesión: {new Date(userSession.loginTime).toLocaleString('es-ES')}
+                      Última sesión: {loginTime ? new Date(loginTime).toLocaleString('es-ES') : 'N/A'}
                     </p>
                   </div>
                 ) : (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { config, validateEnvVars, logConfigSafely } from '@/lib/config';
+import { ServerSessionManager } from '@/lib/serverSession';
 
 // Validar variables de entorno al cargar el módulo
 validateEnvVars();
@@ -83,14 +84,22 @@ export async function POST(request: NextRequest) {
       console.log(`🔍 [login] Contraseñas coinciden: ${passwordMatch}`);
       
       if (passwordMatch) {
+        const userInfo = {
+          id: userRecord.id,
+          Cedula: userData.Cedula,
+          Nombre: userData.Nombre,
+          Apellido: userData.Apellido || '',
+          Email: userData.Email || '',
+          Telefono: userData.Telefono || '',
+          Cargo: userData.Cargo,
+        };
+
+        // Crear sesión segura si está habilitado
+        await ServerSessionManager.createSecureSession(userInfo);
+
         const result = {
           success: true,
-          user: {
-            id: userRecord.id,
-            Cedula: userData.Cedula,
-            Nombre: userData.Nombre,
-            Cargo: userData.Cargo,
-          }
+          user: userInfo
         };
         console.log(`✅ [login] Login exitoso:`, JSON.stringify(result, null, 2));
         return NextResponse.json(result);
