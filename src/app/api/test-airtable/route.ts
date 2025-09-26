@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { config } from '@/lib/config';
 
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
+const AIRTABLE_BASE_ID = config.airtable.baseId;
+const AIRTABLE_TOKEN = config.airtable.token;
 
 export async function GET() {
   console.log('🧪 [test-airtable] Iniciando test de conectividad');

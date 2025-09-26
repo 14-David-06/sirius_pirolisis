@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config } from '@/lib/config';
 
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TURNOS_TABLE = process.env.AIRTABLE_TURNOS_TABLE || 'Turno Pirolisis';
+const AIRTABLE_TOKEN = config.airtable.token;
+const AIRTABLE_BASE_ID = config.airtable.baseId;
+const AIRTABLE_TURNOS_TABLE = config.airtable.turnosTableId || 'Turno Pirolisis';
 
 export async function POST(req: NextRequest) {
   console.log('🧹 Solicitud de limpieza de estado de turno...');

@@ -5,15 +5,13 @@ import { useRouter } from 'next/navigation';
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import VoiceToText from '@/components/VoiceToText';
 
 interface MantenimientoFormData {
   tipoMantenimiento: string;
   descripcion: string;
   equipo: string;
   prioridad: 'Baja' | 'Media' | 'Alta' | 'Urgente';
-  fechaProgramada: string;
-  responsable: string;
-  observaciones: string;
 }
 
 export default function Mantenimientos() {
@@ -29,16 +27,14 @@ function MantenimientosContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
+  const [equipos, setEquipos] = useState<any[]>([]);
   const router = useRouter();
 
   const [formData, setFormData] = useState<MantenimientoFormData>({
     tipoMantenimiento: '',
     descripcion: '',
     equipo: '',
-    prioridad: 'Media',
-    fechaProgramada: '',
-    responsable: '',
-    observaciones: ''
+    prioridad: 'Media'
   });
 
   useEffect(() => {
@@ -56,6 +52,25 @@ function MantenimientosContent() {
       router.push('/login');
     }
   }, [router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const fetchEquipos = async () => {
+        try {
+          const response = await fetch('/api/equipos/list');
+          if (response.ok) {
+            const data = await response.json();
+            setEquipos(data.equipos);
+          } else {
+            console.error('Error fetching equipos');
+          }
+        } catch (error) {
+          console.error('Error fetching equipos:', error);
+        }
+      };
+      fetchEquipos();
+    }
+  }, [isAuthenticated]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -82,10 +97,7 @@ function MantenimientosContent() {
         tipoMantenimiento: '',
         descripcion: '',
         equipo: '',
-        prioridad: 'Media',
-        fechaProgramada: '',
-        responsable: '',
-        observaciones: ''
+        prioridad: 'Media'
       });
 
       // Aquí se actualizaría la lista de mantenimientos
@@ -148,6 +160,26 @@ function MantenimientosContent() {
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                      Equipo/Sistema *
+                    </label>
+                    <select
+                      name="equipo"
+                      value={formData.equipo}
+                      onChange={handleInputChange}
+                      required
+                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                    >
+                      <option value="">Seleccionar equipo</option>
+                      {equipos.map((equipo) => (
+                        <option key={equipo.id} value={equipo.nombre}>
+                          {equipo.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
@@ -190,75 +222,28 @@ function MantenimientosContent() {
 
                   <div>
                     <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                      Equipo/Sistema *
-                    </label>
-                    <input
-                      type="text"
-                      name="equipo"
-                      value={formData.equipo}
-                      onChange={handleInputChange}
-                      placeholder="Ej: Horno principal, Sistema de alimentación, etc."
-                      required
-                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 placeholder-gray-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                       Descripción del Mantenimiento *
                     </label>
-                    <textarea
-                      name="descripcion"
-                      value={formData.descripcion}
-                      onChange={handleInputChange}
-                      placeholder="Describe detalladamente el mantenimiento a realizar..."
-                      required
-                      rows={4}
-                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                        Fecha Programada
-                      </label>
-                      <input
-                        type="datetime-local"
-                        name="fechaProgramada"
-                        value={formData.fechaProgramada}
+                    <div className="relative">
+                      <textarea
+                        name="descripcion"
+                        value={formData.descripcion}
                         onChange={handleInputChange}
-                        className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                        placeholder="Describe detalladamente el mantenimiento a realizar..."
+                        required
+                        rows={4}
+                        className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
+                      />
+                      <VoiceToText
+                        onTextExtracted={(text) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            descripcion: prev.descripcion ? prev.descripcion + ' ' + text : text
+                          }));
+                        }}
+                        isLoading={isLoading}
                       />
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                        Responsable
-                      </label>
-                      <input
-                        type="text"
-                        name="responsable"
-                        value={formData.responsable}
-                        onChange={handleInputChange}
-                        placeholder="Nombre del responsable"
-                        className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 placeholder-gray-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                      Observaciones Adicionales
-                    </label>
-                    <textarea
-                      name="observaciones"
-                      value={formData.observaciones}
-                      onChange={handleInputChange}
-                      placeholder="Observaciones adicionales, notas especiales, etc."
-                      rows={3}
-                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
-                    />
                   </div>
 
                   <button
