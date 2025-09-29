@@ -10,9 +10,13 @@ export async function POST(request: NextRequest) {
       prioridad,
       realizaRegistro,
       turnoId,
-      equipoId,
+      equipoId, // Para compatibilidad hacia atrás
+      equiposIds = [], // Nuevo campo para múltiples equipos
       insumosIds = []
     } = body;
+
+    // Si se envía equiposIds, usarlo; si no, usar equipoId para compatibilidad
+    const equiposIdsFinal = equiposIds.length > 0 ? equiposIds : (equipoId ? [equipoId] : []);
 
     const baseId = config.airtable.baseId;
     const tableId = config.airtable.mantenimientosTableId;
@@ -26,8 +30,8 @@ export async function POST(request: NextRequest) {
 
     const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
 
-    // Preparar los campos según la documentación
-    const fields: any = {
+    // Preparar los campos base
+    const baseFields: any = {
       'Tipo Mantenimiento': tipoMantenimiento,
       'Descripción': descripcion,
       'Prioridad': prioridad,
@@ -36,15 +40,31 @@ export async function POST(request: NextRequest) {
 
     // Agregar links si existen
     if (turnoId) {
-      fields['Turno Pirolisis'] = [turnoId];
-    }
-
-    if (equipoId) {
-      fields['Equipo Pirolisis'] = [equipoId];
+      baseFields['Turno Pirolisis'] = [turnoId];
     }
 
     if (insumosIds.length > 0) {
-      fields['Insumos Utilizados'] = insumosIds;
+      baseFields['Insumos Utilizados'] = insumosIds;
+    }
+
+    // Crear registros para cada equipo
+    let records;
+    if (equiposIdsFinal.length === 1) {
+      // Un solo registro para un equipo
+      records = [{
+        fields: {
+          ...baseFields,
+          'Equipo Pirolisis': equiposIdsFinal
+        }
+      }];
+    } else {
+      // Un solo registro para múltiples equipos (Mantenimiento a todos los equipos)
+      records = [{
+        fields: {
+          ...baseFields,
+          'Equipo Pirolisis': equiposIdsFinal
+        }
+      }];
     }
 
     const response = await fetch(url, {
@@ -54,9 +74,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        records: [{
-          fields: fields
-        }]
+        records: records
       }),
     });
 

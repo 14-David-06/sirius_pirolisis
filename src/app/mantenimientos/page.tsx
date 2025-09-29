@@ -10,6 +10,7 @@ import { useInventario } from '@/lib/useInventario';
 
 interface MantenimientoFormData {
   tipoMantenimiento: string;
+  tipoMantenimientoOtro: string;
   descripcion: string;
   equipo: string;
   prioridad: 'Baja' | 'Media' | 'Alta' | 'Urgente';
@@ -43,6 +44,7 @@ function MantenimientosContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  const [showTodosEquiposWarning, setShowTodosEquiposWarning] = useState(false);
   const [mantenimientos] = useState<any[]>([]);
   const [equipos, setEquipos] = useState<any[]>([]);
   const router = useRouter();
@@ -50,8 +52,18 @@ function MantenimientosContent() {
 
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Estados para campos omitidos individualmente
+  const [omitirAnoInstalacion, setOmitirAnoInstalacion] = useState(false);
+  const [omitirFabricanteModelo, setOmitirFabricanteModelo] = useState(false);
+  const [omitirCapacidadOperacional, setOmitirCapacidadOperacional] = useState(false);
+  const [omitirTipoInsumo, setOmitirTipoInsumo] = useState(false);
+  const [omitirCantidadPromedio, setOmitirCantidadPromedio] = useState(false);
+  const [omitirFuenteInsumos, setOmitirFuenteInsumos] = useState(false);
+  const [omitirMedioTransporte, setOmitirMedioTransporte] = useState(false);
+
   const [formData, setFormData] = useState<MantenimientoFormData>({
     tipoMantenimiento: '',
+    tipoMantenimientoOtro: '',
     descripcion: '',
     equipo: '',
     prioridad: 'Media',
@@ -124,8 +136,13 @@ function MantenimientosContent() {
     if (name === 'equipo') {
       if (value === 'Otro equipo') {
         setShowOtroEquipoForm(true);
+        setShowTodosEquiposWarning(false);
+      } else if (value === 'Mantenimiento a todos los equipos') {
+        setShowOtroEquipoForm(false);
+        setShowTodosEquiposWarning(true);
       } else {
         setShowOtroEquipoForm(false);
+        setShowTodosEquiposWarning(false);
       }
     }
   };
@@ -140,42 +157,14 @@ function MantenimientosContent() {
 
   const handleCategoriaTecnicaNA = (checked: boolean) => {
     setCategoriaTecnicaNA(checked);
-    if (checked) {
-      setOtroEquipoFormData(prev => ({
-        ...prev,
-        anoInstalacion: 'N/A',
-        fabricanteModelo: 'N/A',
-        capacidadOperacional: 'N/A'
-      }));
-    } else {
-      setOtroEquipoFormData(prev => ({
-        ...prev,
-        anoInstalacion: '',
-        fabricanteModelo: '',
-        capacidadOperacional: ''
-      }));
-    }
+    // Nota: Ya no se automatiza el 'N/A' para campos individuales
+    // Los campos individuales tienen sus propios checkboxes de omitir
   };
 
   const handleCategoriaInsumosNA = (checked: boolean) => {
     setCategoriaInsumosNA(checked);
-    if (checked) {
-      setOtroEquipoFormData(prev => ({
-        ...prev,
-        tipoInsumoRecibido: 'N/A',
-        cantidadPromedio: 'N/A',
-        fuenteInsumos: 'N/A',
-        medioTransporteInsumo: 'N/A'
-      }));
-    } else {
-      setOtroEquipoFormData(prev => ({
-        ...prev,
-        tipoInsumoRecibido: '',
-        cantidadPromedio: '',
-        fuenteInsumos: '',
-        medioTransporteInsumo: ''
-      }));
-    }
+    // Nota: Ya no se automatiza el 'N/A' para campos individuales
+    // Los campos individuales tienen sus propios checkboxes de omitir
   };
 
   const handleCategoriaOperativaNA = (checked: boolean) => {
@@ -193,6 +182,63 @@ function MantenimientosContent() {
         notasAdicionales: ''
       }));
     }
+  };
+
+  // Funciones para campos individuales
+  const handleOmitirAnoInstalacion = (checked: boolean) => {
+    setOmitirAnoInstalacion(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      anoInstalacion: checked ? 'N/A' : ''
+    }));
+  };
+
+  const handleOmitirFabricanteModelo = (checked: boolean) => {
+    setOmitirFabricanteModelo(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      fabricanteModelo: checked ? 'N/A' : ''
+    }));
+  };
+
+  const handleOmitirCapacidadOperacional = (checked: boolean) => {
+    setOmitirCapacidadOperacional(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      capacidadOperacional: checked ? 'N/A' : ''
+    }));
+  };
+
+  const handleOmitirTipoInsumo = (checked: boolean) => {
+    setOmitirTipoInsumo(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      tipoInsumoRecibido: checked ? 'N/A' : ''
+    }));
+  };
+
+  const handleOmitirCantidadPromedio = (checked: boolean) => {
+    setOmitirCantidadPromedio(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      cantidadPromedio: checked ? 'N/A' : ''
+    }));
+  };
+
+  const handleOmitirFuenteInsumos = (checked: boolean) => {
+    setOmitirFuenteInsumos(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      fuenteInsumos: checked ? 'N/A' : ''
+    }));
+  };
+
+  const handleOmitirMedioTransporte = (checked: boolean) => {
+    setOmitirMedioTransporte(checked);
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      medioTransporteInsumo: checked ? 'N/A' : ''
+    }));
   };
 
   const handleInsumoCantidadChange = (insumoId: string, cantidad: number) => {
@@ -222,13 +268,29 @@ function MantenimientosContent() {
         return;
       }
 
-      let equipoId = null;
+      // Validar tipo de mantenimiento personalizado
+      if (formData.tipoMantenimiento === 'Otro' && !formData.tipoMantenimientoOtro.trim()) {
+        setMensaje('❌ Debe especificar el tipo de mantenimiento personalizado');
+        setIsLoading(false);
+        return;
+      }
 
+      let equiposIds: string[] = [];
+
+      // Si es mantenimiento a todos los equipos
+      if (formData.equipo === 'Mantenimiento a todos los equipos') {
+        if (equipos.length === 0) {
+          setMensaje('❌ No hay equipos registrados en el sistema');
+          setIsLoading(false);
+          return;
+        }
+        equiposIds = equipos.map(equipo => equipo.id);
+      }
       // Si es un equipo existente, buscar su ID
-      if (formData.equipo !== 'Mantenimiento a todos los equipos' && formData.equipo !== 'Otro equipo') {
+      else if (formData.equipo !== 'Otro equipo') {
         const equipoSeleccionado = equipos.find(equipo => equipo.nombre === formData.equipo);
         if (equipoSeleccionado) {
-          equipoId = equipoSeleccionado.id;
+          equiposIds = [equipoSeleccionado.id];
         } else {
           setMensaje('❌ Error: Equipo seleccionado no encontrado');
           setIsLoading(false);
@@ -265,7 +327,7 @@ function MantenimientosContent() {
           }
 
           const createData = await createResponse.json();
-          equipoId = createData.records[0].id; // Asumiendo que devuelve el ID del nuevo registro
+          equiposIds = [createData.records[0].id]; // Asumiendo que devuelve el ID del nuevo registro
           setMensaje('✅ Equipo creado exitosamente. Registrando mantenimiento...');
         } catch (error) {
           console.error('Error creando equipo:', error);
@@ -292,12 +354,13 @@ function MantenimientosContent() {
 
       // Aquí irá la lógica del backend cuando esté listo
       console.log('Datos del mantenimiento:', {
-        tipoMantenimiento: formData.tipoMantenimiento,
+        tipoMantenimiento: formData.tipoMantenimiento === 'Otro' ? formData.tipoMantenimientoOtro : formData.tipoMantenimiento,
         descripcion: formData.descripcion,
         prioridad: formData.prioridad,
         realizaRegistro: userName,
         turnoId: turnoId,
-        equipoId: equipoId,
+        equiposIds: equiposIds,
+        numeroEquipos: equiposIds.length,
         insumosIds: insumosIds
       });
 
@@ -309,12 +372,12 @@ function MantenimientosContent() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            tipoMantenimiento: formData.tipoMantenimiento,
+            tipoMantenimiento: formData.tipoMantenimiento === 'Otro' ? formData.tipoMantenimientoOtro : formData.tipoMantenimiento,
             descripcion: formData.descripcion,
             prioridad: formData.prioridad,
             realizaRegistro: userName,
             turnoId: turnoId,
-            equipoId: equipoId, // Ahora es el ID real o null
+            equiposIds: equiposIds, // Array de IDs de equipos
             insumosIds: insumosIds
           }),
         });
@@ -328,7 +391,13 @@ function MantenimientosContent() {
 
         const mantenimientoData = await mantenimientoResponse.json();
         console.log('Mantenimiento creado:', mantenimientoData);
-        setMensaje('✅ Mantenimiento registrado exitosamente');
+
+        const registrosCreados = mantenimientoData.records ? mantenimientoData.records.length : 1;
+        const mensajeExito = registrosCreados === 1
+          ? '✅ Mantenimiento registrado exitosamente'
+          : `✅ Mantenimiento registrado exitosamente para ${equiposIds.length} equipos`;
+
+        setMensaje(mensajeExito);
 
       } catch (error) {
         console.error('Error creando mantenimiento:', error);
@@ -375,6 +444,7 @@ function MantenimientosContent() {
       // Limpiar formulario
       setFormData({
         tipoMantenimiento: '',
+        tipoMantenimientoOtro: '',
         descripcion: '',
         equipo: '',
         prioridad: 'Media',
@@ -397,6 +467,15 @@ function MantenimientosContent() {
       });
 
       setShowOtroEquipoForm(false);
+
+      // Resetear estados de omitir campos individuales
+      setOmitirAnoInstalacion(false);
+      setOmitirFabricanteModelo(false);
+      setOmitirCapacidadOperacional(false);
+      setOmitirTipoInsumo(false);
+      setOmitirCantidadPromedio(false);
+      setOmitirFuenteInsumos(false);
+      setOmitirMedioTransporte(false);
 
       // Aquí se actualizaría la lista de mantenimientos
       // setMantenimientos(prev => [...prev, nuevoMantenimiento]);
@@ -472,6 +551,21 @@ function MantenimientosContent() {
                         </option>
                       ))}
                     </select>
+
+                    {showTodosEquiposWarning && (
+                      <div className="mt-3 p-3 bg-yellow-500/20 border border-yellow-400/50 rounded-lg backdrop-blur-sm">
+                        <div className="flex items-start space-x-2">
+                          <span className="text-yellow-300 text-lg">⚠️</span>
+                          <div>
+                            <p className="text-yellow-100 font-medium text-sm">Importante:</p>
+                            <p className="text-yellow-100 text-sm">
+                              Al seleccionar "Mantenimiento a todos los equipos", se creará un solo registro de mantenimiento
+                              que estará relacionado con todos los equipos de la planta de pirolisis.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -494,6 +588,23 @@ function MantenimientosContent() {
                         <option value="Otro">Otro</option>
                       </select>
                     </div>
+
+                    {formData.tipoMantenimiento === 'Otro' && (
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                          Especificar Tipo de Mantenimiento *
+                        </label>
+                        <input
+                          type="text"
+                          name="tipoMantenimientoOtro"
+                          value={formData.tipoMantenimientoOtro}
+                          onChange={handleInputChange}
+                          placeholder="Ej: Mantenimiento Eléctrico, Mecánico, etc."
+                          required
+                          className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                        />
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
@@ -699,6 +810,15 @@ function MantenimientosContent() {
                                 rows={3}
                                 className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
                               />
+                              <VoiceToText
+                                onTextExtracted={(text) => {
+                                  setOtroEquipoFormData(prev => ({
+                                    ...prev,
+                                    funcionPrincipal: prev.funcionPrincipal ? prev.funcionPrincipal + ' ' + text : text
+                                  }));
+                                }}
+                                isLoading={isLoading}
+                              />
                             </div>
                           </div>
                         </div>
@@ -715,14 +835,25 @@ function MantenimientosContent() {
                               onChange={(e) => handleCategoriaTecnicaNA(e.target.checked)}
                               className="w-4 h-4 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-2"
                             />
-                            <span className="text-sm font-medium">Omitir</span>
+                            <span className="text-sm font-medium">Omitir sección</span>
                           </label>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Año de Instalación
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Año de Instalación
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirAnoInstalacion}
+                                  onChange={(e) => handleOmitirAnoInstalacion(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="number"
                               name="anoInstalacion"
@@ -731,38 +862,60 @@ function MantenimientosContent() {
                               placeholder="Ej: 2023"
                               min="1900"
                               max={new Date().getFullYear()}
-                              disabled={categoriaTecnicaNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaTecnicaNA || omitirAnoInstalacion}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaTecnicaNA || omitirAnoInstalacion) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Fabricante/Modelo
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Fabricante/Modelo
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirFabricanteModelo}
+                                  onChange={(e) => handleOmitirFabricanteModelo(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="text"
                               name="fabricanteModelo"
                               value={otroEquipoFormData.fabricanteModelo}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: Sirius - Modelo X1"
-                              disabled={categoriaTecnicaNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaTecnicaNA || omitirFabricanteModelo}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaTecnicaNA || omitirFabricanteModelo) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Capacidad Operacional
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Capacidad Operacional
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirCapacidadOperacional}
+                                  onChange={(e) => handleOmitirCapacidadOperacional(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="text"
                               name="capacidadOperacional"
                               value={otroEquipoFormData.capacidadOperacional}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: 500 kg/h"
-                              disabled={categoriaTecnicaNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaTecnicaNA || omitirCapacidadOperacional}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaTecnicaNA || omitirCapacidadOperacional) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
                         </div>
@@ -779,67 +932,111 @@ function MantenimientosContent() {
                               onChange={(e) => handleCategoriaInsumosNA(e.target.checked)}
                               className="w-4 h-4 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-2"
                             />
-                            <span className="text-sm font-medium">Omitir</span>
+                            <span className="text-sm font-medium">Omitir sección</span>
                           </label>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Tipo de Insumo Recibido
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Tipo de Insumo Recibido
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirTipoInsumo}
+                                  onChange={(e) => handleOmitirTipoInsumo(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="text"
                               name="tipoInsumoRecibido"
                               value={otroEquipoFormData.tipoInsumoRecibido}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: Biomasa seca"
-                              disabled={categoriaInsumosNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaInsumosNA || omitirTipoInsumo}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaInsumosNA || omitirTipoInsumo) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Cantidad Promedio (día/mes)
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Cantidad Promedio (día/mes)
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirCantidadPromedio}
+                                  onChange={(e) => handleOmitirCantidadPromedio(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="text"
                               name="cantidadPromedio"
                               value={otroEquipoFormData.cantidadPromedio}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: 4 toneladas diarias"
-                              disabled={categoriaInsumosNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaInsumosNA || omitirCantidadPromedio}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaInsumosNA || omitirCantidadPromedio) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Fuente de Insumos
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Fuente de Insumos
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirFuenteInsumos}
+                                  onChange={(e) => handleOmitirFuenteInsumos(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="text"
                               name="fuenteInsumos"
                               value={otroEquipoFormData.fuenteInsumos}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: Tolva de recepción"
-                              disabled={categoriaInsumosNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaInsumosNA || omitirFuenteInsumos}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaInsumosNA || omitirFuenteInsumos) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
                           <div>
-                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                              Medio de Transporte del Insumo
-                            </label>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-sm font-semibold text-white drop-shadow">
+                                Medio de Transporte del Insumo
+                              </label>
+                              <label className="flex items-center space-x-2 text-white cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={omitirMedioTransporte}
+                                  onChange={(e) => handleOmitirMedioTransporte(e.target.checked)}
+                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
+                                />
+                                <span className="text-xs">Omitir</span>
+                              </label>
+                            </div>
                             <input
                               type="text"
                               name="medioTransporteInsumo"
                               value={otroEquipoFormData.medioTransporteInsumo}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: Por gravedad"
-                              disabled={categoriaInsumosNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaInsumosNA || omitirMedioTransporte}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaInsumosNA || omitirMedioTransporte) ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
                         </div>
@@ -847,17 +1044,8 @@ function MantenimientosContent() {
 
                       {/* Información Operativa */}
                       <div className="mb-6">
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="mb-3">
                           <h4 className="text-lg font-semibold text-white drop-shadow">Información Operativa</h4>
-                          <label className="flex items-center space-x-2 text-white cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={categoriaOperativaNA}
-                              onChange={(e) => handleCategoriaOperativaNA(e.target.checked)}
-                              className="w-4 h-4 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-2"
-                            />
-                            <span className="text-sm font-medium">Omitir</span>
-                          </label>
                         </div>
                         <div className="grid grid-cols-1 gap-4">
                           <div>
@@ -871,8 +1059,16 @@ function MantenimientosContent() {
                                 onChange={handleOtroEquipoInputChange}
                                 placeholder="Notas sobre funcionamiento, riesgos, recomendaciones..."
                                 rows={4}
-                                disabled={categoriaOperativaNA}
-                                className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500 ${categoriaOperativaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
+                              />
+                              <VoiceToText
+                                onTextExtracted={(text) => {
+                                  setOtroEquipoFormData(prev => ({
+                                    ...prev,
+                                    observacionesOperativas: prev.observacionesOperativas ? prev.observacionesOperativas + ' ' + text : text
+                                  }));
+                                }}
+                                isLoading={isLoading}
                               />
                             </div>
                           </div>
@@ -881,15 +1077,25 @@ function MantenimientosContent() {
                             <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                               Notas Adicionales
                             </label>
-                            <textarea
-                              name="notasAdicionales"
-                              value={otroEquipoFormData.notasAdicionales}
-                              onChange={handleOtroEquipoInputChange}
-                              placeholder="Cualquier información adicional relevante..."
-                              rows={3}
-                              disabled={categoriaOperativaNA}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500 ${categoriaOperativaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            />
+                            <div className="relative">
+                              <textarea
+                                name="notasAdicionales"
+                                value={otroEquipoFormData.notasAdicionales}
+                                onChange={handleOtroEquipoInputChange}
+                                placeholder="Cualquier información adicional relevante..."
+                                rows={3}
+                                className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
+                              />
+                              <VoiceToText
+                                onTextExtracted={(text) => {
+                                  setOtroEquipoFormData(prev => ({
+                                    ...prev,
+                                    notasAdicionales: prev.notasAdicionales ? prev.notasAdicionales + ' ' + text : text
+                                  }));
+                                }}
+                                isLoading={isLoading}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
