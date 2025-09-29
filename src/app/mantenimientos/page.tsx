@@ -429,13 +429,10 @@ function MantenimientosContent() {
 
       <div className="relative z-10">
         <Navbar />
-        <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-12">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 lg:p-8 w-full border border-white/30">
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-2 text-center drop-shadow-lg flex items-center justify-center flex-wrap">
-              <span className="text-4xl sm:text-5xl mr-2 sm:mr-4">🔧</span>
-              <span className="text-center">Sistema de Mantenimientos</span>
-            </h1>
-            <p className="text-center text-white/90 mb-6 lg:mb-8 drop-shadow text-base sm:text-lg px-4">
+        <main className="container mx-auto px-6 py-8">
+          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-4xl mx-auto border border-white/30">
+            <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">Sistema de Mantenimientos</h1>
+            <p className="text-center text-white/90 mb-6 drop-shadow">
               Registra y gestiona todos los mantenimientos del sistema de pirolisis
             </p>
 
@@ -451,11 +448,8 @@ function MantenimientosContent() {
 
             <div className="w-full">
               {/* Formulario de registro */}
-              <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-6 lg:p-8 rounded-lg border border-white/20">
-                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-4 sm:mb-6 flex items-center drop-shadow flex-wrap">
-                  <span className="text-2xl sm:text-3xl mr-2 sm:mr-3">📝</span>
-                  <span className="text-center sm:text-left">Registrar Nuevo Mantenimiento</span>
-                </h2>
+              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
+                <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Registrar Nuevo Mantenimiento</h2>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
@@ -550,7 +544,7 @@ function MantenimientosContent() {
                     <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                       Insumos Utilizados (Opcional)
                     </label>
-                    <div className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20">
+                    <div className="bg-white/20 backdrop-blur-md p-4 rounded-lg border border-white/30">
                       {inventarioLoading ? (
                         <div className="text-center py-4">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mx-auto"></div>
@@ -568,7 +562,7 @@ function MantenimientosContent() {
                             const presentacion = record?.fields['Presentacion Insumo'] || 'Unidades';
 
                             return (
-                              <div key={insumo.id} className="flex items-center space-x-3 bg-white/10 p-3 rounded-lg">
+                              <div key={insumo.id} className="flex items-center space-x-3 bg-white/20 p-3 rounded-lg">
                                 <div className="flex-1">
                                   <p className="text-white font-medium text-sm">{insumoNombre}</p>
                                   <p className="text-white/70 text-xs">Stock disponible: {stock} {presentacion}</p>
@@ -636,7 +630,7 @@ function MantenimientosContent() {
                                         insumosUtilizados: [...prev.insumosUtilizados, { id: record.id, cantidad: 1 }]
                                       }));
                                     }}
-                                    className="w-full text-left px-3 py-2 bg-white/10 hover:bg-white/20 rounded text-sm text-white transition-colors mb-1"
+                                    className="w-full text-left px-3 py-2 bg-white/20 hover:bg-white/30 rounded text-sm text-white transition-colors mb-1"
                                   >
                                     <div className="font-medium">{record.fields.Insumo || 'Sin nombre'}</div>
                                     <div className="text-xs text-white/70">Stock: {record.fields['Total Cantidad Stock'] || 0} {record.fields['Presentacion Insumo'] || 'unidades'}</div>
@@ -656,18 +650,12 @@ function MantenimientosContent() {
                   </div>
 
                   {showOtroEquipoForm && (
-                    <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-6 lg:p-8 rounded-xl border border-white/20 mt-6">
-                      <h3 className="text-lg sm:text-xl lg:text-2xl font-bold text-white mb-4 flex items-center drop-shadow flex-wrap">
-                        <span className="text-xl sm:text-2xl mr-2 sm:mr-3">⚙️</span>
-                        <span className="text-center sm:text-left">Registrar Nuevo Equipo</span>
-                      </h3>
+                    <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mt-6">
+                      <h3 className="text-lg font-semibold text-white mb-4 drop-shadow-lg">Registrar Nuevo Equipo</h3>
 
                       {/* Información Básica */}
                       <div className="mb-6">
-                        <h4 className="text-lg font-semibold text-white mb-3 flex items-center">
-                          <span className="text-lg mr-2">📋</span>
-                          Información Básica
-                        </h4>
+                        <h4 className="text-lg font-semibold text-white mb-3 drop-shadow">Información Básica</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
@@ -719,10 +707,7 @@ function MantenimientosContent() {
                       {/* Información Técnica */}
                       <div className="mb-6">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-lg font-semibold text-white flex items-center">
-                            <span className="text-lg mr-2">🔧</span>
-                            Información Técnica
-                          </h4>
+                          <h4 className="text-lg font-semibold text-white drop-shadow">Información Técnica</h4>
                           <label className="flex items-center space-x-2 text-white cursor-pointer">
                             <input
                               type="checkbox"
@@ -786,10 +771,7 @@ function MantenimientosContent() {
                       {/* Información de Insumos */}
                       <div className="mb-6">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-lg font-semibold text-white flex items-center">
-                            <span className="text-lg mr-2">📦</span>
-                            Información de Insumos
-                          </h4>
+                          <h4 className="text-lg font-semibold text-white drop-shadow">Información de Insumos</h4>
                           <label className="flex items-center space-x-2 text-white cursor-pointer">
                             <input
                               type="checkbox"
@@ -866,10 +848,7 @@ function MantenimientosContent() {
                       {/* Información Operativa */}
                       <div className="mb-6">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-lg font-semibold text-white flex items-center">
-                            <span className="text-lg mr-2">⚡</span>
-                            Información Operativa
-                          </h4>
+                          <h4 className="text-lg font-semibold text-white drop-shadow">Información Operativa</h4>
                           <label className="flex items-center space-x-2 text-white cursor-pointer">
                             <input
                               type="checkbox"
