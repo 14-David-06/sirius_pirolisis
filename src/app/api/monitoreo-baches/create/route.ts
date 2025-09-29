@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear registros en Airtable
-    const tableName = 'Monitoreo%20Baches'; // Usando el nombre de la tabla
+    const tableName = config.airtable.monitoreoBachesTableId; // ID de la tabla Monitoreo Baches desde configuración
     const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${tableName}`;
     console.log(`🌐 [monitoreo-baches] URL de Airtable: ${airtableUrl}`);
 

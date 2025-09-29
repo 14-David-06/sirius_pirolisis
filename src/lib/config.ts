@@ -17,6 +17,7 @@ export const config = {
     equiposTableId: process.env.AIRTABLE_EQUIPOS_TABLE_ID,
     turnosTableId: process.env.AIRTABLE_TURNOS_TABLE_ID,
     mantenimientosTableId: process.env.AIRTABLE_MANTENIMIENTOS_TABLE_ID,
+    monitoreoBachesTableId: process.env.AIRTABLE_MONITOREO_BACHES_TABLE_ID,
     laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
     laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
     // ✅ BUENA PRÁCTICA: Field IDs obtenidos de variables de entorno

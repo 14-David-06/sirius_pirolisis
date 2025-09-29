@@ -15,7 +15,7 @@ export default function SistemaBaches() {
 }
 
 function SistemaBachesContent() {
-  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getNumericValue, getDateValue, getTotalBiochar, getBiocharVendido } = useBaches();
+  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, refetch } = useBaches();
 
   // State for search and filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -202,6 +202,13 @@ function SistemaBachesContent() {
     setIsSubmittingMonitoreo(true);
 
     try {
+      // Validar campos requeridos del monitoreo
+      if (!monitoreoForm.humedadMC.trim() || !monitoreoForm.masaSecaDM.trim()) {
+        alert('❌ Los campos "% Humedad (MC)" y "Masa Seca (DM kg)" son obligatorios');
+        setIsSubmittingMonitoreo(false);
+        return;
+      }
+
       let laboratorioId = monitoreoForm.laboratorio;
 
       // Si se seleccionó "nuevo-laboratorio", crear el laboratorio primero
@@ -343,7 +350,7 @@ function SistemaBachesContent() {
 
       alert('✅ Bache movido a bodega exitosamente');
       // Recargar los datos
-      window.location.reload();
+      refetch();
     } catch (error) {
       console.error('❌ Error updating bache:', error);
       alert(`❌ Error al mover el bache a bodega: ${error instanceof Error ? error.message : 'Error desconocido'}`);
@@ -390,8 +397,14 @@ function SistemaBachesContent() {
 
   const latestBache = getLatestBache();
   const totalBaches = data?.records?.length || 0;
-  const bachesActivos = data?.records?.filter(b => getBacheStatus(b) !== 'Completado').length || 0;
-  const bachesCompletados = totalBaches - bachesActivos;
+  const bachesActivos = data?.records?.filter(b => {
+    const status = getBacheStatus(b);
+    return status === 'Bache en proceso';
+  }).length || 0;
+  const bachesCompletados = data?.records?.filter(b => {
+    const status = getBacheStatus(b);
+    return status === 'Bache Completo Planta' || status === 'Bache Completo Bodega' || status === 'Bache Agotado';
+  }).length || 0;
   const totalBiochar = data?.records?.reduce((sum, b) => sum + getTotalBiochar(b), 0) || 0;
 
   return (
@@ -447,9 +460,9 @@ function SistemaBachesContent() {
                   <div className="flex justify-between">
                     <span className="drop-shadow">Estado:</span>
                     <span className={`font-semibold px-2 py-1 rounded-full text-xs ${
-                      getBacheStatus(latestBache) === 'Completado'
+                      getBacheStatus(latestBache) === 'Bache Completo Planta' || getBacheStatus(latestBache) === 'Bache Completo Bodega'
                         ? 'bg-green-500/20 text-green-200'
-                        : getBacheStatus(latestBache) === 'En Progreso'
+                        : getBacheStatus(latestBache) === 'Bache en proceso'
                         ? 'bg-blue-500/20 text-blue-200'
                         : 'bg-yellow-500/20 text-yellow-200'
                     }`}>
@@ -471,15 +484,9 @@ function SistemaBachesContent() {
                   <div className="text-center text-sm text-white/70 mb-2 drop-shadow">
                     {calculateProgress(latestBache).progressPercentage.toFixed(1)}% completado
                   </div>
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div className="text-center">
-                      <div className="text-sm drop-shadow">Total</div>
-                      <div className="font-bold">{getTotalBiochar(latestBache)} kg</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-sm drop-shadow">Vendido</div>
-                      <div className="font-bold">{getBiocharVendido(latestBache)} kg</div>
-                    </div>
+                  <div className="text-center mt-4">
+                    <div className="text-sm drop-shadow">Total Biochar</div>
+                    <div className="font-bold">{getTotalBiochar(latestBache)} kg</div>
                   </div>
                   <div className="text-xs text-white/70 mt-2 drop-shadow">
                     Creado: {getDateValue(latestBache) ?

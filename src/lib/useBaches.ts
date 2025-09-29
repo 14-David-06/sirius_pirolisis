@@ -5,15 +5,20 @@ import { useState, useEffect } from 'react';
 interface BacheRecord {
   id: string;
   fields: {
-    // Campos reales de Airtable
+    // Campos reales de Airtable según documentación
     'ID'?: string;
     'Auto Number'?: number;
     'Fecha Creacion'?: string;
     'Recuento Lonas'?: number;
-    'Total Biochar Bache (KG)'?: number;
+    'Total Biochar Bache (WM)(KG)'?: number;
+    'Cantidad Biochar Vendido'?: number;
+    'Cantidad Biochar Blend'?: number;
+    'Total Biochar Humedo Bache (KG)'?: number;
     'Codigo Bache'?: string;
     'Estado Bache'?: string;
-    'Balances Masa'?: string;
+    'Monitoreado'?: string;
+    'Balances Masa'?: string[];
+    'Monitoreo Baches'?: string[];
     // Campos alternativos por si cambian
     'ID Bache'?: string;
     'Estado'?: string;
@@ -96,12 +101,14 @@ export function useBaches() {
 
   // Función para determinar el estado del bache
   const getBacheStatus = (bache: BacheRecord) => {
+    // Primero verificar si hay un estado explícito en Airtable
     const estado = bache.fields['Estado Bache'] || bache.fields['Estado'];
     if (estado) return estado;
 
+    // Si no hay estado, determinar basado en progreso
     const progress = calculateProgress(bache);
-    if (progress.isComplete) return 'Completado';
-    if (progress.lonasUsadas > 0) return 'En Progreso';
+    if (progress.isComplete) return 'Bache Completo Planta';
+    if (progress.lonasUsadas > 0) return 'Bache en proceso';
     return 'Bache en proceso';
   };
 
@@ -123,12 +130,40 @@ export function useBaches() {
 
   // Función para obtener el total de biochar
   const getTotalBiochar = (bache: BacheRecord) => {
-    return getNumericValue(bache, ['Total Biochar Bache (KG)', 'Total KG', 'Total']);
+    const value = getNumericValue(bache, [
+      'Total Biochar Bache (WM)(KG)', // Campo calculado principal: 25 * Recuento Lonas
+      'Total Biochar Humedo Bache (KG)', // Campo alternativo
+      'Total KG',
+      'Total',
+      'Biochar Total',
+      'Biochar Producido',
+      'KG Totales',
+      'Total Biochar'
+    ]);
+
+    // Debug: mostrar qué campos están disponibles si no encuentra valor
+    if (value === 0) {
+      console.log('Campos disponibles para biochar total en bache', getBacheId(bache), ':', Object.keys(bache.fields));
+      console.log('Valores de campos relacionados:', {
+        'Total Biochar Bache (WM)(KG)': bache.fields['Total Biochar Bache (WM)(KG)'],
+        'Total Biochar Humedo Bache (KG)': bache.fields['Total Biochar Humedo Bache (KG)'],
+        'Cantidad Biochar Vendido': bache.fields['Cantidad Biochar Vendido']
+      });
+    }
+
+    return value;
   };
 
-  // Función para obtener el biochar vendido (por ahora 0 ya que no hay campo específico)
+  // Función para obtener el biochar vendido
   const getBiocharVendido = (bache: BacheRecord) => {
-    return getNumericValue(bache, ['Vendido KG', 'Vendido']);
+    return getNumericValue(bache, [
+      'Cantidad Biochar Vendido', // Campo correcto según documentación
+      'Vendido KG',
+      'Vendido',
+      'Biochar Vendido',
+      'KG Vendidos',
+      'Total Vendido'
+    ]);
   };
 
   // Función para obtener fecha con fallbacks
@@ -151,8 +186,29 @@ export function useBaches() {
     refetch: () => {
       setLoading(true);
       setError(null);
-      // Re-fetch logic would go here
-      window.location.reload(); // Simple refresh for now
+      // Re-fetch logic
+      const fetchBaches = async () => {
+        try {
+          const response = await fetch('/api/baches/list');
+          const result = await response.json();
+
+          if (!response.ok) {
+            throw new Error(result.error || 'Error al obtener datos de baches');
+          }
+
+          if (!result.records || result.records.length === 0) {
+            setData({ records: [] });
+          } else {
+            setData(result);
+          }
+        } catch (err: any) {
+          setError(err.message || 'Error desconocido');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchBaches();
     }
   };
 }
