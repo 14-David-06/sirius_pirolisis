@@ -16,6 +16,21 @@ interface MantenimientoFormData {
   insumosUtilizados: { id: string; cantidad: number }[];
 }
 
+interface OtroEquipoFormData {
+  nombre: string;
+  ubicacion: string;
+  funcionPrincipal: string;
+  anoInstalacion: number | '' | 'N/A';
+  fabricanteModelo: string;
+  capacidadOperacional: string;
+  tipoInsumoRecibido: string;
+  cantidadPromedio: string;
+  fuenteInsumos: string;
+  medioTransporteInsumo: string;
+  observacionesOperativas: string;
+  notasAdicionales: string;
+}
+
 export default function Mantenimientos() {
   return (
     <TurnoProtection requiresTurno={true}>
@@ -41,6 +56,27 @@ function MantenimientosContent() {
     equipo: '',
     prioridad: 'Media',
     insumosUtilizados: []
+  });
+
+  const [showOtroEquipoForm, setShowOtroEquipoForm] = useState(false);
+
+  const [categoriaTecnicaNA, setCategoriaTecnicaNA] = useState(false);
+  const [categoriaInsumosNA, setCategoriaInsumosNA] = useState(false);
+  const [categoriaOperativaNA, setCategoriaOperativaNA] = useState(false);
+
+  const [otroEquipoFormData, setOtroEquipoFormData] = useState<OtroEquipoFormData>({
+    nombre: '',
+    ubicacion: '',
+    funcionPrincipal: '',
+    anoInstalacion: '',
+    fabricanteModelo: '',
+    capacidadOperacional: '',
+    tipoInsumoRecibido: '',
+    cantidadPromedio: '',
+    fuenteInsumos: '',
+    medioTransporteInsumo: '',
+    observacionesOperativas: '',
+    notasAdicionales: ''
   });
 
   useEffect(() => {
@@ -84,6 +120,79 @@ function MantenimientosContent() {
       ...prev,
       [name]: value
     }));
+
+    if (name === 'equipo') {
+      if (value === 'Otro equipo') {
+        setShowOtroEquipoForm(true);
+      } else {
+        setShowOtroEquipoForm(false);
+      }
+    }
+  };
+
+  const handleOtroEquipoInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setOtroEquipoFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleCategoriaTecnicaNA = (checked: boolean) => {
+    setCategoriaTecnicaNA(checked);
+    if (checked) {
+      setOtroEquipoFormData(prev => ({
+        ...prev,
+        anoInstalacion: 'N/A',
+        fabricanteModelo: 'N/A',
+        capacidadOperacional: 'N/A'
+      }));
+    } else {
+      setOtroEquipoFormData(prev => ({
+        ...prev,
+        anoInstalacion: '',
+        fabricanteModelo: '',
+        capacidadOperacional: ''
+      }));
+    }
+  };
+
+  const handleCategoriaInsumosNA = (checked: boolean) => {
+    setCategoriaInsumosNA(checked);
+    if (checked) {
+      setOtroEquipoFormData(prev => ({
+        ...prev,
+        tipoInsumoRecibido: 'N/A',
+        cantidadPromedio: 'N/A',
+        fuenteInsumos: 'N/A',
+        medioTransporteInsumo: 'N/A'
+      }));
+    } else {
+      setOtroEquipoFormData(prev => ({
+        ...prev,
+        tipoInsumoRecibido: '',
+        cantidadPromedio: '',
+        fuenteInsumos: '',
+        medioTransporteInsumo: ''
+      }));
+    }
+  };
+
+  const handleCategoriaOperativaNA = (checked: boolean) => {
+    setCategoriaOperativaNA(checked);
+    if (checked) {
+      setOtroEquipoFormData(prev => ({
+        ...prev,
+        observacionesOperativas: 'N/A',
+        notasAdicionales: 'N/A'
+      }));
+    } else {
+      setOtroEquipoFormData(prev => ({
+        ...prev,
+        observacionesOperativas: '',
+        notasAdicionales: ''
+      }));
+    }
   };
 
   const handleInsumoCantidadChange = (insumoId: string, cantidad: number) => {
@@ -106,8 +215,127 @@ function MantenimientosContent() {
       const sessionData = JSON.parse(userSession || '{}');
       const userName = sessionData.user?.name || 'Usuario desconocido';
 
+      // Validar selección de equipo
+      if (!formData.equipo) {
+        setMensaje('❌ Debe seleccionar un equipo o "Mantenimiento a todos los equipos"');
+        setIsLoading(false);
+        return;
+      }
+
+      let equipoId = null;
+
+      // Si es un equipo existente, buscar su ID
+      if (formData.equipo !== 'Mantenimiento a todos los equipos' && formData.equipo !== 'Otro equipo') {
+        const equipoSeleccionado = equipos.find(equipo => equipo.nombre === formData.equipo);
+        if (equipoSeleccionado) {
+          equipoId = equipoSeleccionado.id;
+        } else {
+          setMensaje('❌ Error: Equipo seleccionado no encontrado');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Si es "Otro equipo", crear el equipo primero
+      if (formData.equipo === 'Otro equipo') {
+        if (!otroEquipoFormData.nombre.trim()) {
+          setMensaje('❌ Debe ingresar el nombre del equipo');
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          const createResponse = await fetch('/api/equipos/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...otroEquipoFormData,
+              anoInstalacion: otroEquipoFormData.anoInstalacion || null,
+              realizaRegistro: userName
+            }),
+          });
+
+          if (!createResponse.ok) {
+            const errorData = await createResponse.json();
+            setMensaje(`❌ Error al crear el equipo: ${errorData.error}`);
+            setIsLoading(false);
+            return;
+          }
+
+          const createData = await createResponse.json();
+          equipoId = createData.records[0].id; // Asumiendo que devuelve el ID del nuevo registro
+          setMensaje('✅ Equipo creado exitosamente. Registrando mantenimiento...');
+        } catch (error) {
+          console.error('Error creando equipo:', error);
+          setMensaje('❌ Error al crear el equipo');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Obtener turno activo
+      const turnoActivo = localStorage.getItem('turnoActivo');
+      let turnoId = null;
+      if (turnoActivo) {
+        try {
+          const turnoData = JSON.parse(turnoActivo);
+          turnoId = turnoData.id;
+        } catch (error) {
+          console.error('Error parsing turno activo:', error);
+        }
+      }
+
+      // Preparar IDs de insumos
+      const insumosIds = formData.insumosUtilizados.map(insumo => insumo.id);
+
       // Aquí irá la lógica del backend cuando esté listo
-      console.log('Datos del mantenimiento:', formData);
+      console.log('Datos del mantenimiento:', {
+        tipoMantenimiento: formData.tipoMantenimiento,
+        descripcion: formData.descripcion,
+        prioridad: formData.prioridad,
+        realizaRegistro: userName,
+        turnoId: turnoId,
+        equipoId: equipoId,
+        insumosIds: insumosIds
+      });
+
+      // Enviar a Airtable
+      try {
+        const mantenimientoResponse = await fetch('/api/mantenimientos/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tipoMantenimiento: formData.tipoMantenimiento,
+            descripcion: formData.descripcion,
+            prioridad: formData.prioridad,
+            realizaRegistro: userName,
+            turnoId: turnoId,
+            equipoId: equipoId, // Ahora es el ID real o null
+            insumosIds: insumosIds
+          }),
+        });
+
+        if (!mantenimientoResponse.ok) {
+          const errorData = await mantenimientoResponse.json();
+          setMensaje(`❌ Error al crear mantenimiento: ${errorData.error}`);
+          setIsLoading(false);
+          return;
+        }
+
+        const mantenimientoData = await mantenimientoResponse.json();
+        console.log('Mantenimiento creado:', mantenimientoData);
+        setMensaje('✅ Mantenimiento registrado exitosamente');
+
+      } catch (error) {
+        console.error('Error creando mantenimiento:', error);
+        setMensaje('❌ Error al registrar el mantenimiento');
+        setIsLoading(false);
+        return;
+      }
 
       // Simulación de guardado exitoso
       setMensaje('✅ Mantenimiento registrado exitosamente');
@@ -153,6 +381,23 @@ function MantenimientosContent() {
         insumosUtilizados: []
       });
 
+      setOtroEquipoFormData({
+        nombre: '',
+        ubicacion: '',
+        funcionPrincipal: '',
+        anoInstalacion: '',
+        fabricanteModelo: '',
+        capacidadOperacional: '',
+        tipoInsumoRecibido: '',
+        cantidadPromedio: '',
+        fuenteInsumos: '',
+        medioTransporteInsumo: '',
+        observacionesOperativas: '',
+        notasAdicionales: ''
+      });
+
+      setShowOtroEquipoForm(false);
+
       // Aquí se actualizaría la lista de mantenimientos
       // setMantenimientos(prev => [...prev, nuevoMantenimiento]);
 
@@ -184,13 +429,13 @@ function MantenimientosContent() {
 
       <div className="relative z-10">
         <Navbar />
-        <main className="container mx-auto px-6 py-8">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-6xl mx-auto border border-white/30">
-            <h1 className="text-4xl font-bold text-white mb-2 text-center drop-shadow-lg flex items-center justify-center">
-              <span className="text-5xl mr-4">🔧</span>
-              Sistema de Mantenimientos
+        <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-12">
+          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 lg:p-8 w-full border border-white/30">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-2 text-center drop-shadow-lg flex items-center justify-center flex-wrap">
+              <span className="text-4xl sm:text-5xl mr-2 sm:mr-4">🔧</span>
+              <span className="text-center">Sistema de Mantenimientos</span>
             </h1>
-            <p className="text-center text-white/90 mb-8 drop-shadow text-lg">
+            <p className="text-center text-white/90 mb-6 lg:mb-8 drop-shadow text-base sm:text-lg px-4">
               Registra y gestiona todos los mantenimientos del sistema de pirolisis
             </p>
 
@@ -204,12 +449,12 @@ function MantenimientosContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="w-full">
               {/* Formulario de registro */}
-              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
-                <h2 className="text-2xl font-bold text-white mb-6 flex items-center drop-shadow">
-                  <span className="text-3xl mr-3">📝</span>
-                  Registrar Nuevo Mantenimiento
+              <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-6 lg:p-8 rounded-lg border border-white/20">
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-4 sm:mb-6 flex items-center drop-shadow flex-wrap">
+                  <span className="text-2xl sm:text-3xl mr-2 sm:mr-3">📝</span>
+                  <span className="text-center sm:text-left">Registrar Nuevo Mantenimiento</span>
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -225,6 +470,8 @@ function MantenimientosContent() {
                       className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
                     >
                       <option value="">Seleccionar equipo</option>
+                      <option value="Mantenimiento a todos los equipos">Mantenimiento a todos los equipos</option>
+                      <option value="Otro equipo">Otro equipo</option>
                       {equipos.map((equipo) => (
                         <option key={equipo.id} value={equipo.nombre}>
                           {equipo.nombre}
@@ -233,7 +480,7 @@ function MantenimientosContent() {
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                         Tipo de Mantenimiento *
@@ -408,6 +655,268 @@ function MantenimientosContent() {
                     </div>
                   </div>
 
+                  {showOtroEquipoForm && (
+                    <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-6 lg:p-8 rounded-xl border border-white/20 mt-6">
+                      <h3 className="text-lg sm:text-xl lg:text-2xl font-bold text-white mb-4 flex items-center drop-shadow flex-wrap">
+                        <span className="text-xl sm:text-2xl mr-2 sm:mr-3">⚙️</span>
+                        <span className="text-center sm:text-left">Registrar Nuevo Equipo</span>
+                      </h3>
+
+                      {/* Información Básica */}
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-white mb-3 flex items-center">
+                          <span className="text-lg mr-2">📋</span>
+                          Información Básica
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Nombre del Equipo *
+                            </label>
+                            <input
+                              type="text"
+                              name="nombre"
+                              value={otroEquipoFormData.nombre}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: Reactor de Pirolisis"
+                              required
+                              className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Ubicación
+                            </label>
+                            <input
+                              type="text"
+                              name="ubicacion"
+                              value={otroEquipoFormData.ubicacion}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: Área de proceso principal"
+                              className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Función Principal
+                            </label>
+                            <div className="relative">
+                              <textarea
+                                name="funcionPrincipal"
+                                value={otroEquipoFormData.funcionPrincipal}
+                                onChange={handleOtroEquipoInputChange}
+                                placeholder="Describa la función que cumple el equipo..."
+                                rows={3}
+                                className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Información Técnica */}
+                      <div className="mb-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-lg font-semibold text-white flex items-center">
+                            <span className="text-lg mr-2">🔧</span>
+                            Información Técnica
+                          </h4>
+                          <label className="flex items-center space-x-2 text-white cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={categoriaTecnicaNA}
+                              onChange={(e) => handleCategoriaTecnicaNA(e.target.checked)}
+                              className="w-4 h-4 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-2"
+                            />
+                            <span className="text-sm font-medium">Omitir</span>
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Año de Instalación
+                            </label>
+                            <input
+                              type="number"
+                              name="anoInstalacion"
+                              value={otroEquipoFormData.anoInstalacion}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: 2023"
+                              min="1900"
+                              max={new Date().getFullYear()}
+                              disabled={categoriaTecnicaNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Fabricante/Modelo
+                            </label>
+                            <input
+                              type="text"
+                              name="fabricanteModelo"
+                              value={otroEquipoFormData.fabricanteModelo}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: Sirius - Modelo X1"
+                              disabled={categoriaTecnicaNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Capacidad Operacional
+                            </label>
+                            <input
+                              type="text"
+                              name="capacidadOperacional"
+                              value={otroEquipoFormData.capacidadOperacional}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: 500 kg/h"
+                              disabled={categoriaTecnicaNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Información de Insumos */}
+                      <div className="mb-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-lg font-semibold text-white flex items-center">
+                            <span className="text-lg mr-2">📦</span>
+                            Información de Insumos
+                          </h4>
+                          <label className="flex items-center space-x-2 text-white cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={categoriaInsumosNA}
+                              onChange={(e) => handleCategoriaInsumosNA(e.target.checked)}
+                              className="w-4 h-4 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-2"
+                            />
+                            <span className="text-sm font-medium">Omitir</span>
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Tipo de Insumo Recibido
+                            </label>
+                            <input
+                              type="text"
+                              name="tipoInsumoRecibido"
+                              value={otroEquipoFormData.tipoInsumoRecibido}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: Biomasa seca"
+                              disabled={categoriaInsumosNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Cantidad Promedio (día/mes)
+                            </label>
+                            <input
+                              type="text"
+                              name="cantidadPromedio"
+                              value={otroEquipoFormData.cantidadPromedio}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: 4 toneladas diarias"
+                              disabled={categoriaInsumosNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Fuente de Insumos
+                            </label>
+                            <input
+                              type="text"
+                              name="fuenteInsumos"
+                              value={otroEquipoFormData.fuenteInsumos}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: Tolva de recepción"
+                              disabled={categoriaInsumosNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Medio de Transporte del Insumo
+                            </label>
+                            <input
+                              type="text"
+                              name="medioTransporteInsumo"
+                              value={otroEquipoFormData.medioTransporteInsumo}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Ej: Por gravedad"
+                              disabled={categoriaInsumosNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaInsumosNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Información Operativa */}
+                      <div className="mb-6">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-lg font-semibold text-white flex items-center">
+                            <span className="text-lg mr-2">⚡</span>
+                            Información Operativa
+                          </h4>
+                          <label className="flex items-center space-x-2 text-white cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={categoriaOperativaNA}
+                              onChange={(e) => handleCategoriaOperativaNA(e.target.checked)}
+                              className="w-4 h-4 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-2"
+                            />
+                            <span className="text-sm font-medium">Omitir</span>
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Observaciones Operativas
+                            </label>
+                            <div className="relative">
+                              <textarea
+                                name="observacionesOperativas"
+                                value={otroEquipoFormData.observacionesOperativas}
+                                onChange={handleOtroEquipoInputChange}
+                                placeholder="Notas sobre funcionamiento, riesgos, recomendaciones..."
+                                rows={4}
+                                disabled={categoriaOperativaNA}
+                                className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500 ${categoriaOperativaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Notas Adicionales
+                            </label>
+                            <textarea
+                              name="notasAdicionales"
+                              value={otroEquipoFormData.notasAdicionales}
+                              onChange={handleOtroEquipoInputChange}
+                              placeholder="Cualquier información adicional relevante..."
+                              rows={3}
+                              disabled={categoriaOperativaNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 resize-none text-gray-800 placeholder-gray-500 ${categoriaOperativaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     type="submit"
                     disabled={isLoading}
@@ -426,49 +935,6 @@ function MantenimientosContent() {
                     )}
                   </button>
                 </form>
-              </div>
-
-              {/* Lista de mantenimientos */}
-              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
-                <h2 className="text-2xl font-bold text-white mb-6 flex items-center drop-shadow">
-                  <span className="text-3xl mr-3">📋</span>
-                  Mantenimientos Registrados
-                </h2>
-
-                {mantenimientos.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="text-6xl mb-4 text-white/70">📝</div>
-                    <h3 className="text-xl font-semibold text-white mb-2 drop-shadow">
-                      No hay mantenimientos registrados
-                    </h3>
-                    <p className="text-white/80 drop-shadow">
-                      Los mantenimientos registrados aparecerán aquí
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {mantenimientos.map((mantenimiento) => (
-                      <div key={mantenimiento.id || Math.random()} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 hover:bg-white/20 transition-all duration-200">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-semibold text-white drop-shadow">{mantenimiento.equipo}</h4>
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold drop-shadow ${
-                            mantenimiento.prioridad === 'Urgente' ? 'bg-red-500/80 text-white' :
-                            mantenimiento.prioridad === 'Alta' ? 'bg-orange-500/80 text-white' :
-                            mantenimiento.prioridad === 'Media' ? 'bg-yellow-500/80 text-white' :
-                            'bg-green-500/80 text-white'
-                          }`}>
-                            {mantenimiento.prioridad}
-                          </span>
-                        </div>
-                        <p className="text-sm text-white/90 mb-2 drop-shadow">{mantenimiento.descripcion}</p>
-                        <div className="flex justify-between text-xs text-white/70 drop-shadow">
-                          <span>{mantenimiento.tipoMantenimiento}</span>
-                          <span>{mantenimiento.fechaProgramada || 'Sin fecha'}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
