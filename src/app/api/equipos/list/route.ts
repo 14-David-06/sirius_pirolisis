@@ -44,7 +44,6 @@ export async function GET() {
       nombre: record.fields['Nombre del equipo'] ||
               record.fields['Nombre'] ||
               record.fields['Equipo'] ||
-              record.fields.fldP9WY2ulLUJ8NRZ ||
               `Equipo ${record.id.slice(-4)}`, // fallback
     }));
 
