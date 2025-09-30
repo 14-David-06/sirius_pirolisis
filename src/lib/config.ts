@@ -46,7 +46,8 @@ export const config = {
       documentoSoporte: process.env.AIRTABLE_SALIDAS_DOCUMENTO_SOPORTE_FIELD_ID,
       realizaRegistro: process.env.AIRTABLE_SALIDAS_REALIZA_REGISTRO_FIELD_ID,
       inventarioInsumos: process.env.AIRTABLE_SALIDAS_INVENTARIO_INSUMOS_FIELD_ID,
-      turnoPirolisis: process.env.AIRTABLE_SALIDAS_TURNO_PIROLISIS_FIELD_ID
+      turnoPirolisis: process.env.AIRTABLE_SALIDAS_TURNO_PIROLISIS_FIELD_ID,
+      mantenimiento: process.env.AIRTABLE_SALIDAS_MANTENIMIENTO_FIELD_ID || 'Mantenimientos'
     }
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad

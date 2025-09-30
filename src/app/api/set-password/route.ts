@@ -134,6 +134,9 @@ export async function POST(request: NextRequest) {
           id: userRecord.id,
           Cedula: userData.Cedula,
           Nombre: userData.Nombre,
+          Apellido: userData.Apellido || '',
+          Email: userData.Email || '',
+          Telefono: userData.Telefono || '',
           Cargo: userData.Cargo,
         }
       };

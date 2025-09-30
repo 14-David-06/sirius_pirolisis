@@ -88,9 +88,9 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Guardar sesión
+        // Guardar sesión con la información completa del usuario
         localStorage.setItem('userSession', JSON.stringify({
-          user: userData,
+          user: data.user, // Usar la información completa del usuario desde la API
           loginTime: new Date().toISOString()
         }));
         
@@ -140,9 +140,9 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Guardar sesión
+        // Guardar sesión con la información del usuario
         localStorage.setItem('userSession', JSON.stringify({
-          user: userData,
+          user: data.user, // Usar la información del usuario desde la API
           loginTime: new Date().toISOString()
         }));
         

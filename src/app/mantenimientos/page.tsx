@@ -53,8 +53,6 @@ function MantenimientosContent() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Estados para campos omitidos individualmente
-  const [omitirAnoInstalacion, setOmitirAnoInstalacion] = useState(false);
-  const [omitirFabricanteModelo, setOmitirFabricanteModelo] = useState(false);
   const [omitirCapacidadOperacional, setOmitirCapacidadOperacional] = useState(false);
   const [omitirTipoInsumo, setOmitirTipoInsumo] = useState(false);
   const [omitirCantidadPromedio, setOmitirCantidadPromedio] = useState(false);
@@ -185,22 +183,6 @@ function MantenimientosContent() {
   };
 
   // Funciones para campos individuales
-  const handleOmitirAnoInstalacion = (checked: boolean) => {
-    setOmitirAnoInstalacion(checked);
-    setOtroEquipoFormData(prev => ({
-      ...prev,
-      anoInstalacion: checked ? 'N/A' : ''
-    }));
-  };
-
-  const handleOmitirFabricanteModelo = (checked: boolean) => {
-    setOmitirFabricanteModelo(checked);
-    setOtroEquipoFormData(prev => ({
-      ...prev,
-      fabricanteModelo: checked ? 'N/A' : ''
-    }));
-  };
-
   const handleOmitirCapacidadOperacional = (checked: boolean) => {
     setOmitirCapacidadOperacional(checked);
     setOtroEquipoFormData(prev => ({
@@ -259,7 +241,9 @@ function MantenimientosContent() {
       // Obtener información del usuario actual
       const userSession = localStorage.getItem('userSession');
       const sessionData = JSON.parse(userSession || '{}');
-      const userName = sessionData.user?.name || 'Usuario desconocido';
+      const userName = sessionData.user ? `${sessionData.user.Nombre} ${sessionData.user.Apellido || ''}`.trim() : 'Usuario desconocido';
+      console.log('Usuario actual:', sessionData.user);
+      console.log('Nombre del usuario:', userName);
 
       // Validar selección de equipo
       if (!formData.equipo) {
@@ -307,6 +291,12 @@ function MantenimientosContent() {
         }
 
         try {
+          console.log('Creando equipo con datos:', {
+            ...otroEquipoFormData,
+            anoInstalacion: otroEquipoFormData.anoInstalacion || null,
+            realizaRegistro: userName
+          });
+
           const createResponse = await fetch('/api/equipos/create', {
             method: 'POST',
             headers: {
@@ -319,16 +309,98 @@ function MantenimientosContent() {
             }),
           });
 
+          console.log('Respuesta HTTP de equipos/create:', {
+            status: createResponse.status,
+            statusText: createResponse.statusText,
+            ok: createResponse.ok,
+            headers: Object.fromEntries(createResponse.headers.entries())
+          });
+
           if (!createResponse.ok) {
-            const errorData = await createResponse.json();
-            setMensaje(`❌ Error al crear el equipo: ${errorData.error}`);
+            let errorMessage = 'Error desconocido al crear el equipo';
+            try {
+              const responseText = await createResponse.text();
+              console.log('Respuesta de error como texto:', responseText);
+              if (responseText) {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.error || errorData.message || errorMessage;
+                console.error('Error response from equipos/create:', errorData);
+              } else {
+                console.error('Respuesta de error vacía');
+              }
+            } catch (parseError) {
+              console.error('Error parseando respuesta de error:', parseError);
+              errorMessage = `Error HTTP ${createResponse.status}: ${createResponse.statusText}`;
+            }
+            setMensaje(`❌ Error al crear el equipo: ${errorMessage}`);
             setIsLoading(false);
             return;
           }
 
-          const createData = await createResponse.json();
-          equiposIds = [createData.records[0].id]; // Asumiendo que devuelve el ID del nuevo registro
+          const createData = await createResponse.json().catch(async (error) => {
+            console.error('Error parseando JSON de respuesta:', error);
+            const text = await createResponse.text();
+            console.log('Respuesta como texto:', text);
+            throw new Error(`Error parseando respuesta JSON: ${error.message}`);
+          });
+          console.log('Respuesta completa de creación de equipo:', createData);
+
+          // Verificar si la respuesta es un objeto vacío
+          if (!createData || Object.keys(createData).length === 0) {
+            console.error('Respuesta vacía de equipos/create');
+            setMensaje('❌ Error: Respuesta vacía del servidor al crear equipo');
+            setIsLoading(false);
+            return;
+          }
+
+          // Verificar que la respuesta tenga la estructura esperada
+          if (!createData || !createData.records || !Array.isArray(createData.records) || createData.records.length === 0) {
+            console.error('Respuesta inesperada de equipos/create:', createData);
+            setMensaje('❌ Error: Respuesta inválida del servidor al crear equipo');
+            setIsLoading(false);
+            return;
+          }
+
+          const newEquipo = createData.records[0];
+          if (!newEquipo || !newEquipo.id) {
+            console.error('Equipo creado no tiene ID:', newEquipo);
+            setMensaje('❌ Error: El equipo creado no tiene un ID válido');
+            setIsLoading(false);
+            return;
+          }
+          console.log('ID del equipo creado:', createData.records[0].id);
+
+          // Validar que el ID del equipo tiene el formato correcto de Airtable
+          if (!createData.records[0].id.startsWith('rec')) {
+            console.error('ID de equipo no tiene formato válido de Airtable:', createData.records[0].id);
+            setMensaje('❌ Error: ID de equipo inválido recibido de Airtable');
+            setIsLoading(false);
+            return;
+          }
+
+          equiposIds = [createData.records[0].id];
+          console.log('Asignando equiposIds:', equiposIds);
+
+          // Verificar que el equipo se creó consultando la lista de equipos
+          try {
+            const equiposResponse = await fetch('/api/equipos/list');
+            if (equiposResponse.ok) {
+              const equiposData = await equiposResponse.json();
+              const equipoCreado = equiposData.equipos.find((eq: any) => eq.id === createData.records[0].id);
+              if (equipoCreado) {
+                console.log('Equipo verificado en la lista:', equipoCreado.nombre);
+              } else {
+                console.warn('Equipo no encontrado en la lista después de crearlo');
+              }
+            }
+          } catch (error) {
+            console.error('Error verificando equipo creado:', error);
+          }
+
           setMensaje('✅ Equipo creado exitosamente. Registrando mantenimiento...');
+
+          // Pequeña pausa para asegurar que Airtable procese el nuevo equipo
+          await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
           console.error('Error creando equipo:', error);
           setMensaje('❌ Error al crear el equipo');
@@ -347,6 +419,26 @@ function MantenimientosContent() {
         } catch (error) {
           console.error('Error parsing turno activo:', error);
         }
+      }
+
+      // Validar que tenemos al menos un equipo ID
+      if (equiposIds.length === 0) {
+        setMensaje('❌ Error: No se pudo determinar el equipo para el mantenimiento');
+        setIsLoading(false);
+        return;
+      }
+
+      // Validar campos requeridos del mantenimiento
+      if (!formData.tipoMantenimiento) {
+        setMensaje('❌ Debe seleccionar un tipo de mantenimiento');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!formData.descripcion.trim()) {
+        setMensaje('❌ Debe ingresar una descripción del mantenimiento');
+        setIsLoading(false);
+        return;
       }
 
       // Preparar IDs de insumos
@@ -378,7 +470,7 @@ function MantenimientosContent() {
             realizaRegistro: userName,
             turnoId: turnoId,
             equiposIds: equiposIds, // Array de IDs de equipos
-            insumosIds: insumosIds
+            insumosUtilizados: formData.insumosUtilizados
           }),
         });
 
@@ -399,46 +491,67 @@ function MantenimientosContent() {
 
         setMensaje(mensajeExito);
 
+        // Registrar salidas de insumos utilizados
+        if (formData.insumosUtilizados.length > 0) {
+          // Obtener el ID del mantenimiento creado
+          const mantenimientoId = mantenimientoData.records?.[0]?.id;
+          console.log('Mantenimiento creado - ID:', mantenimientoId);
+          console.log('Mantenimiento data completa:', mantenimientoData);
+          
+          if (!mantenimientoId) {
+            console.error('No se pudo obtener el ID del mantenimiento creado');
+            console.error('mantenimientoData:', mantenimientoData);
+            setMensaje(prev => prev + '\n⚠️ Error: No se pudo relacionar las salidas de insumos con el mantenimiento');
+          } else {
+            console.log('Mantenimiento ID válido:', mantenimientoId);
+            console.log('Procesando salidas de insumos para mantenimiento:', mantenimientoId);
+            for (const insumo of formData.insumosUtilizados) {
+              try {
+                // Obtener información del insumo
+                const record = inventarioData?.records.find(r => r.id === insumo.id);
+                const presentacionInsumo = record?.fields['Presentacion Insumo'] || 'Unidades';
+
+                const salidaData = {
+                  cantidadSale: insumo.cantidad,
+                  presentacionInsumo: presentacionInsumo,
+                  observaciones: `Utilizado en mantenimiento: ${formData.descripcion}`,
+                  tipoSalida: 'Mantenimiento',
+                  realizaRegistro: userName,
+                  inventarioInsumosId: insumo.id,
+                  turnoId: turnoId,
+                  mantenimientoId: mantenimientoId
+                };
+                
+                console.log('Enviando datos de salida para insumo', insumo.id, ':', salidaData);
+
+                const response = await fetch('/api/salidas/create', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(salidaData),
+                });
+
+                if (!response.ok) {
+                  const errorData = await response.json();
+                  console.error('Error al registrar salida del insumo:', insumo.id, errorData);
+                  setMensaje(prev => prev + `\n⚠️ Error al registrar salida del insumo ${insumo.id}: ${errorData.error}`);
+                } else {
+                  console.log('Salida registrada para insumo:', insumo.id);
+                }
+              } catch (error) {
+                console.error('Error al procesar salida del insumo:', insumo.id, error);
+                setMensaje(prev => prev + `\n⚠️ Error al procesar salida del insumo ${insumo.id}`);
+              }
+            }
+          }
+        }
+
       } catch (error) {
         console.error('Error creando mantenimiento:', error);
         setMensaje('❌ Error al registrar el mantenimiento');
         setIsLoading(false);
         return;
-      }
-
-      // Simulación de guardado exitoso
-      setMensaje('✅ Mantenimiento registrado exitosamente');
-
-      // Registrar salidas de insumos utilizados
-      if (formData.insumosUtilizados.length > 0) {
-        for (const insumo of formData.insumosUtilizados) {
-          try {
-            const response = await fetch('/api/inventario/remove-quantity', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                itemId: insumo.id,
-                cantidad: insumo.cantidad,
-                tipoSalida: 'Mantenimiento',
-                observaciones: `Utilizado en mantenimiento: ${formData.descripcion}`,
-                'Realiza Registro': userName
-              }),
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              console.error('Error al registrar salida del insumo:', insumo.id, errorData);
-              setMensaje(prev => prev + `\n⚠️ Error al registrar salida del insumo ${insumo.id}: ${errorData.error}`);
-            } else {
-              console.log('Salida registrada para insumo:', insumo.id);
-            }
-          } catch (error) {
-            console.error('Error al procesar salida del insumo:', insumo.id, error);
-            setMensaje(prev => prev + `\n⚠️ Error al procesar salida del insumo ${insumo.id}`);
-          }
-        }
       }
 
       // Limpiar formulario
@@ -469,8 +582,6 @@ function MantenimientosContent() {
       setShowOtroEquipoForm(false);
 
       // Resetear estados de omitir campos individuales
-      setOmitirAnoInstalacion(false);
-      setOmitirFabricanteModelo(false);
       setOmitirCapacidadOperacional(false);
       setOmitirTipoInsumo(false);
       setOmitirCantidadPromedio(false);
@@ -840,20 +951,9 @@ function MantenimientosContent() {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="block text-sm font-semibold text-white drop-shadow">
-                                Año de Instalación
-                              </label>
-                              <label className="flex items-center space-x-2 text-white cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={omitirAnoInstalacion}
-                                  onChange={(e) => handleOmitirAnoInstalacion(e.target.checked)}
-                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
-                                />
-                                <span className="text-xs">Omitir</span>
-                              </label>
-                            </div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Año de Instalación
+                            </label>
                             <input
                               type="number"
                               name="anoInstalacion"
@@ -862,34 +962,23 @@ function MantenimientosContent() {
                               placeholder="Ej: 2023"
                               min="1900"
                               max={new Date().getFullYear()}
-                              disabled={categoriaTecnicaNA || omitirAnoInstalacion}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaTecnicaNA || omitirAnoInstalacion) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaTecnicaNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
                           <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="block text-sm font-semibold text-white drop-shadow">
-                                Fabricante/Modelo
-                              </label>
-                              <label className="flex items-center space-x-2 text-white cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={omitirFabricanteModelo}
-                                  onChange={(e) => handleOmitirFabricanteModelo(e.target.checked)}
-                                  className="w-3 h-3 text-green-600 bg-white/20 border-white/30 rounded focus:ring-green-500 focus:ring-1"
-                                />
-                                <span className="text-xs">Omitir</span>
-                              </label>
-                            </div>
+                            <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                              Fabricante/Modelo
+                            </label>
                             <input
                               type="text"
                               name="fabricanteModelo"
                               value={otroEquipoFormData.fabricanteModelo}
                               onChange={handleOtroEquipoInputChange}
                               placeholder="Ej: Sirius - Modelo X1"
-                              disabled={categoriaTecnicaNA || omitirFabricanteModelo}
-                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${(categoriaTecnicaNA || omitirFabricanteModelo) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              disabled={categoriaTecnicaNA}
+                              className={`w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 ${categoriaTecnicaNA ? 'opacity-50 cursor-not-allowed' : ''}`}
                             />
                           </div>
 
