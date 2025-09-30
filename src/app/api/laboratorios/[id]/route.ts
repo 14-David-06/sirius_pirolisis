@@ -39,20 +39,49 @@ export async function PUT(request: NextRequest) {
     // Crear el objeto de campos usando field IDs
     const airtableFields: any = {};
 
-    if (fields.nombreLaboratorio) airtableFields[config.airtable.laboratoriosFields.nombreLaboratorio] = fields.nombreLaboratorio.trim();
-    if (fields.tipoLaboratorio) airtableFields[config.airtable.laboratoriosFields.tipoLaboratorio] = fields.tipoLaboratorio.trim();
-    if (fields.responsable) airtableFields[config.airtable.laboratoriosFields.responsable] = fields.responsable.trim();
-    if (fields.telefono) airtableFields[config.airtable.laboratoriosFields.telefono] = fields.telefono.trim();
-    if (fields.correoElectronico) airtableFields[config.airtable.laboratoriosFields.correoElectronico] = fields.correoElectronico.trim();
-    if (fields.direccion) airtableFields[config.airtable.laboratoriosFields.direccion] = fields.direccion.trim();
-    if (fields.ciudad) airtableFields[config.airtable.laboratoriosFields.ciudad] = fields.ciudad.trim();
-    if (fields.pais) airtableFields[config.airtable.laboratoriosFields.pais] = fields.pais.trim();
-    if (fields.certificaciones) airtableFields[config.airtable.laboratoriosFields.certificaciones] = fields.certificaciones.trim();
-    if (fields.acreditaciones) airtableFields[config.airtable.laboratoriosFields.acreditaciones] = fields.acreditaciones.trim();
-    if (fields.metodosAnaliticos) airtableFields[config.airtable.laboratoriosFields.metodosAnaliticos] = fields.metodosAnaliticos.trim();
-    if (fields.fechaVigenciaCertificaciones) airtableFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = fields.fechaVigenciaCertificaciones.trim();
-    if (fields.realizaRegistro) airtableFields[config.airtable.laboratoriosFields.realizaRegistro] = fields.realizaRegistro.trim();
-    if (fields.observaciones) airtableFields[config.airtable.laboratoriosFields.observaciones] = fields.observaciones.trim();
+    // Mapear campos del frontend a field IDs de Airtable
+    if (fields.nombreLaboratorio && config.airtable.laboratoriosFields.nombreLaboratorio) {
+      airtableFields[config.airtable.laboratoriosFields.nombreLaboratorio] = fields.nombreLaboratorio.trim();
+    }
+    if (fields.tipoLaboratorio && config.airtable.laboratoriosFields.tipoLaboratorio) {
+      airtableFields[config.airtable.laboratoriosFields.tipoLaboratorio] = fields.tipoLaboratorio.trim();
+    }
+    if (fields.responsable && config.airtable.laboratoriosFields.responsable) {
+      airtableFields[config.airtable.laboratoriosFields.responsable] = fields.responsable.trim();
+    }
+    if (fields.telefono && config.airtable.laboratoriosFields.telefono) {
+      airtableFields[config.airtable.laboratoriosFields.telefono] = fields.telefono.trim();
+    }
+    if (fields.correoElectronico && config.airtable.laboratoriosFields.correoElectronico) {
+      airtableFields[config.airtable.laboratoriosFields.correoElectronico] = fields.correoElectronico.trim();
+    }
+    if (fields.direccion && config.airtable.laboratoriosFields.direccion) {
+      airtableFields[config.airtable.laboratoriosFields.direccion] = fields.direccion.trim();
+    }
+    if (fields.ciudad && config.airtable.laboratoriosFields.ciudad) {
+      airtableFields[config.airtable.laboratoriosFields.ciudad] = fields.ciudad.trim();
+    }
+    if (fields.pais && config.airtable.laboratoriosFields.pais) {
+      airtableFields[config.airtable.laboratoriosFields.pais] = fields.pais.trim();
+    }
+    if (fields.certificaciones && config.airtable.laboratoriosFields.certificaciones) {
+      airtableFields[config.airtable.laboratoriosFields.certificaciones] = fields.certificaciones.trim();
+    }
+    if (fields.acreditaciones && config.airtable.laboratoriosFields.acreditaciones) {
+      airtableFields[config.airtable.laboratoriosFields.acreditaciones] = fields.acreditaciones.trim();
+    }
+    if (fields.metodosAnaliticos && config.airtable.laboratoriosFields.metodosAnaliticos) {
+      airtableFields[config.airtable.laboratoriosFields.metodosAnaliticos] = fields.metodosAnaliticos.trim();
+    }
+    if (fields.fechaVigenciaCertificaciones && config.airtable.laboratoriosFields.fechaVigenciaCertificaciones) {
+      airtableFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = fields.fechaVigenciaCertificaciones.trim();
+    }
+    if (fields.realizaRegistro && config.airtable.laboratoriosFields.realizaRegistro) {
+      airtableFields[config.airtable.laboratoriosFields.realizaRegistro] = fields.realizaRegistro.trim();
+    }
+    if (fields.observaciones && config.airtable.laboratoriosFields.observaciones) {
+      airtableFields[config.airtable.laboratoriosFields.observaciones] = fields.observaciones.trim();
+    }
 
     const tableName = config.airtable.laboratoriosTableId;
     const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${tableName}`;

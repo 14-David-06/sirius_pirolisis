@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { useBaches } from '@/lib/useBaches';
 import { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
 
 export default function SistemaBaches() {
   return (
@@ -37,6 +38,10 @@ function SistemaBachesContent() {
   });
   const [isSubmittingMonitoreo, setIsSubmittingMonitoreo] = useState(false);
   const [updatingBacheId, setUpdatingBacheId] = useState<string | null>(null);
+
+  // State for detalles modal
+  const [showDetallesModal, setShowDetallesModal] = useState(false);
+  const [selectedBacheDetalles, setSelectedBacheDetalles] = useState<any>(null);
 
   // State for laboratorios
   const [laboratorios, setLaboratorios] = useState<any[]>([]);
@@ -168,6 +173,17 @@ function SistemaBachesContent() {
       fechaVigenciaCertificaciones: '',
       observaciones: ''
     });
+  };
+
+  // Handle detalles modal
+  const openDetallesModal = (bache: any) => {
+    setSelectedBacheDetalles(bache);
+    setShowDetallesModal(true);
+  };
+
+  const closeDetallesModal = () => {
+    setShowDetallesModal(false);
+    setSelectedBacheDetalles(null);
   };
 
   const handleMonitoreoInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -574,6 +590,17 @@ function SistemaBachesContent() {
               </div>
             </div>
 
+            {/* Botón Ver Laboratorios */}
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
+              <div className="flex justify-center">
+                <Link href="/laboratorios">
+                  <button className="bg-[#5A7836]/80 hover:bg-[#5A7836] text-white px-8 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg">
+                    🧪 Ver Laboratorios
+                  </button>
+                </Link>
+              </div>
+            </div>
+
             {/* Dashboard de Baches */}
             <div className="space-y-6">
               {Object.entries(groupedBaches).map(([categoria, baches]) => {
@@ -610,11 +637,33 @@ function SistemaBachesContent() {
                             <div className="mb-3">
                               <h4 className="font-bold text-white text-lg drop-shadow">{getBacheId(bache)}</h4>
                               <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
-                                getBacheStatus(bache) === 'Bache Agotado' ? 'bg-red-500/20 text-red-200' :
-                                getBacheStatus(bache) === 'Bache Completo Planta' || getBacheStatus(bache) === 'Bache Completo Bodega' ? 'bg-green-500/20 text-green-200' :
-                                getBacheStatus(bache) === 'Bache en proceso' ? 'bg-blue-500/20 text-blue-200' : 'bg-yellow-500/20 text-yellow-200'
+                                (() => {
+                                  const status = getBacheStatus(bache);
+                                  const totalBiochar = getTotalBiochar(bache);
+                                  
+                                  // Para baches en planta o bodega, determinar color por cantidad de biochar
+                                  if (status === 'Bache Completo Planta' || status === 'Bache Completo Bodega') {
+                                    return totalBiochar >= 500 ? 'bg-green-500/20 text-green-200' : 'bg-yellow-500/20 text-yellow-200';
+                                  }
+                                  
+                                  // Para otros estados, mantener lógica original
+                                  return status === 'Bache Agotado' ? 'bg-red-500/20 text-red-200' :
+                                         status === 'Bache en proceso' ? 'bg-blue-500/20 text-blue-200' : 
+                                         'bg-yellow-500/20 text-yellow-200';
+                                })()
                               }`}>
-                                {getBacheStatus(bache)}
+                                {(() => {
+                                  const status = getBacheStatus(bache);
+                                  const totalBiochar = getTotalBiochar(bache);
+                                  
+                                  // Para baches en planta o bodega, mostrar "incompleto" si no tienen 500kg
+                                  if (status === 'Bache Completo Planta' || status === 'Bache Completo Bodega') {
+                                    return totalBiochar >= 500 ? status : 'Incompleto';
+                                  }
+                                  
+                                  // Para otros estados, mostrar el estado normal
+                                  return status;
+                                })()}
                               </span>
                             </div>
                             
@@ -654,28 +703,40 @@ function SistemaBachesContent() {
                               </div>
                             </div>
                             
-                            {categoria === 'Completos Planta' && (
+                            {/* Botón Ver Detalles - disponible para todos los baches */}
+                            <div className="mt-3 mb-3">
+                              <button
+                                onClick={() => openDetallesModal(bache)}
+                                className="w-full bg-gray-600/80 hover:bg-gray-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
+                              >
+                                👁️ Ver Detalles
+                              </button>
+                            </div>
+                            
+                            {(categoria === 'Completos Planta' || categoria === 'Completos Bodega') && (
                               <div className="flex gap-2 mt-3">
-                                <button 
+                                <button
                                   onClick={() => openMonitoreoModal(bache)}
                                   className="flex-1 bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
                                 >
                                   📊 Registrar Monitoreo
                                 </button>
-                                <button 
-                                  onClick={() => handlePasarABodega(bache)}
-                                  disabled={updatingBacheId === bache.id}
-                                  className="flex-1 bg-blue-600/80 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {updatingBacheId === bache.id ? (
-                                    <>
-                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
-                                      <span className="ml-1">Moviendo...</span>
-                                    </>
-                                  ) : (
-                                    '📦 Pasar a Bodega'
-                                  )}
-                                </button>
+                                {categoria === 'Completos Planta' && (
+                                  <button
+                                    onClick={() => handlePasarABodega(bache)}
+                                    disabled={updatingBacheId === bache.id}
+                                    className="flex-1 bg-blue-600/80 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {updatingBacheId === bache.id ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
+                                        <span className="ml-1">Moviendo...</span>
+                                      </>
+                                    ) : (
+                                      '📦 Pasar a Bodega'
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -693,7 +754,7 @@ function SistemaBachesContent() {
 
         {/* Modal de Monitoreo */}
         {showMonitoreoModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-white drop-shadow-lg">📊 Registrar Monitoreo</h2>
@@ -1021,6 +1082,173 @@ function SistemaBachesContent() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Detalles */}
+        {showDetallesModal && selectedBacheDetalles && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">👁️ Detalles del Bache</h2>
+                <button
+                  onClick={closeDetallesModal}
+                  className="text-white/70 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Información básica */}
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">📋 Información Básica</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">ID del Bache:</span>
+                      <p className="text-white font-semibold text-lg">{getBacheId(selectedBacheDetalles)}</p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Estado:</span>
+                      <p className={`font-semibold text-sm px-2 py-1 rounded-full inline-block mt-1 ${
+                        (() => {
+                          const status = getBacheStatus(selectedBacheDetalles);
+                          const totalBiochar = getTotalBiochar(selectedBacheDetalles);
+                          
+                          if (status === 'Bache Completo Planta' || status === 'Bache Completo Bodega') {
+                            return totalBiochar >= 500 ? 'bg-green-500/20 text-green-200' : 'bg-yellow-500/20 text-yellow-200';
+                          }
+                          
+                          return status === 'Bache Agotado' ? 'bg-red-500/20 text-red-200' :
+                                 status === 'Bache en proceso' ? 'bg-blue-500/20 text-blue-200' : 
+                                 'bg-yellow-500/20 text-yellow-200';
+                        })()
+                      }`}>
+                        {(() => {
+                          const status = getBacheStatus(selectedBacheDetalles);
+                          const totalBiochar = getTotalBiochar(selectedBacheDetalles);
+                          
+                          if (status === 'Bache Completo Planta' || status === 'Bache Completo Bodega') {
+                            return totalBiochar >= 500 ? status : 'Incompleto';
+                          }
+                          
+                          return status;
+                        })()}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Fecha de Creación:</span>
+                      <p className="text-white font-semibold">
+                        {getDateValue(selectedBacheDetalles) ?
+                          new Date(getDateValue(selectedBacheDetalles)).toLocaleDateString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) :
+                          new Date(selectedBacheDetalles.createdTime).toLocaleDateString('es-ES', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        }
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">ID de Registro:</span>
+                      <p className="text-white font-semibold">{selectedBacheDetalles.id}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información de producción */}
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">🏭 Información de Producción</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Lonas Usadas:</span>
+                      <p className="text-white font-semibold">{calculateProgress(selectedBacheDetalles).lonasUsadas} / {calculateProgress(selectedBacheDetalles).totalLonas}</p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Progreso:</span>
+                      <p className="text-white font-semibold">{calculateProgress(selectedBacheDetalles).progressPercentage.toFixed(1)}%</p>
+                      <div className="w-full bg-white/20 rounded-full h-2 mt-1">
+                        <div
+                          className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] h-2 rounded-full transition-all duration-500"
+                          style={{width: `${calculateProgress(selectedBacheDetalles).progressPercentage}%`}}
+                        ></div>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Biochar Total Producido:</span>
+                      <p className="text-white font-semibold">{getTotalBiochar(selectedBacheDetalles)} kg</p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Biochar Vendido:</span>
+                      <p className="text-white font-semibold">{getBiocharVendido(selectedBacheDetalles)} kg</p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Biochar Disponible:</span>
+                      <p className="text-white font-semibold">{getTotalBiochar(selectedBacheDetalles) - getBiocharVendido(selectedBacheDetalles)} kg</p>
+                    </div>
+                    <div>
+                      <span className="text-white/80 drop-shadow text-sm">Objetivo de Producción:</span>
+                      <p className="text-white font-semibold">500 kg</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información adicional */}
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">📊 Información Adicional</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-white/80 drop-shadow text-sm">Responsable:</span>
+                      <span className="text-white font-semibold">Sistema</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/80 drop-shadow text-sm">Última Actualización:</span>
+                      <span className="text-white font-semibold">
+                        {new Date(selectedBacheDetalles.createdTime).toLocaleDateString('es-ES', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Campos adicionales de Airtable */}
+                {Object.keys(selectedBacheDetalles.fields).length > 0 && (
+                  <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                    <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">🔍 Campos Técnicos</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                      {Object.entries(selectedBacheDetalles.fields).map(([key, value]) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="text-white/60 drop-shadow">{key}:</span>
+                          <span className="text-white font-mono ml-2">{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 mt-6">
+                <button
+                  onClick={closeDetallesModal}
+                  className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         )}
