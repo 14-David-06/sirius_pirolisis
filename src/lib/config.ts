@@ -20,6 +20,26 @@ export const config = {
     monitoreoBachesTableId: process.env.AIRTABLE_MONITOREO_BACHES_TABLE_ID,
     laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
     laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
+    // Field IDs para Laboratorios según documentación de Airtable
+    // ⚠️ NO HARDCODEAR - Solo usar variables de entorno por seguridad
+    laboratoriosFields: {
+      id: process.env.AIRTABLE_LABORATORIOS_ID_FIELD_ID,
+      nombreLaboratorio: process.env.AIRTABLE_LABORATORIOS_NOMBRE_LABORATORIO_FIELD_ID,
+      tipoLaboratorio: process.env.AIRTABLE_LABORATORIOS_TIPO_LABORATORIO_FIELD_ID,
+      responsable: process.env.AIRTABLE_LABORATORIOS_RESPONSABLE_FIELD_ID,
+      telefono: process.env.AIRTABLE_LABORATORIOS_TELEFONO_FIELD_ID,
+      correoElectronico: process.env.AIRTABLE_LABORATORIOS_CORREO_ELECTRONICO_FIELD_ID,
+      direccion: process.env.AIRTABLE_LABORATORIOS_DIRECCION_FIELD_ID,
+      ciudad: process.env.AIRTABLE_LABORATORIOS_CIUDAD_FIELD_ID,
+      pais: process.env.AIRTABLE_LABORATORIOS_PAIS_FIELD_ID,
+      certificaciones: process.env.AIRTABLE_LABORATORIOS_CERTIFICACIONES_FIELD_ID,
+      acreditaciones: process.env.AIRTABLE_LABORATORIOS_ACREDITACIONES_FIELD_ID,
+      metodosAnaliticos: process.env.AIRTABLE_LABORATORIOS_METODOS_ANALITICOS_FIELD_ID,
+      fechaVigenciaCertificaciones: process.env.AIRTABLE_LABORATORIOS_FECHA_VIGENCIA_CERTIFICACIONES_FIELD_ID,
+      realizaRegistro: process.env.AIRTABLE_LABORATORIOS_REALIZA_REGISTRO_FIELD_ID,
+      observaciones: process.env.AIRTABLE_LABORATORIOS_OBSERVACIONES_FIELD_ID,
+      monitoreoBaches: process.env.AIRTABLE_LABORATORIOS_MONITOREO_BACHES_FIELD_ID
+    },
     // ✅ BUENA PRÁCTICA: Field IDs obtenidos de variables de entorno
     // para evitar hardcodear IDs sensibles en el código fuente
     // Los valores reales se configuran en .env.local
@@ -69,9 +89,24 @@ export function validateEnvVars() {
     'AIRTABLE_BACHES_TABLE_ID',
     'AIRTABLE_INVENTARIO_TABLE_ID',
     'AIRTABLE_LABORATORIOS_TABLE_ID',
-    'AIRTABLE_LABORATORIOS_FIELD_ID',
-    'AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID',
     'AIRTABLE_EQUIPOS_TABLE_ID',
+    // Field IDs críticas de Laboratorios (requeridas para funcionamiento)
+    'AIRTABLE_LABORATORIOS_ID_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_NOMBRE_LABORATORIO_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_TIPO_LABORATORIO_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_RESPONSABLE_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_TELEFONO_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_CORREO_ELECTRONICO_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_DIRECCION_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_CIUDAD_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_PAIS_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_CERTIFICACIONES_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_ACREDITACIONES_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_METODOS_ANALITICOS_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_FECHA_VIGENCIA_CERTIFICACIONES_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_REALIZA_REGISTRO_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_OBSERVACIONES_FIELD_ID',
+    'AIRTABLE_LABORATORIOS_MONITOREO_BACHES_FIELD_ID',
     // Field IDs del inventario (requeridos para campos existentes)
     'AIRTABLE_INVENTARIO_INSUMO_FIELD_ID',
     'AIRTABLE_INVENTARIO_CATEGORIA_FIELD_ID',
@@ -105,6 +140,27 @@ export function validateEnvVars() {
   }
 
   console.log('✅ Todas las variables de entorno están configuradas correctamente');
+}
+
+// Función helper para validar field IDs de laboratorios
+export function validateLaboratoriosFields() {
+  const requiredFields = [
+    'id', 'nombreLaboratorio', 'tipoLaboratorio', 'responsable',
+    'telefono', 'correoElectronico', 'direccion', 'ciudad', 'pais',
+    'certificaciones', 'acreditaciones', 'metodosAnaliticos',
+    'fechaVigenciaCertificaciones', 'realizaRegistro', 'observaciones'
+  ];
+
+  const missingFields = requiredFields.filter(field =>
+    !config.airtable.laboratoriosFields[field as keyof typeof config.airtable.laboratoriosFields]
+  );
+
+  if (missingFields.length > 0) {
+    throw new Error(
+      `❌ Field IDs de Laboratorios faltantes:\n${missingFields.map(f => `  - AIRTABLE_LABORATORIOS_${f.toUpperCase()}_FIELD_ID`).join('\n')}\n\n` +
+      `Por favor configura estas variables en tu archivo .env.local`
+    );
+  }
 }
 
 // Helper para logs seguros (no muestra datos sensibles)

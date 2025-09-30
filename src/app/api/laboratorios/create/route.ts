@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config, validateEnvVars } from '@/lib/config';
+import { config, validateEnvVars, validateLaboratoriosFields } from '@/lib/config';
 
 // Validar variables de entorno al cargar el módulo
 validateEnvVars();
+validateLaboratoriosFields();
 
 export async function POST(request: NextRequest) {
   console.log('🔬 [laboratorios] Iniciando creación de laboratorio');
@@ -25,14 +26,67 @@ export async function POST(request: NextRequest) {
     const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${tableName}`;
     console.log(`🌐 [laboratorios] URL de Airtable: ${airtableUrl}`);
 
-    console.log('🚀 [laboratorios] Enviando datos a Airtable...');
+    // Transformar los registros para usar field IDs en lugar de nombres de campo
+    const transformedRecords = records.map((record: any) => {
+      const transformedFields: any = {};
+
+      // Mapear campos del frontend a field IDs de Airtable
+      if (record.fields['Nombre Laboratorio'] && config.airtable.laboratoriosFields.nombreLaboratorio) {
+        transformedFields[config.airtable.laboratoriosFields.nombreLaboratorio] = record.fields['Nombre Laboratorio'];
+      }
+      if (record.fields['Tipo Laboratorio'] && config.airtable.laboratoriosFields.tipoLaboratorio) {
+        transformedFields[config.airtable.laboratoriosFields.tipoLaboratorio] = record.fields['Tipo Laboratorio'];
+      }
+      if (record.fields['Responsable'] && config.airtable.laboratoriosFields.responsable) {
+        transformedFields[config.airtable.laboratoriosFields.responsable] = record.fields['Responsable'];
+      }
+      if (record.fields['Teléfono'] && config.airtable.laboratoriosFields.telefono) {
+        transformedFields[config.airtable.laboratoriosFields.telefono] = record.fields['Teléfono'];
+      }
+      if (record.fields['Correo Electrónico'] && config.airtable.laboratoriosFields.correoElectronico) {
+        transformedFields[config.airtable.laboratoriosFields.correoElectronico] = record.fields['Correo Electrónico'];
+      }
+      if (record.fields['Dirección'] && config.airtable.laboratoriosFields.direccion) {
+        transformedFields[config.airtable.laboratoriosFields.direccion] = record.fields['Dirección'];
+      }
+      if (record.fields['Ciudad'] && config.airtable.laboratoriosFields.ciudad) {
+        transformedFields[config.airtable.laboratoriosFields.ciudad] = record.fields['Ciudad'];
+      }
+      if (record.fields['País'] && config.airtable.laboratoriosFields.pais) {
+        transformedFields[config.airtable.laboratoriosFields.pais] = record.fields['País'];
+      }
+      if (record.fields['Certificaciones'] && config.airtable.laboratoriosFields.certificaciones) {
+        transformedFields[config.airtable.laboratoriosFields.certificaciones] = record.fields['Certificaciones'];
+      }
+      if (record.fields['Acreditaciones'] && config.airtable.laboratoriosFields.acreditaciones) {
+        transformedFields[config.airtable.laboratoriosFields.acreditaciones] = record.fields['Acreditaciones'];
+      }
+      if (record.fields['Métodos Analíticos'] && config.airtable.laboratoriosFields.metodosAnaliticos) {
+        transformedFields[config.airtable.laboratoriosFields.metodosAnaliticos] = record.fields['Métodos Analíticos'];
+      }
+      if (record.fields['Fecha Vigencia Certificaciones'] && config.airtable.laboratoriosFields.fechaVigenciaCertificaciones) {
+        transformedFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = record.fields['Fecha Vigencia Certificaciones'];
+      }
+      if (record.fields['Realiza Registro'] && config.airtable.laboratoriosFields.realizaRegistro) {
+        transformedFields[config.airtable.laboratoriosFields.realizaRegistro] = record.fields['Realiza Registro'];
+      }
+      if (record.fields['Observaciones'] && config.airtable.laboratoriosFields.observaciones) {
+        transformedFields[config.airtable.laboratoriosFields.observaciones] = record.fields['Observaciones'];
+      }
+
+      return {
+        fields: transformedFields
+      };
+    });
+
+    console.log('🚀 [laboratorios] Enviando datos transformados a Airtable...');
     const response = await fetch(airtableUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.airtable.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ records })
+      body: JSON.stringify({ records: transformedRecords })
     });
 
     console.log(`📡 [laboratorios] Respuesta de Airtable - Status: ${response.status}`);
