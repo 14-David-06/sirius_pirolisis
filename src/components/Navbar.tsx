@@ -98,6 +98,13 @@ export default function Navbar() {
           { label: "♻️ Manejo Residuos", href: "/manejo-residuos", icon: "♻️", description: "Gestión de residuos" },
           { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
         ]
+      },
+      {
+        title: "Ventas",
+        icon: "💰",
+        items: [
+          { label: "📋 Pedidos Clientes", href: "/pedidos-clientes", icon: "📋", description: "Gestión de pedidos de clientes" },
+        ]
       }
     ];
   };
