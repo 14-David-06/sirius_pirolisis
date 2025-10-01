@@ -34,7 +34,7 @@ interface OtroEquipoFormData {
 
 export default function Mantenimientos() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <MantenimientosContent />
     </TurnoProtection>
   );

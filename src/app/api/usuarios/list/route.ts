@@ -53,15 +53,7 @@ export async function GET() {
            record.fields['Puesto'] || '',
     }));
 
-    // Filtrar usuarios que no deben aparecer como responsables de mantenimiento
-    const usuariosFiltrados = usuarios.filter((usuario: any) => {
-      const nombre = usuario.nombre?.toLowerCase() || '';
-      return !nombre.includes('david hernandez') &&
-             !nombre.includes('don martin') &&
-             !nombre.includes('pablo acebedo');
-    });
-
-    return NextResponse.json({ usuarios: usuariosFiltrados });
+    return NextResponse.json({ usuarios });
   } catch (error) {
     console.error('Error fetching usuarios:', error);
     return NextResponse.json({
