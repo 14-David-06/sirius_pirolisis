@@ -14,7 +14,8 @@ export async function POST(request: NextRequest) {
       equipoId, // Para compatibilidad hacia atrás
       equiposIds = [], // Nuevo campo para múltiples equipos
       insumosIds = [], // Para compatibilidad hacia atrás
-      insumosUtilizados = [] // Nuevo campo con cantidades
+      insumosUtilizados = [], // Nuevo campo con cantidades
+      responsablesIds = [] // Nuevo campo para responsables del mantenimiento
     } = body;
 
     // Usar insumosUtilizados si está disponible, sino usar insumosIds para compatibilidad
@@ -54,6 +55,10 @@ export async function POST(request: NextRequest) {
 
     if (insumosIds.length > 0) {
       baseFields['Insumos Utilizados'] = insumosIds;
+    }
+
+    if (responsablesIds.length > 0) {
+      baseFields['Responsables Mantenimientos'] = responsablesIds;
     }
 
     // Crear registros para cada equipo
@@ -113,8 +118,33 @@ export async function POST(request: NextRequest) {
       console.log('Creando salidas para mantenimiento:', mantenimientoId);
 
       try {
+        // Obtener información del inventario para las presentaciones
+        const inventarioResponse = await fetch('http://localhost:3000/api/inventario/list', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        let inventarioData = null;
+        if (inventarioResponse.ok) {
+          inventarioData = await inventarioResponse.json();
+          console.log('Datos de inventario obtenidos para presentaciones');
+        } else {
+          console.warn('No se pudo obtener datos del inventario, usando presentaciones por defecto');
+        }
+
         // Crear una salida para cada insumo utilizado
         for (const insumo of insumosFinal) {
+          // Obtener la presentación del insumo desde el inventario
+          let presentacionInsumo = 'Unidad'; // Valor por defecto
+          if (inventarioData?.records) {
+            const inventarioRecord = inventarioData.records.find((record: any) => record.id === insumo.id);
+            if (inventarioRecord?.fields?.['Presentacion Insumo']) {
+              presentacionInsumo = inventarioRecord.fields['Presentacion Insumo'];
+            }
+          }
+
           const salidaResponse = await fetch('http://localhost:3000/api/salidas/create', {
             method: 'POST',
             headers: {
@@ -122,7 +152,7 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify({
               cantidadSale: insumo.cantidad,
-              presentacionInsumo: 'Unidad', // Valor por defecto, podría mejorarse
+              presentacionInsumo: presentacionInsumo,
               observaciones: `Utilizado en mantenimiento: ${descripcion}`,
               tipoSalida: 'Mantenimiento',
               realizaRegistro: realizaRegistro,

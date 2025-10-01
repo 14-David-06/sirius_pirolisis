@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import VoiceToText from '@/components/VoiceToText';
 import { useInventario } from '@/lib/useInventario';
 
 // Función helper para obtener el nombre del usuario actual
@@ -231,7 +232,7 @@ function InventarioPirolisisContent() {
     setRemoveQuantityError('');
 
     // Validar tipo de salida
-    const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Otro'];
+    const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Mantenimiento', 'Otro'];
     if (!tiposValidos.includes(removeQuantityData.tipoSalida)) {
       alert('Tipo de salida inválido. Por favor selecciona un tipo válido.');
       return;
@@ -301,6 +302,14 @@ function InventarioPirolisisContent() {
     } finally {
       setCreating(false);
     }
+  };
+
+  // Función para manejar el texto extraído del audio en observaciones
+  const handleObservacionesVoiceText = (text: string) => {
+    setRemoveQuantityData(prev => ({
+      ...prev,
+      observaciones: prev.observaciones ? `${prev.observaciones} ${text}` : text
+    }));
   };
 
   if (loading) {
@@ -722,13 +731,19 @@ function InventarioPirolisisContent() {
 
                   <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                     <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Observaciones</label>
-                    <textarea
-                      value={removeQuantityData.observaciones}
-                      onChange={(e) => setRemoveQuantityData({...removeQuantityData, observaciones: e.target.value})}
-                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm resize-none"
-                      placeholder="Detalles adicionales sobre la salida..."
-                      rows={3}
-                    />
+                    <div className="relative">
+                      <textarea
+                        value={removeQuantityData.observaciones}
+                        onChange={(e) => setRemoveQuantityData({...removeQuantityData, observaciones: e.target.value})}
+                        className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm resize-none pr-12"
+                        placeholder="Detalles adicionales sobre la salida..."
+                        rows={3}
+                      />
+                      <VoiceToText
+                        onTextExtracted={handleObservacionesVoiceText}
+                        isLoading={creating}
+                      />
+                    </div>
                   </div>
 
                   <div className="bg-white/5 rounded-lg p-4 border border-white/10">

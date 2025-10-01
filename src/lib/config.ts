@@ -18,6 +18,7 @@ export const config = {
     turnosTableId: process.env.AIRTABLE_TURNOS_TABLE_ID,
     mantenimientosTableId: process.env.AIRTABLE_MANTENIMIENTOS_TABLE_ID,
     monitoreoBachesTableId: process.env.AIRTABLE_MONITOREO_BACHES_TABLE_ID,
+    usuariosTableId: process.env.AIRTABLE_USUARIOS_TABLE_ID,
     laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
     laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
     // Field IDs para Laboratorios según documentación de Airtable

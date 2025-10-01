@@ -47,6 +47,8 @@ function MantenimientosContent() {
   const [showTodosEquiposWarning, setShowTodosEquiposWarning] = useState(false);
   const [mantenimientos] = useState<any[]>([]);
   const [equipos, setEquipos] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<any[]>([]);
+  const [responsablesSeleccionados, setResponsablesSeleccionados] = useState<string[]>([]);
   const router = useRouter();
   const { data: inventarioData, loading: inventarioLoading, error: inventarioError } = useInventario();
 
@@ -121,6 +123,25 @@ function MantenimientosContent() {
         }
       };
       fetchEquipos();
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const fetchUsuarios = async () => {
+        try {
+          const response = await fetch('/api/usuarios/list');
+          if (response.ok) {
+            const data = await response.json();
+            setUsuarios(data.usuarios || []);
+          } else {
+            console.error('Error fetching usuarios');
+          }
+        } catch (error) {
+          console.error('Error fetching usuarios:', error);
+        }
+      };
+      fetchUsuarios();
     }
   }, [isAuthenticated]);
 
@@ -255,6 +276,13 @@ function MantenimientosContent() {
       // Validar tipo de mantenimiento personalizado
       if (formData.tipoMantenimiento === 'Otro' && !formData.tipoMantenimientoOtro.trim()) {
         setMensaje('❌ Debe especificar el tipo de mantenimiento personalizado');
+        setIsLoading(false);
+        return;
+      }
+
+      // Validar selección de responsables
+      if (responsablesSeleccionados.length === 0) {
+        setMensaje('❌ Debe seleccionar al menos un responsable del mantenimiento');
         setIsLoading(false);
         return;
       }
@@ -470,6 +498,7 @@ function MantenimientosContent() {
             realizaRegistro: userName,
             turnoId: turnoId,
             equiposIds: equiposIds, // Array de IDs de equipos
+            responsablesIds: responsablesSeleccionados, // Array de IDs de responsables
             insumosUtilizados: formData.insumosUtilizados
           }),
         });
@@ -491,62 +520,6 @@ function MantenimientosContent() {
 
         setMensaje(mensajeExito);
 
-        // Registrar salidas de insumos utilizados
-        if (formData.insumosUtilizados.length > 0) {
-          // Obtener el ID del mantenimiento creado
-          const mantenimientoId = mantenimientoData.records?.[0]?.id;
-          console.log('Mantenimiento creado - ID:', mantenimientoId);
-          console.log('Mantenimiento data completa:', mantenimientoData);
-          
-          if (!mantenimientoId) {
-            console.error('No se pudo obtener el ID del mantenimiento creado');
-            console.error('mantenimientoData:', mantenimientoData);
-            setMensaje(prev => prev + '\n⚠️ Error: No se pudo relacionar las salidas de insumos con el mantenimiento');
-          } else {
-            console.log('Mantenimiento ID válido:', mantenimientoId);
-            console.log('Procesando salidas de insumos para mantenimiento:', mantenimientoId);
-            for (const insumo of formData.insumosUtilizados) {
-              try {
-                // Obtener información del insumo
-                const record = inventarioData?.records.find(r => r.id === insumo.id);
-                const presentacionInsumo = record?.fields['Presentacion Insumo'] || 'Unidades';
-
-                const salidaData = {
-                  cantidadSale: insumo.cantidad,
-                  presentacionInsumo: presentacionInsumo,
-                  observaciones: `Utilizado en mantenimiento: ${formData.descripcion}`,
-                  tipoSalida: 'Mantenimiento',
-                  realizaRegistro: userName,
-                  inventarioInsumosId: insumo.id,
-                  turnoId: turnoId,
-                  mantenimientoId: mantenimientoId
-                };
-                
-                console.log('Enviando datos de salida para insumo', insumo.id, ':', salidaData);
-
-                const response = await fetch('/api/salidas/create', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(salidaData),
-                });
-
-                if (!response.ok) {
-                  const errorData = await response.json();
-                  console.error('Error al registrar salida del insumo:', insumo.id, errorData);
-                  setMensaje(prev => prev + `\n⚠️ Error al registrar salida del insumo ${insumo.id}: ${errorData.error}`);
-                } else {
-                  console.log('Salida registrada para insumo:', insumo.id);
-                }
-              } catch (error) {
-                console.error('Error al procesar salida del insumo:', insumo.id, error);
-                setMensaje(prev => prev + `\n⚠️ Error al procesar salida del insumo ${insumo.id}`);
-              }
-            }
-          }
-        }
-
       } catch (error) {
         console.error('Error creando mantenimiento:', error);
         setMensaje('❌ Error al registrar el mantenimiento');
@@ -563,6 +536,8 @@ function MantenimientosContent() {
         prioridad: 'Media',
         insumosUtilizados: []
       });
+
+      setResponsablesSeleccionados([]);
 
       setOtroEquipoFormData({
         nombre: '',
@@ -734,6 +709,31 @@ function MantenimientosContent() {
                         <option value="Urgente">Urgente</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                      Responsables del Mantenimiento *
+                    </label>
+                    <select
+                      multiple
+                      value={responsablesSeleccionados}
+                      onChange={(e) => {
+                        const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                        setResponsablesSeleccionados(selectedOptions);
+                      }}
+                      required
+                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 min-h-[120px]"
+                    >
+                      {usuarios.map((usuario) => (
+                        <option key={usuario.id} value={usuario.id}>
+                          {usuario.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-white/70 text-xs mt-1">
+                      Mantén presionado Ctrl (o Cmd en Mac) para seleccionar múltiples responsables
+                    </p>
                   </div>
 
                   <div>
