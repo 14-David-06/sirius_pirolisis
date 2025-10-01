@@ -7,7 +7,7 @@ class MockUserRepository implements IUserRepository {
   private users: User[] = [];
 
   async findByCedula(cedula: string): Promise<User | null> {
-    return this.users.find(u => u.Cedula === cedula) || null;
+    return this.users.find(u => u.cedula === cedula) || null;
   }
 
   async findById(id: string): Promise<User | null> {
@@ -15,7 +15,7 @@ class MockUserRepository implements IUserRepository {
   }
 
   async validateCredentials(credentials: UserCredentials): Promise<User | null> {
-    const user = this.users.find(u => u.Cedula === credentials.cedula);
+    const user = this.users.find(u => u.cedula === credentials.cedula);
     if (user && user.hash === `hash_${credentials.password}`) {
       const { hash, salt, ...userWithoutCredentials } = user;
       return userWithoutCredentials;
@@ -53,19 +53,19 @@ describe('IUserRepository Interface', () => {
 
   it('should create and find user by cedula', async () => {
     const userData = {
-      Cedula: '123456789',
-      Nombre: 'Juan',
-      Apellido: 'Pérez',
-      Email: 'juan@example.com',
-      Telefono: '555-1234',
-      Cargo: 'Operador',
+      cedula: '123456789',
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      telefono: '555-1234',
+      cargo: 'Operador',
       hash: 'hash_password123',
       salt: 'salt123',
     };
 
     const created = await repository.create(userData);
     expect(created.id).toBeDefined();
-    expect(created.Cedula).toBe(userData.Cedula);
+    expect(created.cedula).toBe(userData.cedula);
 
     const found = await repository.findByCedula('123456789');
     expect(found).toEqual(created);
@@ -73,12 +73,12 @@ describe('IUserRepository Interface', () => {
 
   it('should validate credentials correctly', async () => {
     const userData = {
-      Cedula: '123456789',
-      Nombre: 'Juan',
-      Apellido: 'Pérez',
-      Email: 'juan@example.com',
-      Telefono: '555-1234',
-      Cargo: 'Operador',
+      cedula: '123456789',
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      telefono: '555-1234',
+      cargo: 'Operador',
       hash: 'hash_password123',
       salt: 'salt123',
     };
@@ -106,29 +106,29 @@ describe('IUserRepository Interface', () => {
 
   it('should update user', async () => {
     const userData = {
-      Cedula: '123456789',
-      Nombre: 'Juan',
-      Apellido: 'Pérez',
-      Email: 'juan@example.com',
-      Telefono: '555-1234',
-      Cargo: 'Operador',
+      cedula: '123456789',
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      telefono: '555-1234',
+      cargo: 'Operador',
     };
 
     const created = await repository.create(userData);
-    const updated = await repository.update(created.id, { Nombre: 'Juan Carlos' });
+    const updated = await repository.update(created.id, { nombre: 'Juan Carlos' });
 
-    expect(updated?.Nombre).toBe('Juan Carlos');
-    expect(updated?.Cedula).toBe('123456789'); // Unchanged
+    expect(updated?.nombre).toBe('Juan Carlos');
+    expect(updated?.cedula).toBe('123456789'); // Unchanged
   });
 
   it('should delete user', async () => {
     const userData = {
-      Cedula: '123456789',
-      Nombre: 'Juan',
-      Apellido: 'Pérez',
-      Email: 'juan@example.com',
-      Telefono: '555-1234',
-      Cargo: 'Operador',
+      cedula: '123456789',
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      telefono: '555-1234',
+      cargo: 'Operador',
     };
 
     const created = await repository.create(userData);

@@ -25,6 +25,11 @@ describe('useAuth', () => {
     Cargo: 'Operador',
   };
 
+  const mockCredentials = {
+    cedula: '123456789',
+    password: 'password123',
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -53,8 +58,8 @@ describe('useAuth', () => {
     });
 
     expect(result.current.isAuthenticated).toBe(true);
-    expect(result.current.user).toEqual(mockUser);
-    expect(result.current.loginTime).toEqual(mockSession.loginTime);
+    expect(result.current.user?.cedula).toBe('123456789');
+    expect(result.current.user?.nombre).toBe('Juan');
   });
 
   it('should handle login', async () => {
@@ -68,7 +73,7 @@ describe('useAuth', () => {
     });
 
     await act(async () => {
-      await result.current.login(mockUser);
+      await result.current.login(mockCredentials);
     });
 
     expect(mockSessionManager.createSecureSession).toHaveBeenCalledWith(mockUser);

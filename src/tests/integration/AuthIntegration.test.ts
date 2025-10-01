@@ -38,20 +38,20 @@ describe('Auth Integration Test', () => {
   it('should define User interface correctly', () => {
     const userData: User = {
       id: 'user-123',
-      Cedula: '123456789',
-      Nombre: 'Juan',
-      Apellido: 'Pérez',
-      Email: 'juan@example.com',
-      Telefono: '555-0123',
-      Cargo: 'Operador',
+      cedula: '123456789',
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      telefono: '555-0123',
+      cargo: 'Operador',
       hash: 'hashedpassword',
       salt: 'somesalt',
     };
 
-    expect(userData.Cedula).toBe('123456789');
-    expect(userData.Nombre).toBe('Juan');
-    expect(userData.Apellido).toBe('Pérez');
-    expect(userData.Cargo).toBe('Operador');
+    expect(userData.cedula).toBe('123456789');
+    expect(userData.nombre).toBe('Juan');
+    expect(userData.apellido).toBe('Pérez');
+    expect(userData.cargo).toBe('Operador');
     expect(userData.hash).toBe('hashedpassword');
   });
 });

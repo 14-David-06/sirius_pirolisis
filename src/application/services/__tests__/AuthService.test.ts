@@ -8,19 +8,19 @@ class MockUserRepository implements IUserRepository {
   private users: User[] = [
     {
       id: 'user1',
-      Cedula: '123456789',
-      Nombre: 'Juan',
-      Apellido: 'Pérez',
-      Email: 'juan@example.com',
-      Telefono: '555-1234',
-      Cargo: 'Operador',
+      cedula: '123456789',
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      telefono: '555-1234',
+      cargo: 'Operador',
       hash: '$2b$10$mockhash', // Mock bcrypt hash
       salt: 'mocksalt',
     },
   ];
 
   async findByCedula(cedula: string): Promise<User | null> {
-    return this.users.find(u => u.Cedula === cedula) || null;
+    return this.users.find(u => u.cedula === cedula) || null;
   }
 
   async findById(id: string): Promise<User | null> {
@@ -72,8 +72,8 @@ describe('AuthService', () => {
 
       expect(result).toBeTruthy();
       expect(result?.id).toBe('user1');
-      expect(result?.Cedula).toBe('123456789');
-      expect(result?.Nombre).toBe('Juan');
+      expect(result?.cedula).toBe('123456789');
+      expect(result?.nombre).toBe('Juan');
       expect(result?.loginTime).toBeDefined();
       expect(result?.hash).toBeUndefined(); // Should not include credentials
       expect(result?.salt).toBeUndefined();
@@ -124,7 +124,7 @@ describe('AuthService', () => {
 
       expect(result).toBeTruthy();
       expect(result?.id).toBe('user1');
-      expect(result?.Nombre).toBe('Juan');
+      expect(result?.nombre).toBe('Juan');
     });
 
     it('should return null for non-existent user', async () => {
@@ -139,8 +139,8 @@ describe('AuthService', () => {
       const result = await authService.getUserByCedula('123456789');
 
       expect(result).toBeTruthy();
-      expect(result?.Cedula).toBe('123456789');
-      expect(result?.Nombre).toBe('Juan');
+      expect(result?.cedula).toBe('123456789');
+      expect(result?.nombre).toBe('Juan');
     });
 
     it('should return null for non-existent cedula', async () => {
