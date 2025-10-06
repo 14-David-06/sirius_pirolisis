@@ -21,8 +21,6 @@ export const config = {
     monitoreoViajesBiomasaTableId: process.env.AIRTABLE_MONITOREO_VIAJES_BIOMASA_TABLE_ID,
     viajesBiomasaTableId: process.env.AIRTABLE_VIAJES_BIOMASA_TABLE_ID,
     usuariosTableId: process.env.AIRTABLE_USUARIOS_TABLE_ID,
-    laboratoriosFieldId: process.env.AIRTABLE_LABORATORIOS_FIELD_ID,
-    laboratoriosNombreFieldId: process.env.AIRTABLE_LABORATORIOS_NOMBRE_FIELD_ID,
     // Field IDs para Laboratorios según documentación de Airtable
     // ⚠️ NO HARDCODEAR - Solo usar variables de entorno por seguridad
     laboratoriosFields: {
@@ -93,6 +91,10 @@ export function validateEnvVars() {
     'AIRTABLE_INVENTARIO_TABLE_ID',
     'AIRTABLE_LABORATORIOS_TABLE_ID',
     'AIRTABLE_EQUIPOS_TABLE_ID',
+    'AIRTABLE_TURNOS_TABLE_ID',
+    'AIRTABLE_USUARIOS_TABLE_ID',
+    'AIRTABLE_VIAJES_BIOMASA_TABLE_ID',
+    'AIRTABLE_MONITOREO_VIAJES_BIOMASA_TABLE_ID',
     // Field IDs críticas de Laboratorios (requeridas para funcionamiento)
     'AIRTABLE_LABORATORIOS_ID_FIELD_ID',
     'AIRTABLE_LABORATORIOS_NOMBRE_LABORATORIO_FIELD_ID',
