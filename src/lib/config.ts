@@ -128,11 +128,20 @@ export function validateEnvVars() {
   const missingVars = requiredVars.filter(varName => !process.env[varName]);
   
   if (missingVars.length > 0) {
-    throw new Error(
+    const errorMessage = 
       `❌ Variables de entorno faltantes: ${missingVars.join(', ')}\n` +
       `💡 Asegúrate de tener un archivo .env.local con todas las variables necesarias.\n` +
-      `📝 Consulta .env.example para ver el formato correcto.`
-    );
+      `📝 Consulta .env.example para ver el formato correcto.`;
+    
+    console.error(errorMessage);
+    
+    // En producción, registrar error pero no lanzar excepción para evitar crashes
+    if (process.env.NODE_ENV === 'production') {
+      console.error('⚠️ [PRODUCCIÓN] Continuando con variables faltantes, pero funcionalidad limitada');
+      return false; // Indicar que la validación falló
+    } else {
+      throw new Error(errorMessage);
+    }
   }
 
   // Advertir sobre variables opcionales faltantes
@@ -145,6 +154,7 @@ export function validateEnvVars() {
   }
 
   console.log('✅ Todas las variables de entorno están configuradas correctamente');
+  return true; // Indicar que la validación fue exitosa
 }
 
 // Función helper para validar field IDs de laboratorios

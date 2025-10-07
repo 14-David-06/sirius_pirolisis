@@ -2,11 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { config, validateEnvVars, logConfigSafely } from '@/lib/config';
 
 // Validar variables de entorno al cargar el módulo
-validateEnvVars();
+const envValidationResult = validateEnvVars();
 
 export async function POST(request: NextRequest) {
   console.log('🔍 [validate-cedula] Iniciando validación de cédula');
+  console.log(`🌍 [validate-cedula] NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`🔧 [validate-cedula] Variables críticas:`, {
+    hasToken: !!process.env.AIRTABLE_TOKEN,
+    hasBaseId: !!process.env.AIRTABLE_BASE_ID,
+    hasTableName: !!process.env.AIRTABLE_TABLE_NAME,
+    tableName: process.env.AIRTABLE_TABLE_NAME,
+    tokenLength: process.env.AIRTABLE_TOKEN?.length || 0,
+    baseIdLength: process.env.AIRTABLE_BASE_ID?.length || 0,
+    envValidation: envValidationResult
+  });
   logConfigSafely();
+  
+  // Verificar si las variables críticas están disponibles
+  if (!config.airtable.token || !config.airtable.baseId || !config.airtable.tableName) {
+    console.error('💥 [validate-cedula] Variables de entorno críticas faltantes');
+    return NextResponse.json(
+      { 
+        message: 'Error de configuración del servidor. Variables de entorno faltantes.',
+        details: process.env.NODE_ENV === 'development' ? 'Revisa tu archivo .env.local' : 'Contacta al administrador'
+      },
+      { status: 500 }
+    );
+  }
   
   try {
     console.log('📥 [validate-cedula] Parseando request body...');
