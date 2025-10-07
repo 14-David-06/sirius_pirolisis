@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { message: 'Se requiere un porcentaje de humedad válido' },
         { status: 400 }
-      );
+      ); 
     }
 
     if (!laboratorioId) {
