@@ -69,6 +69,22 @@ function ManejoResiduosContent() {
     }
   }, [router]);
 
+  // Auto-ocultar mensajes de éxito después de 5 segundos
+  useEffect(() => {
+    if (mensaje && mensaje.includes('✅')) {
+      console.log('⏰ Iniciando timer para auto-ocultar mensaje de éxito en 5 segundos');
+      const timer = setTimeout(() => {
+        console.log('⏰ Auto-ocultando mensaje de éxito');
+        setMensaje('');
+      }, 5000);
+
+      return () => {
+        console.log('⏰ Limpiando timer');
+        clearTimeout(timer);
+      };
+    }
+  }, [mensaje]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -120,12 +136,12 @@ function ManejoResiduosContent() {
     });
 
     if (!hasAtLeastOneSubtipo) {
-      setMensaje('Por favor ingrese al menos un subtipo de residuo con cantidad mayor a 0');
+      setMensaje('❌ Debe agregar al menos un subtipo de residuo con su cantidad (mayor a 0) antes de continuar');
       return false;
     }
 
     if (!formData.entregadoA.trim()) {
-      setMensaje('Por favor complete el campo "Entregado a"');
+      setMensaje('❌ El campo "Entregado a" es obligatorio. Por favor especifique la empresa o entidad destinataria');
       return false;
     }
 
@@ -140,7 +156,7 @@ function ManejoResiduosContent() {
     }
 
     setIsLoading(true);
-    setMensaje('');
+    setMensaje('⏳ Procesando y guardando datos en Airtable...');
 
     try {
       // Obtener el turno activo
@@ -257,25 +273,25 @@ function ManejoResiduosContent() {
           return;
         }
         if (!record['Cantidad Residuo KG'] || record['Cantidad Residuo KG'] <= 0) {
-          setMensaje('❌ Todas las cantidades deben ser mayores a 0');
+          setMensaje('❌ Error de validación: Todas las cantidades de residuos deben ser mayores a 0 kg');
           setIsLoading(false);
           return;
         }
         if (!record['Entregado a'] || record['Entregado a'].trim() === '') {
-          setMensaje('❌ El campo "Entregado a" es obligatorio');
+          setMensaje('❌ Error de validación: El campo "Entregado a" es obligatorio para trazabilidad');
           setIsLoading(false);
           return;
         }
         // Validar que el Tipo Residuo sea válido según Airtable
         const tiposValidos = ['♻️ Residuos Aprovechables', '🥬 Residuos Orgánicos', '☢️ Residuos Peligrosos', '🗑️ Residuos No Aprovechables'];
         if (!record['Tipo Residuo'] || !tiposValidos.includes(record['Tipo Residuo'])) {
-          setMensaje(`❌ Tipo de residuo inválido: ${record['Tipo Residuo']}. Debe ser uno de: ${tiposValidos.join(', ')}`);
+          setMensaje(`❌ Error del sistema: Tipo de residuo inválido "${record['Tipo Residuo']}". Contacte al administrador.`);
           setIsLoading(false);
           return;
         }
         // Validar que ID_Turno esté presente
         if (!record.ID_Turno || record.ID_Turno.trim() === '') {
-          setMensaje('❌ Falta el ID del turno. Por favor, abre un turno primero.');
+          setMensaje('❌ Error de sesión: No hay un turno activo. Por favor, abra un turno primero desde el menú principal.');
           setIsLoading(false);
           return;
         }
@@ -292,16 +308,25 @@ function ManejoResiduosContent() {
       const result = await response.json();
 
       if (response.ok && result.records) {
-        setMensaje(`✅ Registro de manejo de residuos creado exitosamente (${recordsToCreate.length} registros)`);
+        const pluralRegistros = recordsToCreate.length === 1 ? 'registro' : 'registros';
+        const mensajeExito = `✅ ¡Éxito! Se ${recordsToCreate.length === 1 ? 'creó' : 'crearon'} ${recordsToCreate.length} ${pluralRegistros} de manejo de residuos correctamente en Airtable`;
         
-        // Limpiar formulario
-        limpiarFormulario();
+        console.log('✅ Estableciendo mensaje de éxito:', mensajeExito);
+        setMensaje(mensajeExito);
+        
+        // Hacer scroll hacia arriba para mostrar el mensaje
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        // Limpiar formulario después de una pequeña demora para que el usuario vea el mensaje
+        setTimeout(() => {
+          limpiarFormulario();
+        }, 1000);
       } else {
-        setMensaje(`❌ Error: ${result.error || 'Error desconocido'}`);
+        setMensaje(`❌ Error al guardar en Airtable: ${result.error || 'Error desconocido. Verifique su conexión e intente nuevamente.'}`);
       }
     } catch (error) {
       console.error('Error:', error);
-      setMensaje('❌ Error de conexión');
+      setMensaje('❌ Error de conexión con el servidor. Verifique su conexión a internet e intente nuevamente.');
     } finally {
       setIsLoading(false);
     }
@@ -316,7 +341,7 @@ function ManejoResiduosContent() {
       entregadoA: '',
       observaciones: ''
     });
-    setMensaje('');
+    // No limpiar el mensaje aquí para que se pueda ver el mensaje de éxito
   };
 
   
@@ -345,12 +370,29 @@ function ManejoResiduosContent() {
             </p>
 
             {mensaje && (
-              <div className={`mb-6 p-4 rounded-lg text-center font-semibold backdrop-blur-sm ${
+              <div className={`mb-6 p-6 rounded-xl text-center font-bold backdrop-blur-sm transform transition-all duration-500 ease-in-out border-2 relative z-50 ${
                 mensaje.includes('✅') 
-                  ? 'bg-green-500/80 text-white border border-green-400/50 shadow-lg' 
-                  : 'bg-red-500/80 text-white border border-red-400/50 shadow-lg'
+                  ? 'bg-gradient-to-r from-green-500 to-green-600 text-white border-green-300 shadow-2xl shadow-green-500/50 animate-bounce' 
+                  : 'bg-gradient-to-r from-red-500 to-red-600 text-white border-red-300 shadow-2xl shadow-red-500/50 animate-pulse'
               }`}>
-                {mensaje}
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-center space-x-3">
+                      <span className="text-3xl animate-pulse">
+                        {mensaje.includes('✅') ? '🎉' : '⚠️'}
+                      </span>
+                      <span className="text-lg font-extrabold">{mensaje}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMensaje('')}
+                    className="ml-4 text-white/80 hover:text-white transition-colors duration-200 text-xl font-bold hover:bg-black/20 rounded-full w-8 h-8 flex items-center justify-center"
+                    title="Cerrar mensaje"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             )}
 
@@ -366,7 +408,7 @@ function ManejoResiduosContent() {
                     entregadoA: data.entregadoA || '',
                     observaciones: data.observaciones || ''
                   }));
-                  setMensaje('✅ Datos extraídos del audio correctamente');
+                  setMensaje('✅ ¡Perfecto! Los datos fueron extraídos del audio y cargados automáticamente en el formulario');
                 }}
                 isLoading={isLoading}
               />
@@ -652,9 +694,19 @@ function ManejoResiduosContent() {
                 <button 
                   type="submit"
                   disabled={isLoading}
-                  className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none font-semibold shadow-lg"
+                  className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none font-semibold shadow-lg flex items-center space-x-2"
                 >
-                  {isLoading ? 'Registrando...' : '♻️ Registrar Manejo'}
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Guardando en Airtable...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>♻️</span>
+                      <span>Registrar Manejo</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
