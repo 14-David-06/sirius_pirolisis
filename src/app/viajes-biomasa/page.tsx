@@ -1074,7 +1074,7 @@ function ViajesBiomasaContent() {
                       className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 font-medium"
                     >
                       <option value="">Seleccione un tipo de vehículo</option>
-                      <option value="Camión">Camión</option>
+                      <option value="Cargador Frontal">Cargador Frontal</option>
                       <option value="Tractomula">Tractomula</option>
                       <option value="Volqueta">Volqueta</option>
                       <option value="Camioneta">Camioneta</option>
