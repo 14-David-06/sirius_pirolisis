@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
 
       try {
         // Obtener información del inventario para las presentaciones
-        const inventarioResponse = await fetch('http://localhost:3000/api/inventario/list', {
+        const { resolveApiUrl } = await import('@/lib/url-resolver');
+        const inventarioResponse = await fetch(resolveApiUrl('/api/inventario/list'), {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const salidaResponse = await fetch('http://localhost:3000/api/salidas/create', {
+          const salidaResponse = await fetch(resolveApiUrl('/api/salidas/create'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

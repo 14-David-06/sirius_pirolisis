@@ -8,6 +8,10 @@ const AIRTABLE_TURNOS_TABLE = config.airtable.turnosTableId || 'Turno Pirolisis'
 export async function GET(request: NextRequest) {
   console.log('🔍 Verificando turnos abiertos...');
 
+  // Obtener el userId de los parámetros de consulta (fuera del try para acceso en catch)
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
+
   try {
     if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
       console.log('❌ Variables de entorno faltantes');
@@ -16,10 +20,6 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-
-    // Obtener el userId de los parámetros de consulta
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
 
     if (!userId) {
       console.log('❌ UserId no proporcionado');
@@ -90,11 +90,38 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('💥 Error al verificar turnos abiertos:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    
+    // Logging detallado para diagnóstico en producción
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      hasAirtableConfig: !!(AIRTABLE_TOKEN && AIRTABLE_BASE_ID),
+      requestedUserId: userId
+    });
 
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: errorMessage },
-      { status: 500 }
-    );
+    // Determinar el tipo de error para respuesta más específica
+    let errorResponse = {
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Error desconocido',
+      timestamp: new Date().toISOString(),
+      canRetry: true
+    };
+
+    // Si es un error de red/DNS, sugerir retry
+    if (error instanceof Error && (
+      error.message.includes('fetch') ||
+      error.message.includes('network') ||
+      error.message.includes('ENOTFOUND') ||
+      error.message.includes('NAME_NOT_RESOLVED')
+    )) {
+      errorResponse.error = 'Error de conectividad';
+      errorResponse.details = 'Problema de red al conectar con la base de datos';
+      errorResponse.canRetry = true;
+    }
+
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

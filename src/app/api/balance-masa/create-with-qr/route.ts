@@ -193,7 +193,10 @@ export async function POST(request: NextRequest) {
     // 2. Generar PDF del informe y subirlo a S3
     console.log('📄 Generando PDF del informe...');
     
-    const pdfResponse = await fetch(`http://localhost:3000/api/generate-pdf-report`, {
+    // Usar el URL resolver para generar la URL correcta
+    const { resolveApiUrl } = await import('@/lib/url-resolver');
+    const pdfApiUrl = resolveApiUrl('/api/generate-pdf-report');
+    const pdfResponse = await fetch(pdfApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -233,7 +236,8 @@ export async function POST(request: NextRequest) {
     // 3. Generar QR con la URL del PDF
     console.log('📱 Generando QR con URL del PDF...');       
 
-    const qrResponse = await fetch(`http://localhost:3000/api/generate-qr`, {   
+    const qrApiUrl = resolveApiUrl('/api/generate-qr');
+    const qrResponse = await fetch(qrApiUrl, {   
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -318,9 +322,40 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ Error en POST /api/balance-masa/create-with-qr:', error);
     
-    return NextResponse.json({
+    // Logging detallado para diagnóstico
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      hasAirtableConfig: !!(AIRTABLE_TOKEN && AIRTABLE_BASE_ID),
+      hasBalanceTable: !!process.env.AIRTABLE_BALANCE_MASA_TABLE,
+      balanceTable: process.env.AIRTABLE_BALANCE_MASA_TABLE,
+      hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
+      appUrl: process.env.NEXT_PUBLIC_APP_URL
+    });
+
+    // Respuesta de error más detallada
+    let errorResponse = {
       success: false,
-      error: 'Error interno del servidor'
-    }, { status: 500 });
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Error desconocido',
+      timestamp: new Date().toISOString()
+    };
+
+    // Si es un error de configuración
+    if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
+      errorResponse.error = 'Error de configuración';
+      errorResponse.details = 'Variables de entorno faltantes para Airtable';
+    }
+
+    // Si es un error de tabla faltante
+    if (!process.env.AIRTABLE_BALANCE_MASA_TABLE) {
+      errorResponse.error = 'Error de configuración';
+      errorResponse.details = 'Variable AIRTABLE_BALANCE_MASA_TABLE no configurada';
+    }
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }
