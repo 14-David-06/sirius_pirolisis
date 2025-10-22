@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '@/lib/config';
+import { resolveApiUrl } from '@/lib/url-resolver';
 
 export async function POST(request: NextRequest) {
   try {
@@ -119,7 +120,6 @@ export async function POST(request: NextRequest) {
 
       try {
         // Obtener información del inventario para las presentaciones
-        const { resolveApiUrl } = await import('@/lib/url-resolver');
         const inventarioResponse = await fetch(resolveApiUrl('/api/inventario/list'), {
           method: 'GET',
           headers: {

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveApiUrl } from '@/lib/url-resolver';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
+const AIRTABLE_BALANCE_MASA_TABLE = process.env.AIRTABLE_BALANCE_MASA_TABLE;
 
 interface BalanceMasaData {
   pesoBiochar: number;
@@ -91,10 +93,22 @@ export async function POST(request: NextRequest) {
 
     console.log('📊 Creando balance completo con QR:', data);      
 
-    if (!AIRTABLE_BASE_ID || !AIRTABLE_TOKEN) {
+    if (!AIRTABLE_BASE_ID || !AIRTABLE_TOKEN || !AIRTABLE_BALANCE_MASA_TABLE) {
+      console.error('❌ Variables de entorno faltantes:', {
+        hasToken: !!AIRTABLE_TOKEN,
+        hasBaseId: !!AIRTABLE_BASE_ID,
+        hasBalanceTable: !!AIRTABLE_BALANCE_MASA_TABLE,
+        balanceTable: AIRTABLE_BALANCE_MASA_TABLE
+      });
+      
       return NextResponse.json({
         success: false,
-        error: 'Configuración de Airtable faltante'
+        error: 'Configuración de Airtable incompleta',
+        details: {
+          missingToken: !AIRTABLE_TOKEN,
+          missingBaseId: !AIRTABLE_BASE_ID,
+          missingBalanceTable: !AIRTABLE_BALANCE_MASA_TABLE
+        }
       }, { status: 500 });
     }
 
@@ -125,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     console.log('📤 Enviando a Airtable...');
 
-    const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${process.env.AIRTABLE_BALANCE_MASA_TABLE}`, {
+    const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_BALANCE_MASA_TABLE}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
@@ -194,7 +208,6 @@ export async function POST(request: NextRequest) {
     console.log('📄 Generando PDF del informe...');
     
     // Usar el URL resolver para generar la URL correcta
-    const { resolveApiUrl } = await import('@/lib/url-resolver');
     const pdfApiUrl = resolveApiUrl('/api/generate-pdf-report');
     const pdfResponse = await fetch(pdfApiUrl, {
       method: 'POST',
@@ -330,8 +343,8 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV,
       hasAirtableConfig: !!(AIRTABLE_TOKEN && AIRTABLE_BASE_ID),
-      hasBalanceTable: !!process.env.AIRTABLE_BALANCE_MASA_TABLE,
-      balanceTable: process.env.AIRTABLE_BALANCE_MASA_TABLE,
+      hasBalanceTable: !!AIRTABLE_BALANCE_MASA_TABLE,
+      balanceTable: AIRTABLE_BALANCE_MASA_TABLE,
       hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
       appUrl: process.env.NEXT_PUBLIC_APP_URL
     });
@@ -346,7 +359,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Si es un error de configuración
-      if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
+      if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID || !AIRTABLE_BALANCE_MASA_TABLE) {
         return {
           ...baseError,
           error: 'Error de configuración',
@@ -354,8 +367,8 @@ export async function POST(request: NextRequest) {
         };
       }
 
-      // Si es un error de tabla faltante
-      if (!process.env.AIRTABLE_BALANCE_MASA_TABLE) {
+      // Si es un error de tabla faltante (redundante pero por claridad)
+      if (!AIRTABLE_BALANCE_MASA_TABLE) {
         return {
           ...baseError,
           error: 'Error de configuración',
