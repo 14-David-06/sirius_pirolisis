@@ -346,14 +346,20 @@ export async function POST(request: NextRequest) {
 
     // Si es un error de configuración
     if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
-      errorResponse.error = 'Error de configuración';
-      errorResponse.details = 'Variables de entorno faltantes para Airtable';
+      errorResponse = {
+        ...errorResponse,
+        error: 'Error de configuración',
+        details: 'Variables de entorno faltantes para Airtable'
+      };
     }
 
     // Si es un error de tabla faltante
     if (!process.env.AIRTABLE_BALANCE_MASA_TABLE) {
-      errorResponse.error = 'Error de configuración';
-      errorResponse.details = 'Variable AIRTABLE_BALANCE_MASA_TABLE no configurada';
+      errorResponse = {
+        ...errorResponse,
+        error: 'Error de configuración',
+        details: 'Variable AIRTABLE_BALANCE_MASA_TABLE no configurada'
+      };
     }
     
     return NextResponse.json(errorResponse, { status: 500 });

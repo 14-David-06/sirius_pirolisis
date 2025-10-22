@@ -1,7 +1,7 @@
 // src/middleware/error-handler.ts
 // Middleware para manejo centralizado de errores
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 export interface ApiError extends Error {
   statusCode?: number;

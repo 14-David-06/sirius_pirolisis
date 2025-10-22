@@ -117,9 +117,12 @@ export async function GET(request: NextRequest) {
       error.message.includes('ENOTFOUND') ||
       error.message.includes('NAME_NOT_RESOLVED')
     )) {
-      errorResponse.error = 'Error de conectividad';
-      errorResponse.details = 'Problema de red al conectar con la base de datos';
-      errorResponse.canRetry = true;
+      errorResponse = {
+        ...errorResponse,
+        error: 'Error de conectividad',
+        details: 'Problema de red al conectar con la base de datos',
+        canRetry: true
+      };
     }
 
     return NextResponse.json(errorResponse, { status: 500 });
