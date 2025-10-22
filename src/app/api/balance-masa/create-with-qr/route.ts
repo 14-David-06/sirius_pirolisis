@@ -336,31 +336,37 @@ export async function POST(request: NextRequest) {
       appUrl: process.env.NEXT_PUBLIC_APP_URL
     });
 
-    // Respuesta de error más detallada
-    let errorResponse = {
-      success: false,
-      error: 'Error interno del servidor',
-      details: error instanceof Error ? error.message : 'Error desconocido',
-      timestamp: new Date().toISOString()
+    // Determinar tipo de error y respuesta más detallada
+    const getErrorResponse = () => {
+      const baseError = {
+        success: false,
+        error: 'Error interno del servidor',
+        details: error instanceof Error ? error.message : 'Error desconocido',
+        timestamp: new Date().toISOString()
+      };
+
+      // Si es un error de configuración
+      if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
+        return {
+          ...baseError,
+          error: 'Error de configuración',
+          details: 'Variables de entorno faltantes para Airtable'
+        };
+      }
+
+      // Si es un error de tabla faltante
+      if (!process.env.AIRTABLE_BALANCE_MASA_TABLE) {
+        return {
+          ...baseError,
+          error: 'Error de configuración',
+          details: 'Variable AIRTABLE_BALANCE_MASA_TABLE no configurada'
+        };
+      }
+
+      return baseError;
     };
 
-    // Si es un error de configuración
-    if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
-      errorResponse = {
-        ...errorResponse,
-        error: 'Error de configuración',
-        details: 'Variables de entorno faltantes para Airtable'
-      };
-    }
-
-    // Si es un error de tabla faltante
-    if (!process.env.AIRTABLE_BALANCE_MASA_TABLE) {
-      errorResponse = {
-        ...errorResponse,
-        error: 'Error de configuración',
-        details: 'Variable AIRTABLE_BALANCE_MASA_TABLE no configurada'
-      };
-    }
+    const errorResponse = getErrorResponse();
     
     return NextResponse.json(errorResponse, { status: 500 });
   }

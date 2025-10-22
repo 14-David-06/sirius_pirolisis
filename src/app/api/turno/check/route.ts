@@ -103,27 +103,24 @@ export async function GET(request: NextRequest) {
     });
 
     // Determinar el tipo de error para respuesta más específica
-    let errorResponse = {
+    const isNetworkError = error instanceof Error && (
+      error.message.includes('fetch') ||
+      error.message.includes('network') ||
+      error.message.includes('ENOTFOUND') ||
+      error.message.includes('NAME_NOT_RESOLVED')
+    );
+
+    const errorResponse = isNetworkError ? {
+      error: 'Error de conectividad',
+      details: 'Problema de red al conectar con la base de datos',
+      timestamp: new Date().toISOString(),
+      canRetry: true
+    } : {
       error: 'Error interno del servidor',
       details: error instanceof Error ? error.message : 'Error desconocido',
       timestamp: new Date().toISOString(),
       canRetry: true
     };
-
-    // Si es un error de red/DNS, sugerir retry
-    if (error instanceof Error && (
-      error.message.includes('fetch') ||
-      error.message.includes('network') ||
-      error.message.includes('ENOTFOUND') ||
-      error.message.includes('NAME_NOT_RESOLVED')
-    )) {
-      errorResponse = {
-        ...errorResponse,
-        error: 'Error de conectividad',
-        details: 'Problema de red al conectar con la base de datos',
-        canRetry: true
-      };
-    }
 
     return NextResponse.json(errorResponse, { status: 500 });
   }
