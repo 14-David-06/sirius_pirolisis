@@ -19,6 +19,16 @@ export async function GET(request: NextRequest) {
       // Verificar otras tablas críticas
       AIRTABLE_USUARIOS_TABLE_ID: process.env.AIRTABLE_USUARIOS_TABLE_ID ? '✅ Configurado' : '❌ Faltante',
       AIRTABLE_TURNOS_TABLE_ID: process.env.AIRTABLE_TURNOS_TABLE_ID ? '✅ Configurado' : '❌ Faltante',
+      AIRTABLE_BALANCE_MASA_TABLE: process.env.AIRTABLE_BALANCE_MASA_TABLE ? '✅ Configurado' : '❌ Faltante',
+      
+      // AWS S3 - crítico para PDF y QR
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ? '✅ Configurado' : '❌ Faltante',
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ? '✅ Configurado' : '❌ Faltante',
+      AWS_REGION: process.env.AWS_REGION ? `✅ ${process.env.AWS_REGION}` : '❌ Faltante (usando us-east-1)',
+      
+      // URL Configuration
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ? `✅ ${process.env.NEXT_PUBLIC_APP_URL}` : '❌ Faltante',
+      VERCEL_URL: process.env.VERCEL_URL ? `✅ ${process.env.VERCEL_URL}` : '❌ Faltante',
       
       // Config object values
       configAirtableToken: config.airtable.token ? '✅ Configurado en config' : '❌ Faltante en config',

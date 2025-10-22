@@ -93,21 +93,24 @@ export async function POST(request: NextRequest) {
 
     console.log('📊 Creando balance completo con QR:', data);      
 
-    if (!AIRTABLE_BASE_ID || !AIRTABLE_TOKEN || !AIRTABLE_BALANCE_MASA_TABLE) {
-      console.error('❌ Variables de entorno faltantes:', {
-        hasToken: !!AIRTABLE_TOKEN,
-        hasBaseId: !!AIRTABLE_BASE_ID,
-        hasBalanceTable: !!AIRTABLE_BALANCE_MASA_TABLE,
-        balanceTable: AIRTABLE_BALANCE_MASA_TABLE
-      });
+    // ✅ VALIDACIÓN MEJORADA DE VARIABLES DE ENTORNO
+    const missingVars = [];
+    if (!AIRTABLE_TOKEN) missingVars.push('AIRTABLE_TOKEN');
+    if (!AIRTABLE_BASE_ID) missingVars.push('AIRTABLE_BASE_ID');
+    if (!AIRTABLE_BALANCE_MASA_TABLE) missingVars.push('AIRTABLE_BALANCE_MASA_TABLE');
+
+    if (missingVars.length > 0) {
+      console.error('❌ Variables de entorno faltantes:', missingVars);
       
       return NextResponse.json({
         success: false,
         error: 'Configuración de Airtable incompleta',
+        missingVariables: missingVars,
         details: {
-          missingToken: !AIRTABLE_TOKEN,
-          missingBaseId: !AIRTABLE_BASE_ID,
-          missingBalanceTable: !AIRTABLE_BALANCE_MASA_TABLE
+          hasToken: !!AIRTABLE_TOKEN,
+          hasBaseId: !!AIRTABLE_BASE_ID,
+          hasBalanceTable: !!AIRTABLE_BALANCE_MASA_TABLE,
+          balanceTable: AIRTABLE_BALANCE_MASA_TABLE || 'NO_CONFIGURADO'
         }
       }, { status: 500 });
     }
@@ -162,7 +165,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Balance creado con ID:', balanceId);
 
-    // 1.5. Gestionar agrupación en baches
+    // 1.5. Gestionar agrupación en baches (no crítico - no fallar si hay error)
     console.log('📦 Gestionando agrupación en baches...');
     
     try {
@@ -200,137 +203,166 @@ export async function POST(request: NextRequest) {
         console.log(`✅ Primer bache creado: ${newBache?.id}`);
       }
     } catch (bacheError) {
-      console.error('❌ Error en gestión de baches:', bacheError);
-      // No fallar la creación del balance por error en baches
+      console.error('❌ Error en gestión de baches (no crítico):', bacheError);
+      // Continuar con la generación de PDF/QR aunque falle la gestión de baches
+    }
+
+    // ✅ MANEJO MEJORADO DE PDF Y QR - Continuar aunque fallen
+    let pdfGenerationResult: { success: boolean; pdfUrl?: string; error?: string } = { success: false };
+    let qrGenerationResult: { success: boolean; qrUrl?: string; error?: string } = { success: false };
+    
+    // Verificar si AWS está configurado antes de intentar
+    const hasAwsConfig = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+    
+    if (!hasAwsConfig) {
+      console.warn('⚠️ AWS no configurado - saltando generación de PDF y QR');
+      
+      return NextResponse.json({
+        success: true,
+        balanceId: balanceId,
+        pdfGenerated: false,
+        qrGenerated: false,
+        message: 'Balance creado exitosamente (PDF/QR omitidos por falta de configuración AWS)',
+        warnings: ['AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY no configurados']
+      });
     }
 
     // 2. Generar PDF del informe y subirlo a S3
     console.log('📄 Generando PDF del informe...');
     
-    // Usar el URL resolver para generar la URL correcta
-    const pdfApiUrl = resolveApiUrl('/api/generate-pdf-report');
-    const pdfResponse = await fetch(pdfApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        balanceId: balanceId,
-        balanceData: balanceResult.fields
-      }),
-    });
-
-    if (!pdfResponse.ok) {
-      console.error('❌ Error generando PDF');
-      
-      return NextResponse.json({
-        success: true,
-        balanceId: balanceId,
-        pdfGenerated: false,
-        message: 'Balance creado pero error generando PDF'
-      });
-    }
-
-    const pdfResult = await pdfResponse.json();
-
-    if (!pdfResult.success) {
-      console.error('❌ Error en resultado PDF:', pdfResult.error);    
-
-      return NextResponse.json({
-        success: true,
-        balanceId: balanceId,
-        pdfGenerated: false,
-        message: 'Balance creado pero error generando PDF'
-      });
-    }
-
-    console.log('✅ PDF generado y subido a S3:', pdfResult.pdfUrl);
-
-    // 3. Generar QR con la URL del PDF
-    console.log('📱 Generando QR con URL del PDF...');       
-
-    const qrApiUrl = resolveApiUrl('/api/generate-qr');
-    const qrResponse = await fetch(qrApiUrl, {   
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        balanceId: balanceId,
-        url: pdfResult.pdfUrl  // ← URL del PDF, no de la página web
-      }),
-    });
-
-    if (!qrResponse.ok) {
-      console.error('❌ Error generando QR');
-      
-      // Aún así retornamos el balance creado exitosamente
-      return NextResponse.json({
-        success: true,
-        balanceId: balanceId,
-        qrGenerated: false,
-        message: 'Balance creado pero error generando QR'
-      });
-    }
-
-    const qrResult = await qrResponse.json();
-
-    if (!qrResult.success) {
-      console.error('❌ Error en resultado QR:', qrResult.error);    
-
-      return NextResponse.json({
-        success: true,
-        balanceId: balanceId,
-        qrGenerated: false,
-        message: 'Balance creado pero error generando QR'
-      });
-    }
-
-    console.log('✅ QR generado:', qrResult.qrUrl);
-
-    // 3. Actualizar el registro con la URL del QR
-    const updatePayload = {
-      fields: {
-        'QR_lona': [{
-          url: qrResult.qrUrl,
-          filename: `qr-balance-${balanceId}.png`
-        }]
-      }
-    };
-
-    const updateResponse = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${process.env.AIRTABLE_BALANCE_MASA_TABLE}/${balanceId}`,
-      {
-        method: 'PATCH',
+    try {
+      // Usar el URL resolver para generar la URL correcta
+      const pdfApiUrl = resolveApiUrl('/api/generate-pdf-report');
+      const pdfResponse = await fetch(pdfApiUrl, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updatePayload),
-      }
-    );
-
-    if (!updateResponse.ok) {
-      console.error('❌ Error actualizando QR en Airtable');
-      
-      return NextResponse.json({
-        success: true,
-        balanceId: balanceId,
-        qrUrl: qrResult.qrUrl,
-        qrUpdated: false,
-        message: 'Balance y QR creados pero no se pudo actualizar el registro'
+        body: JSON.stringify({
+          balanceId: balanceId,
+          balanceData: balanceResult.fields
+        }),
       });
+
+      if (pdfResponse.ok) {
+        const pdfResult = await pdfResponse.json();
+        if (pdfResult.success) {
+          pdfGenerationResult = { success: true, pdfUrl: pdfResult.pdfUrl };
+          console.log('✅ PDF generado y subido a S3:', pdfResult.pdfUrl);
+        } else {
+          pdfGenerationResult = { success: false, error: pdfResult.error };
+          console.error('❌ Error en resultado PDF:', pdfResult.error);
+        }
+      } else {
+        pdfGenerationResult = { success: false, error: `HTTP ${pdfResponse.status}` };
+        console.error('❌ Error HTTP generando PDF:', pdfResponse.status);
+      }
+    } catch (pdfError) {
+      pdfGenerationResult = { success: false, error: pdfError instanceof Error ? pdfError.message : 'Error desconocido' };
+      console.error('❌ Error en catch PDF:', pdfError);
     }
 
-    console.log('✅ QR actualizado en registro');
+    // 3. Generar QR con la URL del PDF (solo si el PDF se generó exitosamente)
+    if (pdfGenerationResult.success && pdfGenerationResult.pdfUrl) {
+      console.log('📱 Generando QR con URL del PDF...');       
 
-    return NextResponse.json({
+      try {
+        const qrApiUrl = resolveApiUrl('/api/generate-qr');
+        const qrResponse = await fetch(qrApiUrl, {   
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            balanceId: balanceId,
+            url: pdfGenerationResult.pdfUrl  // URL del PDF
+          }),
+        });
+
+        if (qrResponse.ok) {
+          const qrResult = await qrResponse.json();
+          if (qrResult.success) {
+            qrGenerationResult = { success: true, qrUrl: qrResult.qrUrl };
+            console.log('✅ QR generado:', qrResult.qrUrl);
+
+            // 4. Actualizar el registro con la URL del QR
+            try {
+              const updatePayload = {
+                fields: {
+                  'QR_lona': [{
+                    url: qrResult.qrUrl,
+                    filename: `qr-balance-${balanceId}.png`
+                  }]
+                }
+              };
+
+              const updateResponse = await fetch(
+                `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_BALANCE_MASA_TABLE}/${balanceId}`,
+                {
+                  method: 'PATCH',
+                  headers: {
+                    'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(updatePayload),
+                }
+              );
+
+              if (updateResponse.ok) {
+                console.log('✅ QR actualizado en registro');
+              } else {
+                console.error('❌ Error actualizando QR en Airtable (no crítico)');
+              }
+            } catch (updateError) {
+              console.error('❌ Error en catch actualización QR (no crítico):', updateError);
+            }
+          } else {
+            qrGenerationResult = { success: false, error: qrResult.error };
+            console.error('❌ Error en resultado QR:', qrResult.error);
+          }
+        } else {
+          qrGenerationResult = { success: false, error: `HTTP ${qrResponse.status}` };
+          console.error('❌ Error HTTP generando QR:', qrResponse.status);
+        }
+      } catch (qrError) {
+        qrGenerationResult = { success: false, error: qrError instanceof Error ? qrError.message : 'Error desconocido' };
+        console.error('❌ Error en catch QR:', qrError);
+      }
+    } else {
+      console.warn('⚠️ Saltando generación de QR porque el PDF falló');
+    }
+
+    // Respuesta final con información completa
+    const responseData: any = {
       success: true,
       balanceId: balanceId,
-      qrUrl: qrResult.qrUrl,
-      pdfUrl: pdfResult.pdfUrl,
-      message: 'Balance creado exitosamente con PDF y QR generados'
-    });
+      pdfGenerated: pdfGenerationResult.success,
+      qrGenerated: qrGenerationResult.success,
+      message: 'Balance creado exitosamente'
+    };
+
+    if (pdfGenerationResult.success) {
+      responseData.pdfUrl = pdfGenerationResult.pdfUrl;
+    }
+
+    if (qrGenerationResult.success) {
+      responseData.qrUrl = qrGenerationResult.qrUrl;
+    }
+
+    const warnings = [];
+    if (!pdfGenerationResult.success) {
+      warnings.push(`PDF no generado: ${pdfGenerationResult.error}`);
+    }
+    if (!qrGenerationResult.success) {
+      warnings.push(`QR no generado: ${qrGenerationResult.error}`);
+    }
+
+    if (warnings.length > 0) {
+      responseData.warnings = warnings;
+      responseData.message += ' (con advertencias)';
+    }
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('❌ Error en POST /api/balance-masa/create-with-qr:', error);
