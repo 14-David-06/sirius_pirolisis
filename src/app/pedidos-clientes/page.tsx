@@ -7,7 +7,7 @@ import { useState } from 'react';
 
 export default function PedidosClientes() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <PedidosClientesContent />
     </TurnoProtection>
   );

@@ -18,7 +18,7 @@ interface ManejoResiduosFormData {
 
 export default function ManejoResiduos() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <ManejoResiduosContent />
     </TurnoProtection>
   );

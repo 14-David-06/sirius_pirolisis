@@ -20,7 +20,7 @@ interface BalanceMasaFormData {
 
 export default function BalanceMasa() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <BalanceMasaContent />
     </TurnoProtection>
   );

@@ -9,7 +9,7 @@ import Link from 'next/link';
 
 export default function SistemaBaches() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <SistemaBachesContent />
     </TurnoProtection>
   );

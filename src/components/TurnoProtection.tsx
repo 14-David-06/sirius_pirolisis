@@ -10,11 +10,14 @@ interface TurnoProtectionProps {
   allowBitacoraUsers?: boolean;
 }
 
-// Usuarios autorizados para acceder a bitácora sin turno
-const BITACORA_AUTHORIZED_USERS = [
+// Usuarios autorizados para acceder a todas las funciones sin turno
+// David y Santiago tienen acceso completo a todas las funcionalidades
+const SUPER_AUTHORIZED_USERS = [
   'Santiago Amaya',
+  'Santiago',
+  'David Hernandez', 
+  'David',
   'Don Martin', 
-  'David Hernandez',
   'Pablo Acebedo'
 ];
 
@@ -34,9 +37,22 @@ export default function TurnoProtection({
   } | null>(null);
   const router = useRouter();
 
-  // Función para verificar si el usuario está autorizado para bitácora sin turno
+  // Función para verificar si el usuario está autorizado para acceder sin turno
   const isUserAuthorizedForBitacora = (userName: string): boolean => {
-    return BITACORA_AUTHORIZED_USERS.includes(userName);
+    if (!userName) return false;
+    
+    // Normalizar el nombre para comparación (convertir a minúsculas y remover espacios extra)
+    const normalizedUserName = userName.toLowerCase().trim();
+    
+    return SUPER_AUTHORIZED_USERS.some(authorizedUser => {
+      const normalizedAuthorizedUser = authorizedUser.toLowerCase().trim();
+      // Verificar coincidencia exacta o si el nombre del usuario está contenido en el autorizado
+      return normalizedAuthorizedUser === normalizedUserName || 
+             normalizedUserName.includes('david') || 
+             normalizedUserName.includes('santiago') ||
+             normalizedUserName.includes('martin') ||
+             normalizedUserName.includes('pablo');
+    });
   };
 
   useEffect(() => {
@@ -54,6 +70,10 @@ export default function TurnoProtection({
         const sessionData = JSON.parse(userSession);
         userId = sessionData.user?.id;
         userName = sessionData.user?.Nombre || sessionData.user?.name;
+        
+        // Debug log para verificar el nombre del usuario
+        console.log('🔍 [TurnoProtection] Usuario detectado:', userName);
+        console.log('🔍 [TurnoProtection] ¿Es usuario autorizado?', isUserAuthorizedForBitacora(userName));
       } catch (error) {
         console.error('Error parsing user session:', error);
         router.push('/login');

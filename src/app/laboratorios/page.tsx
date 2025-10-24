@@ -13,7 +13,7 @@ interface Laboratorio {
 
 export default function LaboratoriosPage() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <LaboratoriosContent />
     </TurnoProtection>
   );

@@ -14,7 +14,7 @@ interface CerrarTurnoFormData {
 
 export default function CerrarTurno() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <CerrarTurnoContent />
     </TurnoProtection>
   );

@@ -25,7 +25,7 @@ interface ViajesBiomasaFormData {
 
 export default function ViajesBiomasa() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <ViajesBiomasaContent />
     </TurnoProtection>
   );

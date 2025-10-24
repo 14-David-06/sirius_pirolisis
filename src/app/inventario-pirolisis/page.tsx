@@ -23,7 +23,7 @@ const getCurrentUserName = (): string => {
 
 export default function InventarioPirolisis() {
   return (
-    <TurnoProtection requiresTurno={true}>
+    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
       <InventarioPirolisisContent />
     </TurnoProtection>
   );
