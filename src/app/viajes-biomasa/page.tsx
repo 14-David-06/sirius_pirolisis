@@ -38,16 +38,16 @@ function ViajesBiomasaContent() {
   const router = useRouter();
 
   const [formData, setFormData] = useState({
-    nombreQuienEntrega: '',
-    tipoBiomasa: '',
+    nombreQuienEntrega: 'Miller Triana',
+    tipoBiomasa: 'Cascarilla de Palma',
     tipoBiomasaOtro: '',
-    pesoEntregadoMasaFresca: '',
-    tipoCombustible: '',
+    pesoEntregadoMasaFresca: '600',
+    tipoCombustible: 'Diesel',
     tipoCombustibleOtro: '',
-    tipoVehiculo: '',
+    tipoVehiculo: 'Cargador Frontal',
     tipoVehiculoOtro: '',
     // Nuevos campos para rutas
-    rutaSeleccionada: '',
+    rutaSeleccionada: 'Ruta principal de PKO a Pirolisis',
     nuevaRutaNombre: '',
     nuevaRutaDistancia: '',
     nuevaRutaCoordenadas: null as File | null,
@@ -124,6 +124,28 @@ function ViajesBiomasaContent() {
 
         if (data.success) {
           setRutasAirtable(data.records);
+          
+          // Debug: ver las rutas cargadas
+          console.log('🗺️ Rutas cargadas desde Airtable:', data.records.map((r: any) => r.fields['Ruta']));
+          
+          // Buscar y seleccionar automáticamente "Ruta principal de PKO a Pirolisis"
+          const rutaPrincipal = data.records.find((ruta: any) => 
+            ruta.fields['Ruta']?.includes('Ruta principal de PKO a Pirolisis') ||
+            ruta.fields['Ruta']?.includes('PKO a Pirolisis') ||
+            ruta.fields['Ruta']?.toLowerCase().includes('pko')
+          );
+          
+          console.log('🎯 Ruta principal encontrada:', rutaPrincipal ? rutaPrincipal.fields['Ruta'] : 'No encontrada');
+          
+          if (rutaPrincipal) {
+            setRutaSeleccionada(rutaPrincipal.id);
+            setFormData(prev => ({ ...prev, rutaSeleccionada: rutaPrincipal.id }));
+            
+            // Cargar la imagen de la ruta si existe
+            if (rutaPrincipal.fields['Imagen Ruta'] && rutaPrincipal.fields['Imagen Ruta'].length > 0) {
+              setImagenRutaUrl(rutaPrincipal.fields['Imagen Ruta'][0].url);
+            }
+          }
         } else {
           console.error('Error cargando rutas Airtable:', data.error);
         }
@@ -617,24 +639,37 @@ function ViajesBiomasaContent() {
       if (response.ok) {
         setMensaje('✅ Viaje de biomasa registrado exitosamente');
         
-        // Limpiar formulario
+        // Buscar la ruta principal para mantenerla seleccionada
+        const rutaPrincipal = rutasAirtable.find((ruta: any) => 
+          ruta.fields['Ruta']?.includes('Ruta principal de PKO a Pirolisis') ||
+          ruta.fields['Ruta']?.includes('PKO a Pirolisis') ||
+          ruta.fields['Ruta']?.toLowerCase().includes('pko')
+        );
+        
+        // Limpiar formulario pero mantener valores predefinidos
         setFormData({
-          nombreQuienEntrega: '',
-          tipoBiomasa: '',
+          nombreQuienEntrega: 'Miller Triana',
+          tipoBiomasa: 'Cascarilla de Palma',
           tipoBiomasaOtro: '',
-          pesoEntregadoMasaFresca: '',
-          tipoCombustible: '',
+          pesoEntregadoMasaFresca: '600',
+          tipoCombustible: 'Diesel',
           tipoCombustibleOtro: '',
-          tipoVehiculo: '',
+          tipoVehiculo: 'Cargador Frontal',
           tipoVehiculoOtro: '',
-          rutaSeleccionada: '',
+          rutaSeleccionada: rutaPrincipal?.id || '',
           nuevaRutaNombre: '',
           nuevaRutaDistancia: '',
           nuevaRutaCoordenadas: null,
           nuevaRutaImagen: null
         });
-        setRutaSeleccionada('');
-        setImagenRutaUrl('');
+        setRutaSeleccionada(rutaPrincipal?.id || '');
+        
+        // Mantener la imagen de la ruta principal si existe
+        if (rutaPrincipal && rutaPrincipal.fields['Imagen Ruta'] && rutaPrincipal.fields['Imagen Ruta'].length > 0) {
+          setImagenRutaUrl(rutaPrincipal.fields['Imagen Ruta'][0].url);
+        } else {
+          setImagenRutaUrl('');
+        }
         setShowNuevaRuta(false);
 
         // LÓGICA AUTO-CREAR MONITOREO CON 0% SI SE PASA DE 10 VIAJES
