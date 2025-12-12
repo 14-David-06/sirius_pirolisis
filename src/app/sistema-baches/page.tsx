@@ -67,6 +67,7 @@ function SistemaBachesContent() {
   const [showActualizarPesoModal, setShowActualizarPesoModal] = useState(false);
   const [selectedBachePeso, setSelectedBachePeso] = useState<any>(null);
   const [pesoHumedo, setPesoHumedo] = useState('');
+  const [comprobantePeso, setComprobantePeso] = useState<File | null>(null);
   const [isSubmittingPeso, setIsSubmittingPeso] = useState(false);
 
   // State for laboratorios
@@ -440,6 +441,7 @@ function SistemaBachesContent() {
     setShowActualizarPesoModal(false);
     setSelectedBachePeso(null);
     setPesoHumedo('');
+    setComprobantePeso(null);
   };
 
   // Submit actualizar peso
@@ -454,11 +456,41 @@ function SistemaBachesContent() {
     try {
       console.log('🚀 Iniciando actualización de peso:', selectedBachePeso.id);
 
+      let comprobanteUrl = '';
+
+      // Si hay archivo, subirlo a S3 primero
+      if (comprobantePeso) {
+        console.log('📤 Subiendo comprobante de peso a S3...');
+        
+        const formData = new FormData();
+        formData.append('file', comprobantePeso);
+        formData.append('bacheId', selectedBachePeso.id);
+
+        const uploadResponse = await fetch('/api/s3/upload-comprobante-peso', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const uploadData = await uploadResponse.json();
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Error subiendo archivo: ${uploadData.error}`);
+        }
+
+        comprobanteUrl = uploadData.fileUrl;
+        console.log('✅ Comprobante subido exitosamente:', comprobanteUrl);
+      }
+
       // Enviar datos para actualizar el peso húmedo
-      const updateData = {
+      const updateData: any = {
         id: selectedBachePeso.id,
         "Total Biochar Humedo Bache (KG)": parseFloat(pesoHumedo)
       };
+
+      // Agregar URL del comprobante si existe
+      if (comprobanteUrl) {
+        updateData["Comprobante Peso Bache"] = [{ url: comprobanteUrl }];
+      }
 
       console.log('📤 Enviando datos a API:', updateData);
 
@@ -477,7 +509,7 @@ function SistemaBachesContent() {
         throw new Error(`Error ${response.status}: ${responseData.error || 'Error desconocido'}`);
       }
 
-      alert('✅ Peso actualizado exitosamente');
+      alert(comprobantePeso ? '✅ Peso y comprobante actualizados exitosamente' : '✅ Peso actualizado exitosamente');
       closeActualizarPesoModal();
       // Recargar los datos
       refetch();
@@ -1503,6 +1535,25 @@ function SistemaBachesContent() {
                   />
                   <p className="text-xs text-white/60 mt-1 drop-shadow">
                     Ingrese el peso húmedo total del bache
+                  </p>
+                </div>
+
+                {/* Campo de archivo adjunto */}
+                <div className="mt-4">
+                  <label htmlFor="comprobantePeso" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                    📎 Comprobante de Peso (Opcional)
+                  </label>
+                  <input
+                    type="file"
+                    id="comprobantePeso"
+                    name="comprobantePeso"
+                    accept="image/*,.pdf"
+                    capture="environment"
+                    onChange={(e) => setComprobantePeso(e.target.files?.[0] || null)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 font-medium file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                  />
+                  <p className="text-xs text-white/60 mt-1 drop-shadow">
+                    📷 Puede tomar una foto o adjuntar un archivo PDF como comprobante
                   </p>
                 </div>
 
