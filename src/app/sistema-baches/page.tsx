@@ -16,7 +16,17 @@ export default function SistemaBaches() {
 }
 
 function SistemaBachesContent() {
-  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, hasPesoHumedoActualizado, getNumericValue, refetch } = useBaches();
+  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, hasPesoHumedoActualizado, hasMonitoreoRegistrado, getNumericValue, refetch } = useBaches();
+
+  // Función para obtener el usuario de la sesión
+  const getUserFromSession = () => {
+    const userSession = localStorage.getItem('userSession');
+    if (userSession) {
+      const sessionData = JSON.parse(userSession);
+      return sessionData.user?.Nombre || sessionData.user?.name || 'Usuario';
+    }
+    return 'Usuario';
+  };
 
   // State for search and filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,9 +41,6 @@ function SistemaBachesContent() {
     idBigBag: '',
     humedadMC: '',
     masaSecaDM: '',
-    referenciaLaboratorio: '',
-    resultadosLaboratorio: '',
-    observaciones: '',
     laboratorio: ''
   });
   const [isSubmittingMonitoreo, setIsSubmittingMonitoreo] = useState(false);
@@ -135,9 +142,6 @@ function SistemaBachesContent() {
       idBigBag: getBacheId(bache),
       humedadMC: '',
       masaSecaDM: '', // Se calculará automáticamente
-      referenciaLaboratorio: '',
-      resultadosLaboratorio: '',
-      observaciones: '',
       laboratorio: ''
     });
     setNuevoLaboratorioForm({
@@ -164,9 +168,6 @@ function SistemaBachesContent() {
       idBigBag: '',
       humedadMC: '',
       masaSecaDM: '',
-      referenciaLaboratorio: '',
-      resultadosLaboratorio: '',
-      observaciones: '',
       laboratorio: ''
     });
     setNuevoLaboratorioForm({
@@ -347,9 +348,7 @@ function SistemaBachesContent() {
             'ID BigBag': monitoreoForm.idBigBag,
             '% Humedad (MC)': monitoreoForm.humedadMC,
             'Masa Seca (DM kg)': monitoreoForm.masaSecaDM,
-            'No. Referencia Laboratorio': monitoreoForm.referenciaLaboratorio,
-            'Resultados Laboratorio': monitoreoForm.resultadosLaboratorio,
-            'Observaciones': monitoreoForm.observaciones,
+            'Realiza Registro': getUserFromSession(),
             'Bache': [selectedBache.id], // Link to the bache record
             'Laboratorio': laboratorioId && laboratorioId !== 'nuevo-laboratorio' ? [laboratorioId] : []
           }
@@ -370,6 +369,8 @@ function SistemaBachesContent() {
 
       alert('✅ Monitoreo registrado exitosamente');
       closeMonitoreoModal();
+      // Recargar los datos para actualizar el estado de los botones
+      refetch();
     } catch (error) {
       console.error('Error submitting monitoreo:', error);
       alert('❌ Error al registrar el monitoreo');
@@ -411,6 +412,12 @@ function SistemaBachesContent() {
   const closePasarBodegaModal = () => {
     setShowPasarBodegaModal(false);
     setSelectedBacheBodega(null);
+  };
+
+  // Función para verificar si el peso ya fue actualizado desde el estado inicial
+  const isPesoYaActualizado = (bache: any) => {
+    // Si ya tiene monitoreo registrado, significa que el peso ya se actualizó
+    return hasMonitoreoRegistrado(bache);
   };
 
   // Handle actualizar peso - Abrir modal
@@ -872,21 +879,33 @@ function SistemaBachesContent() {
                               <div className="space-y-2 mt-3">
                                 <button
                                   onClick={() => openMonitoreoModal(bache)}
-                                  disabled={!hasPesoHumedoActualizado(bache)}
+                                  disabled={!hasPesoHumedoActualizado(bache) || hasMonitoreoRegistrado(bache)}
                                   className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                                    hasPesoHumedoActualizado(bache)
+                                    hasPesoHumedoActualizado(bache) && !hasMonitoreoRegistrado(bache)
                                       ? 'bg-[#5A7836]/80 hover:bg-[#5A7836] text-white cursor-pointer'
                                       : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                                   }`}
-                                  title={!hasPesoHumedoActualizado(bache) ? 'Debe actualizar el peso del bache primero' : ''}
+                                  title={
+                                    !hasPesoHumedoActualizado(bache) 
+                                      ? 'Debe actualizar el peso del bache primero' 
+                                      : hasMonitoreoRegistrado(bache)
+                                      ? 'El monitoreo ya ha sido registrado para este bache'
+                                      : ''
+                                  }
                                 >
-                                  📊 Registrar Monitoreo
+                                  {hasMonitoreoRegistrado(bache) ? '✅ Monitoreo Registrado' : '📊 Registrar Monitoreo'}
                                 </button>
                                 <button
                                   onClick={() => handleActualizarPeso(bache)}
-                                  className="w-full bg-orange-600/80 hover:bg-orange-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
+                                  disabled={isPesoYaActualizado(bache)}
+                                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                    !isPesoYaActualizado(bache)
+                                      ? 'bg-orange-600/80 hover:bg-orange-600 text-white cursor-pointer'
+                                      : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                                  }`}
+                                  title={isPesoYaActualizado(bache) ? 'El peso ya ha sido actualizado y el bache tiene monitoreo registrado' : ''}
                                 >
-                                  ⚖️ Actualizar Peso
+                                  {isPesoYaActualizado(bache) ? '✅ Peso Actualizado' : '⚖️ Actualizar Peso'}
                                 </button>
                               </div>
                             )}
@@ -968,12 +987,6 @@ function SistemaBachesContent() {
                     </p>
                   </div>
                 </div>
-
-
-
-
-
-
 
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
@@ -1181,6 +1194,8 @@ function SistemaBachesContent() {
                     </div>
                   )}
                 </div>
+
+
 
                 <div className="flex gap-4 pt-4">
                   <button

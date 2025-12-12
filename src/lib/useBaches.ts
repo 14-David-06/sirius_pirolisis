@@ -181,6 +181,12 @@ export function useBaches() {
     return pesoHumedo > 0;
   };
 
+  // Función para verificar si el bache ya tiene monitoreo registrado
+  const hasMonitoreoRegistrado = (bache: BacheRecord) => {
+    const monitoreoRecords = bache.fields['Monitoreo Baches'] || [];
+    return Array.isArray(monitoreoRecords) && monitoreoRecords.length > 0;
+  };
+
   return {
     data,
     loading,
@@ -194,6 +200,7 @@ export function useBaches() {
     getTotalBiochar,
     getBiocharVendido,
     hasPesoHumedoActualizado,
+    hasMonitoreoRegistrado,
     refetch: () => {
       setLoading(true);
       setError(null);
