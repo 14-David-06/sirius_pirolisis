@@ -10,7 +10,7 @@ interface MenuItem {
   icon: string;
   description: string;
 }
-
+ 
 interface MenuCategory {
   title: string;
   icon: string;
