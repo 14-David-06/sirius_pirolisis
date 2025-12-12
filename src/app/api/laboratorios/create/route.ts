@@ -64,9 +64,9 @@ export async function POST(request: NextRequest) {
       if (record.fields['Métodos Analíticos'] && config.airtable.laboratoriosFields.metodosAnaliticos) {
         transformedFields[config.airtable.laboratoriosFields.metodosAnaliticos] = record.fields['Métodos Analíticos'];
       }
-      if (record.fields['Fecha Vigencia Certificaciones'] && config.airtable.laboratoriosFields.fechaVigenciaCertificaciones) {
-        transformedFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = record.fields['Fecha Vigencia Certificaciones'];
-      }
+      // if (record.fields['Fecha Vigencia Certificaciones'] && config.airtable.laboratoriosFields.fechaVigenciaCertificaciones) {
+      //   transformedFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = record.fields['Fecha Vigencia Certificaciones'];
+      // }
       if (record.fields['Realiza Registro'] && config.airtable.laboratoriosFields.realizaRegistro) {
         transformedFields[config.airtable.laboratoriosFields.realizaRegistro] = record.fields['Realiza Registro'];
       }

@@ -73,9 +73,10 @@ export async function PUT(request: NextRequest) {
     if (fields.metodosAnaliticos && config.airtable.laboratoriosFields.metodosAnaliticos) {
       airtableFields[config.airtable.laboratoriosFields.metodosAnaliticos] = fields.metodosAnaliticos.trim();
     }
-    if (fields.fechaVigenciaCertificaciones && config.airtable.laboratoriosFields.fechaVigenciaCertificaciones) {
-      airtableFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = fields.fechaVigenciaCertificaciones.trim();
-    }
+    // Campo temporalmente deshabilitado - ID no válido en Airtable
+    // if (fields.fechaVigenciaCertificaciones && config.airtable.laboratoriosFields.fechaVigenciaCertificaciones) {
+    //   airtableFields[config.airtable.laboratoriosFields.fechaVigenciaCertificaciones] = fields.fechaVigenciaCertificaciones.trim();
+    // }
     if (fields.realizaRegistro && config.airtable.laboratoriosFields.realizaRegistro) {
       airtableFields[config.airtable.laboratoriosFields.realizaRegistro] = fields.realizaRegistro.trim();
     }

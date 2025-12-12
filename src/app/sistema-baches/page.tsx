@@ -16,7 +16,7 @@ export default function SistemaBaches() {
 }
 
 function SistemaBachesContent() {
-  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, refetch } = useBaches();
+  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, hasPesoHumedoActualizado, getNumericValue, refetch } = useBaches();
 
   // State for search and filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -134,7 +134,7 @@ function SistemaBachesContent() {
     setMonitoreoForm({
       idBigBag: getBacheId(bache),
       humedadMC: '',
-      masaSecaDM: '',
+      masaSecaDM: '', // Se calculará automáticamente
       referenciaLaboratorio: '',
       resultadosLaboratorio: '',
       observaciones: '',
@@ -197,12 +197,67 @@ function SistemaBachesContent() {
     setSelectedBacheDetalles(null);
   };
 
+  // Función para calcular masa seca automáticamente
+  const calcularMasaSeca = (humedadMC: string, pesoHumedo: number) => {
+    if (!humedadMC || isNaN(parseFloat(humedadMC)) || pesoHumedo <= 0) {
+      return '';
+    }
+    
+    const humedadPorcentaje = parseFloat(humedadMC);
+    
+    // Validar que el porcentaje de humedad esté entre 0 y 100
+    if (humedadPorcentaje < 0 || humedadPorcentaje > 100) {
+      return '';
+    }
+    
+    const masaSeca = pesoHumedo * (1 - humedadPorcentaje / 100);
+    
+    // Validar que el resultado no sea negativo (doble verificación)
+    if (masaSeca < 0) {
+      return '';
+    }
+    
+    return masaSeca.toFixed(2);
+  };
+
   const handleMonitoreoInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setMonitoreoForm(prev => ({
-      ...prev,
+    
+    // Validación especial para el porcentaje de humedad
+    if (name === 'humedadMC') {
+      const humedadNum = parseFloat(value);
+      if (value !== '' && (!isNaN(humedadNum) && (humedadNum < 0 || humedadNum > 100))) {
+        alert('⚠️ El porcentaje de humedad debe estar entre 0% y 100%');
+        return;
+      }
+    }
+    
+    let updatedForm = {
+      ...monitoreoForm,
       [name]: value
-    }));
+    };
+    
+    // Si se cambió el porcentaje de humedad, recalcular masa seca
+    if (name === 'humedadMC' && selectedBache) {
+      const pesoHumedo = getNumericValue(selectedBache, [
+        'Total Biochar Humedo Bache (KG)',
+        'Peso Humedo',
+        'Biochar Humedo'
+      ]);
+      const masaSecaCalculada = calcularMasaSeca(value, pesoHumedo);
+      
+      // Si la masa seca calculada está vacía (por validaciones), mostrar mensaje
+      if (value !== '' && pesoHumedo > 0 && masaSecaCalculada === '') {
+        alert('⚠️ El porcentaje de humedad ingresado generaría un valor inválido de masa seca');
+      }
+      
+      updatedForm = {
+        ...updatedForm,
+        masaSecaDM: masaSecaCalculada
+      };
+    }
+    
+    setMonitoreoForm(updatedForm);
 
     // Si se cambia el laboratorio seleccionado, limpiar el campo de nuevo laboratorio
     if (name === 'laboratorio' && value !== 'nuevo-laboratorio') {
@@ -261,7 +316,7 @@ function SistemaBachesContent() {
               'Certificaciones': nuevoLaboratorioForm.certificaciones.trim(),
               'Acreditaciones': nuevoLaboratorioForm.acreditaciones.trim(),
               'Métodos Analíticos': nuevoLaboratorioForm.metodosAnaliticos.trim(),
-              'Fecha Vigencia Certificaciones': nuevoLaboratorioForm.fechaVigenciaCertificaciones.trim(),
+              // 'Fecha Vigencia Certificaciones': nuevoLaboratorioForm.fechaVigenciaCertificaciones.trim(), // Campo temporalmente deshabilitado
               'Observaciones': nuevoLaboratorioForm.observaciones.trim()
             }
           }]
@@ -817,7 +872,13 @@ function SistemaBachesContent() {
                               <div className="space-y-2 mt-3">
                                 <button
                                   onClick={() => openMonitoreoModal(bache)}
-                                  className="w-full bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
+                                  disabled={!hasPesoHumedoActualizado(bache)}
+                                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                    hasPesoHumedoActualizado(bache)
+                                      ? 'bg-[#5A7836]/80 hover:bg-[#5A7836] text-white cursor-pointer'
+                                      : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                                  }`}
+                                  title={!hasPesoHumedoActualizado(bache) ? 'Debe actualizar el peso del bache primero' : ''}
                                 >
                                   📊 Registrar Monitoreo
                                 </button>
@@ -876,13 +937,16 @@ function SistemaBachesContent() {
                     <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                       % Humedad (MC)
                     </label>
-                    <textarea
+                    <input
+                      type="number"
                       name="humedadMC"
                       value={monitoreoForm.humedadMC}
                       onChange={handleMonitoreoInputChange}
-                      rows={3}
-                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
-                      placeholder="Porcentaje de humedad"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                      placeholder="Ej: 15.5"
                     />
                   </div>
 
@@ -890,58 +954,26 @@ function SistemaBachesContent() {
                     <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                       Masa Seca (DM kg)
                     </label>
-                    <textarea
+                    <input
+                      type="number"
                       name="masaSecaDM"
                       value={monitoreoForm.masaSecaDM}
-                      onChange={handleMonitoreoInputChange}
-                      rows={3}
-                      className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
-                      placeholder="Masa seca en kg"
+                      readOnly
+                      step="0.01"
+                      className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-xl text-gray-600 cursor-not-allowed"
+                      placeholder="Se calculará automáticamente"
                     />
+                    <p className="text-xs text-white/60 mt-1">
+                      Fórmula: Masa húmeda × (1 - % humedad)
+                    </p>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                    No. Referencia Laboratorio
-                  </label>
-                  <textarea
-                    name="referenciaLaboratorio"
-                    value={monitoreoForm.referenciaLaboratorio}
-                    onChange={handleMonitoreoInputChange}
-                    rows={2}
-                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
-                    placeholder="Número de referencia del laboratorio"
-                  />
-                </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                    Resultados Laboratorio
-                  </label>
-                  <textarea
-                    name="resultadosLaboratorio"
-                    value={monitoreoForm.resultadosLaboratorio}
-                    onChange={handleMonitoreoInputChange}
-                    rows={3}
-                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
-                    placeholder="Resultados del laboratorio"
-                  />
-                </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                    Observaciones
-                  </label>
-                  <textarea
-                    name="observaciones"
-                    value={monitoreoForm.observaciones}
-                    onChange={handleMonitoreoInputChange}
-                    rows={3}
-                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800 resize-none"
-                    placeholder="Observaciones adicionales"
-                  />
-                </div>
+
+
+
 
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
@@ -1064,6 +1096,7 @@ function SistemaBachesContent() {
                           />
                         </div>
 
+                        {/* Campo temporalmente deshabilitado - ID no válido en Airtable
                         <div>
                           <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
                             Fecha Vigencia Certificaciones
@@ -1076,6 +1109,7 @@ function SistemaBachesContent() {
                             placeholder="Fecha de vigencia"
                           />
                         </div>
+                        */}
                       </div>
 
                       <div className="mt-4 space-y-4">

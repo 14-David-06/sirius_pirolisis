@@ -171,6 +171,16 @@ export function useBaches() {
     return bache.fields['Fecha Creacion'] || bache.fields['Fecha'] || bache.fields['Creado'] || bache.createdTime;
   };
 
+  // Función para verificar si el bache tiene peso húmedo actualizado
+  const hasPesoHumedoActualizado = (bache: BacheRecord) => {
+    const pesoHumedo = getNumericValue(bache, [
+      'Total Biochar Humedo Bache (KG)',
+      'Peso Humedo',
+      'Biochar Humedo'
+    ]);
+    return pesoHumedo > 0;
+  };
+
   return {
     data,
     loading,
@@ -183,6 +193,7 @@ export function useBaches() {
     getDateValue,
     getTotalBiochar,
     getBiocharVendido,
+    hasPesoHumedoActualizado,
     refetch: () => {
       setLoading(true);
       setError(null);

@@ -36,7 +36,7 @@ export const config = {
       certificaciones: process.env.AIRTABLE_LABORATORIOS_CERTIFICACIONES_FIELD_ID,
       acreditaciones: process.env.AIRTABLE_LABORATORIOS_ACREDITACIONES_FIELD_ID,
       metodosAnaliticos: process.env.AIRTABLE_LABORATORIOS_METODOS_ANALITICOS_FIELD_ID,
-      fechaVigenciaCertificaciones: process.env.AIRTABLE_LABORATORIOS_FECHA_VIGENCIA_CERTIFICACIONES_FIELD_ID,
+      // fechaVigenciaCertificaciones: process.env.AIRTABLE_LABORATORIOS_FECHA_VIGENCIA_CERTIFICACIONES_FIELD_ID, // Campo no disponible
       realizaRegistro: process.env.AIRTABLE_LABORATORIOS_REALIZA_REGISTRO_FIELD_ID,
       observaciones: process.env.AIRTABLE_LABORATORIOS_OBSERVACIONES_FIELD_ID,
       monitoreoBaches: process.env.AIRTABLE_LABORATORIOS_MONITOREO_BACHES_FIELD_ID
@@ -163,7 +163,8 @@ export function validateLaboratoriosFields() {
     'id', 'nombreLaboratorio', 'tipoLaboratorio', 'responsable',
     'telefono', 'correoElectronico', 'direccion', 'ciudad', 'pais',
     'certificaciones', 'acreditaciones', 'metodosAnaliticos',
-    'fechaVigenciaCertificaciones', 'realizaRegistro', 'observaciones'
+    // 'fechaVigenciaCertificaciones', // Campo no disponible en Airtable
+    'realizaRegistro', 'observaciones'
   ];
 
   const missingFields = requiredFields.filter(field =>
