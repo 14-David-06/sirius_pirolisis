@@ -28,6 +28,14 @@ function SistemaBachesContent() {
     return 'Usuario';
   };
 
+  // Función para obtener el laboratorio seleccionado
+  const getSelectedLaboratorio = () => {
+    if (!monitoreoForm.laboratorio || monitoreoForm.laboratorio === 'nuevo-laboratorio') {
+      return null;
+    }
+    return laboratorios.find(lab => lab.id === monitoreoForm.laboratorio);
+  };
+
   // State for search and filters
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
@@ -982,9 +990,6 @@ function SistemaBachesContent() {
                       className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-xl text-gray-600 cursor-not-allowed"
                       placeholder="Se calculará automáticamente"
                     />
-                    <p className="text-xs text-white/60 mt-1">
-                      Fórmula: Masa húmeda × (1 - % humedad)
-                    </p>
                   </div>
                 </div>
 
@@ -1011,6 +1016,18 @@ function SistemaBachesContent() {
                       ➕ Registrar nuevo laboratorio
                     </option>
                   </select>
+
+                  {/* Zona informativa de Métodos Analíticos */}
+                  {getSelectedLaboratorio() && getSelectedLaboratorio()?.fields?.['Métodos Analíticos'] && (
+                    <div className="mt-3 p-3 bg-blue-500/20 rounded-lg border border-blue-300/30">
+                      <h4 className="text-sm font-semibold text-white mb-2 drop-shadow flex items-center">
+                        🔬 Métodos Analíticos
+                      </h4>
+                      <p className="text-sm text-blue-100 leading-relaxed">
+                        {getSelectedLaboratorio()?.fields?.['Métodos Analíticos']}
+                      </p>
+                    </div>
+                  )}
 
                   {monitoreoForm.laboratorio === 'nuevo-laboratorio' && (
                     <div className="mt-4 p-4 bg-white/10 rounded-lg border border-white/20">
