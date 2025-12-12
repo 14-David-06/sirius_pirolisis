@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     if (!config.airtable.token || !config.airtable.baseId || !config.airtable.viajesBiomasaTableId) {
       return NextResponse.json({ error: 'Configuración de Airtable faltante' }, { status: 500 });

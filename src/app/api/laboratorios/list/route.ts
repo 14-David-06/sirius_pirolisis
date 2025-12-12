@@ -5,7 +5,7 @@ import { config, validateEnvVars, validateLaboratoriosFields } from '@/lib/confi
 validateEnvVars();
 validateLaboratoriosFields();
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   console.log('🔬 [laboratorios] Iniciando obtención de laboratorios');
 
   try {

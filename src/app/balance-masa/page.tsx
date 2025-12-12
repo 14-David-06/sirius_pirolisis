@@ -132,7 +132,7 @@ function BalanceMasaContent() {
         ...(turnoPirolisisId && { turnoPirolisis: [turnoPirolisisId] })
       };
 
-      const response = await fetch('/api/balance-masa/create-with-qr', {
+      const response = await fetch('/api/balance-masa/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

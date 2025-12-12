@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // Verificar variables de entorno críticas
     const diagnostics = {
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 }
 
 // Test de creación simple para aislar el problema
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   console.log('🧪 [debug-balance-masa] Test de creación básica');
   
   try {

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
+const AIRTABLE_BALANCE_MASA_TABLE = process.env.AIRTABLE_BALANCE_MASA_TABLE;
 
-// Interfaz para el tipo de datos del balance de masa
 interface BalanceMasaData {
   pesoBiochar: number;
   temperaturaR1: number;
@@ -14,7 +14,6 @@ interface BalanceMasaData {
   temperaturaH3: number;
   temperaturaH4: number;
   temperaturaG9: number;
-  qrLona?: string;
   realizaRegistro?: string;
   turnoPirolisis?: string[];
 }
@@ -90,74 +89,82 @@ async function createNewBache(balanceId: string) {
 export async function POST(request: NextRequest) {
   try {
     const data: BalanceMasaData = await request.json();
-    
-    console.log('📊 Datos recibidos para balance de masa:', data);
 
-    if (!AIRTABLE_BASE_ID || !AIRTABLE_TOKEN) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Configuración de Airtable faltante' 
+    console.log('📊 Creando balance completo con QR:', data);      
+
+    // ✅ VALIDACIÓN MEJORADA DE VARIABLES DE ENTORNO
+    const missingVars = [];
+    if (!AIRTABLE_TOKEN) missingVars.push('AIRTABLE_TOKEN');
+    if (!AIRTABLE_BASE_ID) missingVars.push('AIRTABLE_BASE_ID');
+    if (!AIRTABLE_BALANCE_MASA_TABLE) missingVars.push('AIRTABLE_BALANCE_MASA_TABLE');
+
+    if (missingVars.length > 0) {
+      console.error('❌ Variables de entorno faltantes:', missingVars);
+      
+      return NextResponse.json({
+        success: false,
+        error: 'Configuración de Airtable incompleta',
+        missingVariables: missingVars,
+        details: {
+          hasToken: !!AIRTABLE_TOKEN,
+          hasBaseId: !!AIRTABLE_BASE_ID,
+          hasBalanceTable: !!AIRTABLE_BALANCE_MASA_TABLE,
+          balanceTable: AIRTABLE_BALANCE_MASA_TABLE || 'NO_CONFIGURADO'
+        }
       }, { status: 500 });
     }
 
     // Validar datos requeridos
     if (!data.pesoBiochar || !data.temperaturaR1 || !data.temperaturaR2 || !data.temperaturaR3) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Faltan datos requeridos para crear el balance de masa' 
+      return NextResponse.json({
+        success: false,
+        error: 'Faltan datos requeridos para crear el balance de masa'
       }, { status: 400 });
     }
 
-    // Preparar el cuerpo de la petición para Airtable
-    const airtableData = {
-      records: [
-        {
-          fields: {
-            'Peso Biochar (KG)': data.pesoBiochar,
-            'Temperatura Reactor (R1)': data.temperaturaR1,
-            'Temperatura Reactor (R2)': data.temperaturaR2,
-            'Temperatura Reactor (R3)': data.temperaturaR3,
-            'Temperatura Horno (H1)': data.temperaturaH1,
-            'Temperatura Horno (H2)': data.temperaturaH2,
-            'Temperatura Horno (H3)': data.temperaturaH3,
-            'Temperatura Horno (H4)': data.temperaturaH4,
-            'Temperatura Ducto (G9)': data.temperaturaG9,
-            ...(data.realizaRegistro && { 'Realiza Registro': data.realizaRegistro }),
-            ...(data.qrLona && { 'QR_lona': data.qrLona }),
-            ...(data.turnoPirolisis && { 'Turno Pirolisis': data.turnoPirolisis })
-          }
-        }
-      ]
+    // 1. Crear el balance en Airtable primero
+    const airtablePayload = {
+      fields: {
+        'Peso Biochar (KG)': data.pesoBiochar,
+        'Temperatura Reactor (R1)': data.temperaturaR1,
+        'Temperatura Reactor (R2)': data.temperaturaR2,
+        'Temperatura Reactor (R3)': data.temperaturaR3,
+        'Temperatura Horno (H1)': data.temperaturaH1,
+        'Temperatura Horno (H2)': data.temperaturaH2,
+        'Temperatura Horno (H3)': data.temperaturaH3,
+        'Temperatura Horno (H4)': data.temperaturaH4,
+        'Temperatura Ducto (G9)': data.temperaturaG9,
+        'Realiza Registro': data.realizaRegistro,
+        'Turno Pirolisis': data.turnoPirolisis || []
+      }
     };
 
-    console.log('📤 Enviando datos a Airtable:', JSON.stringify(airtableData, null, 2));
+    console.log('📤 Enviando a Airtable...');
 
-    // Crear el registro en Airtable
-    const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${process.env.AIRTABLE_BALANCE_MASA_TABLE}`, {
+    const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_BALANCE_MASA_TABLE}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(airtableData)
+      body: JSON.stringify(airtablePayload),
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('❌ Error de Airtable:', response.status, errorData);
-      return NextResponse.json({ 
-        success: false, 
-        error: `Error de Airtable: ${response.status} - ${errorData}` 
+      console.error('❌ Error creando balance en Airtable:', errorData);
+      return NextResponse.json({
+        success: false,
+        error: 'Error al crear el balance en Airtable'
       }, { status: response.status });
     }
 
-    const result = await response.json();
-    console.log('✅ Balance de masa creado exitosamente:', result);
+    const balanceResult = await response.json();
+    const balanceId = balanceResult.id;
 
-    // Extraer el ID del registro creado para el QR
-    const balanceId = result.records[0].id;
+    console.log('✅ Balance creado con ID:', balanceId);
 
-    // Gestionar agrupación en baches
+    // 1.5. Gestionar agrupación en baches (no crítico - no fallar si hay error)
     console.log('📦 Gestionando agrupación en baches...');
     
     try {
@@ -195,22 +202,71 @@ export async function POST(request: NextRequest) {
         console.log(`✅ Primer bache creado: ${newBache?.id}`);
       }
     } catch (bacheError) {
-      console.error('❌ Error en gestión de baches:', bacheError);
-      // No fallar la creación del balance por error en baches
+      console.error('❌ Error en gestión de baches (no crítico):', bacheError);
+      // Continuar con la generación de PDF/QR aunque falle la gestión de baches
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      data: result,
+    // ✅ Balance creado exitosamente en la base de datos
+    console.log('✅ Balance de masa registrado exitosamente:', balanceId);
+
+    // Respuesta final
+    return NextResponse.json({
+      success: true,
       balanceId: balanceId,
-      message: 'Balance de masa registrado exitosamente'
+      message: 'Balance creado exitosamente'
     });
+
+
 
   } catch (error) {
     console.error('❌ Error en POST /api/balance-masa/create:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Error interno del servidor' 
-    }, { status: 500 });
+    
+    // Logging detallado para diagnóstico
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      hasAirtableConfig: !!(AIRTABLE_TOKEN && AIRTABLE_BASE_ID),
+      hasBalanceTable: !!AIRTABLE_BALANCE_MASA_TABLE,
+      balanceTable: AIRTABLE_BALANCE_MASA_TABLE,
+      hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
+      appUrl: process.env.NEXT_PUBLIC_APP_URL
+    });
+
+    // Determinar tipo de error y respuesta más detallada
+    const getErrorResponse = () => {
+      const baseError = {
+        success: false,
+        error: 'Error interno del servidor',
+        details: error instanceof Error ? error.message : 'Error desconocido',
+        timestamp: new Date().toISOString()
+      };
+
+      // Si es un error de configuración
+      if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID || !AIRTABLE_BALANCE_MASA_TABLE) {
+        return {
+          ...baseError,
+          error: 'Error de configuración',
+          details: 'Variables de entorno faltantes para Airtable'
+        };
+      }
+
+      // Si es un error de tabla faltante (redundante pero por claridad)
+      if (!AIRTABLE_BALANCE_MASA_TABLE) {
+        return {
+          ...baseError,
+          error: 'Error de configuración',
+          details: 'Variable AIRTABLE_BALANCE_MASA_TABLE no configurada'
+        };
+      }
+
+      return baseError;
+    };
+
+    const errorResponse = getErrorResponse();
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

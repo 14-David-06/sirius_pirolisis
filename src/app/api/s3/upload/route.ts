@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getS3Client, awsServerConfig } from '../../../../lib/aws-config.server';
+import { getS3Client } from '../../../../lib/aws-config.server';
 import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 

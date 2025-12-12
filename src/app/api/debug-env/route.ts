@@ -4,7 +4,7 @@ import { config } from '@/lib/config';
 // ⚠️ ENDPOINT DE DIAGNÓSTICO TEMPORAL - ELIMINAR EN PRODUCCIÓN
 // Solo para diagnosticar problemas de variables de entorno
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   console.log('🔍 [debug-env] Iniciando diagnóstico de variables de entorno');
   
   try {
