@@ -98,9 +98,9 @@ export async function POST(req: NextRequest) {
     let idRuta = body['ID_Ruta'] as string || null;
     let nombreRuta = '';
 
-    // Si hay ID_Ruta, obtener el nombre de la ruta y subir archivos a S3
+    // Si hay ID_Ruta, obtener solo el nombre de la ruta existente (sin subir archivos)
     if (idRuta) {
-      console.log('📍 Obteniendo nombre de ruta existente y subiendo archivos');
+      console.log('📍 Obteniendo nombre de ruta existente (sin re-subir archivos)');
       const rutaRes = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${encodeURIComponent(RUTAS_TABLE_NAME)}/${idRuta}`, {
         method: 'GET',
         headers: {
@@ -111,87 +111,6 @@ export async function POST(req: NextRequest) {
       if (rutaRes.ok) {
         nombreRuta = rutaJson.fields?.['Ruta'] || 'Ruta sin nombre';
         console.log('✅ Nombre de ruta obtenido:', nombreRuta);
-        
-        // Subir archivos de la ruta a S3 si existen
-        const archivoCoordenadas = rutaJson.fields?.['Coordenadas Ruta'];
-        const imagenRuta = rutaJson.fields?.['Imagen Ruta'];
-        
-        let coordenadasUrl = '';
-        let imagenUrl = '';
-        
-        if (archivoCoordenadas && archivoCoordenadas.length > 0) {
-          try {
-            const url = archivoCoordenadas[0].url;
-            const response = await fetch(url);
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const fileName = `${nombreRuta}_coordenadas_${Date.now()}.${url.split('.').pop() || 'bin'}`;
-            const key = `${awsServerConfig.routesPrefix}${fileName}`;
-            
-            const command = new PutObjectCommand({
-              Bucket: awsServerConfig.bucketName,
-              Key: key,
-              Body: buffer,
-              ContentType: response.headers.get('content-type') || 'application/octet-stream',
-            });
-            
-            await getS3Client().send(command);
-            coordenadasUrl = `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`;
-            console.log('✅ Archivo coordenadas subido a S3:', coordenadasUrl);
-          } catch (error) {
-            console.error('Error subiendo coordenadas de ruta existente:', error);
-          }
-        }
-        
-        if (imagenRuta && imagenRuta.length > 0) {
-          try {
-            const url = imagenRuta[0].url;
-            const response = await fetch(url);
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const fileName = `${nombreRuta}_imagen_${Date.now()}.${url.split('.').pop() || 'bin'}`;
-            const key = `${awsServerConfig.routesPrefix}${fileName}`;
-            
-            const command = new PutObjectCommand({
-              Bucket: awsServerConfig.bucketName,
-              Key: key,
-              Body: buffer,
-              ContentType: response.headers.get('content-type') || 'application/octet-stream',
-            });
-            
-            await getS3Client().send(command);
-            imagenUrl = `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`;
-            console.log('✅ Imagen de ruta subida a S3:', imagenUrl);
-          } catch (error) {
-            console.error('Error subiendo imagen de ruta existente:', error);
-          }
-        }
-        
-        // Actualizar el registro de la ruta en Airtable con las nuevas URLs de S3
-        if (coordenadasUrl || imagenUrl) {
-          const updateFields: any = {
-            'Realiza Registro': validationData['Realiza Registro']
-          };
-          if (coordenadasUrl) {
-            updateFields['Coordenadas Ruta'] = [{ url: coordenadasUrl }];
-          }
-          if (imagenUrl) {
-            updateFields['Imagen Ruta'] = [{ url: imagenUrl }];
-          }
-          
-          const updateRes = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${encodeURIComponent(RUTAS_TABLE_NAME)}/${idRuta}`, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${config.airtable.token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ fields: updateFields }),
-          });
-          
-          if (!updateRes.ok) {
-            console.error('Error actualizando ruta en Airtable:', await updateRes.text());
-          } else {
-            console.log('✅ Ruta actualizada en Airtable con URLs de S3');
-          }
-        }
       } else {
         console.error('Error obteniendo ruta:', rutaJson);
         nombreRuta = 'Ruta sin nombre';

@@ -47,7 +47,7 @@ function ViajesBiomasaContent() {
     tipoVehiculo: 'Cargador Frontal',
     tipoVehiculoOtro: '',
     // Nuevos campos para rutas
-    rutaSeleccionada: 'Ruta principal de PKO a Pirolisis',
+    rutaSeleccionada: '',  // Se selecciona dinámicamente
     nuevaRutaNombre: '',
     nuevaRutaDistancia: '',
     nuevaRutaCoordenadas: null as File | null,
@@ -128,11 +128,9 @@ function ViajesBiomasaContent() {
           // Debug: ver las rutas cargadas
           console.log('🗺️ Rutas cargadas desde Airtable:', data.records.map((r: any) => r.fields['Ruta']));
           
-          // Buscar y seleccionar automáticamente "Ruta principal de PKO a Pirolisis"
+          // Buscar y seleccionar automáticamente "Ruta Principal PKO - Pirolisis"
           const rutaPrincipal = data.records.find((ruta: any) => 
-            ruta.fields['Ruta']?.includes('Ruta principal de PKO a Pirolisis') ||
-            ruta.fields['Ruta']?.includes('PKO a Pirolisis') ||
-            ruta.fields['Ruta']?.toLowerCase().includes('pko')
+            ruta.fields['Ruta'] === 'Ruta Principal PKO - Pirolisis'
           );
           
           console.log('🎯 Ruta principal encontrada:', rutaPrincipal ? rutaPrincipal.fields['Ruta'] : 'No encontrada');
