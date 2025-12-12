@@ -48,6 +48,12 @@ function SistemaBachesContent() {
   const [selectedBacheBodega, setSelectedBacheBodega] = useState<any>(null);
   const [isSubmittingBodega, setIsSubmittingBodega] = useState(false);
 
+  // State for actualizar peso modal
+  const [showActualizarPesoModal, setShowActualizarPesoModal] = useState(false);
+  const [selectedBachePeso, setSelectedBachePeso] = useState<any>(null);
+  const [pesoHumedo, setPesoHumedo] = useState('');
+  const [isSubmittingPeso, setIsSubmittingPeso] = useState(false);
+
   // State for laboratorios
   const [laboratorios, setLaboratorios] = useState<any[]>([]);
   const [loadingLaboratorios, setLoadingLaboratorios] = useState(false);
@@ -350,6 +356,67 @@ function SistemaBachesContent() {
   const closePasarBodegaModal = () => {
     setShowPasarBodegaModal(false);
     setSelectedBacheBodega(null);
+  };
+
+  // Handle actualizar peso - Abrir modal
+  const handleActualizarPeso = (bache: any) => {
+    setSelectedBachePeso(bache);
+    setPesoHumedo('');
+    setShowActualizarPesoModal(true);
+  };
+
+  // Cerrar modal de actualizar peso
+  const closeActualizarPesoModal = () => {
+    setShowActualizarPesoModal(false);
+    setSelectedBachePeso(null);
+    setPesoHumedo('');
+  };
+
+  // Submit actualizar peso
+  const submitActualizarPeso = async () => {
+    if (!pesoHumedo.trim() || parseFloat(pesoHumedo) <= 0) {
+      alert('❌ Debe ingresar un peso válido');
+      return;
+    }
+
+    setIsSubmittingPeso(true);
+
+    try {
+      console.log('🚀 Iniciando actualización de peso:', selectedBachePeso.id);
+
+      // Enviar datos para actualizar el peso húmedo
+      const updateData = {
+        id: selectedBachePeso.id,
+        "Total Biochar Humedo Bache (KG)": parseFloat(pesoHumedo)
+      };
+
+      console.log('📤 Enviando datos a API:', updateData);
+
+      const response = await fetch('/api/baches/update', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      const responseData = await response.json();
+      console.log('📥 Respuesta de API:', response.status, responseData);
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${responseData.error || 'Error desconocido'}`);
+      }
+
+      alert('✅ Peso actualizado exitosamente');
+      closeActualizarPesoModal();
+      // Recargar los datos
+      refetch();
+    } catch (error) {
+      console.error('❌ Error updating peso:', error);
+      alert(`❌ Error al actualizar el peso: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+    } finally {
+      setIsSubmittingPeso(false);
+    }
   };
 
   // Submit pasar a bodega - solo cambiar estado
@@ -728,30 +795,38 @@ function SistemaBachesContent() {
                               </button>
                             </div>
                             
-                            {(categoria === 'Completos Planta' || categoria === 'Completos Bodega') && (
-                              <div className="flex gap-2 mt-3">
+                            {categoria === 'Completos Planta' && (
+                              <div className="mt-3">
+                                <button
+                                  onClick={() => handlePasarABodega(bache)}
+                                  disabled={updatingBacheId === bache.id}
+                                  className="w-full bg-blue-600/80 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {updatingBacheId === bache.id ? (
+                                    <>
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
+                                      <span className="ml-1">Moviendo...</span>
+                                    </>
+                                  ) : (
+                                    '📦 Pasar a Bodega'
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                            {categoria === 'Completos Bodega' && (
+                              <div className="space-y-2 mt-3">
                                 <button
                                   onClick={() => openMonitoreoModal(bache)}
-                                  className="flex-1 bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
+                                  className="w-full bg-[#5A7836]/80 hover:bg-[#5A7836] text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
                                 >
                                   📊 Registrar Monitoreo
                                 </button>
-                                {categoria === 'Completos Planta' && (
-                                  <button
-                                    onClick={() => handlePasarABodega(bache)}
-                                    disabled={updatingBacheId === bache.id}
-                                    className="flex-1 bg-blue-600/80 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    {updatingBacheId === bache.id ? (
-                                      <>
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
-                                        <span className="ml-1">Moviendo...</span>
-                                      </>
-                                    ) : (
-                                      '📦 Pasar a Bodega'
-                                    )}
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => handleActualizarPeso(bache)}
+                                  className="w-full bg-orange-600/80 hover:bg-orange-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200"
+                                >
+                                  ⚖️ Actualizar Peso
+                                </button>
                               </div>
                             )}
                           </div>
@@ -1313,6 +1388,85 @@ function SistemaBachesContent() {
                       </div>
                     ) : (
                       '📦 Confirmar y Pasar a Bodega'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Actualizar Peso */}
+        {showActualizarPesoModal && selectedBachePeso && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 max-w-md w-full">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">⚖️ Actualizar Peso</h2>
+                <button
+                  onClick={closeActualizarPesoModal}
+                  className="text-white/70 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mb-6">
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20 mb-4">
+                  <h3 className="text-lg font-semibold text-white mb-2 drop-shadow">Bache: {getBacheId(selectedBachePeso)}</h3>
+                  <div className="text-sm text-white/80 space-y-1">
+                    <p>Estado Actual: <span className="font-semibold text-white">{getBacheStatus(selectedBachePeso)}</span></p>
+                    <p>Lonas Usadas: <span className="font-semibold text-white">{calculateProgress(selectedBachePeso).lonasUsadas} / {calculateProgress(selectedBachePeso).totalLonas}</span></p>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="pesoHumedo" className="block text-sm font-medium text-white mb-2 drop-shadow">
+                    Total Biochar Húmedo (kg) *
+                  </label>
+                  <input
+                    type="number"
+                    id="pesoHumedo"
+                    name="pesoHumedo"
+                    value={pesoHumedo}
+                    onChange={(e) => setPesoHumedo(e.target.value)}
+                    step="0.01"
+                    min="0"
+                    placeholder="Ej: 520.5"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
+                    required
+                  />
+                  <p className="text-xs text-white/60 mt-1 drop-shadow">
+                    Ingrese el peso húmedo total del bache
+                  </p>
+                </div>
+
+                <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-3 mt-4">
+                  <p className="text-sm text-white drop-shadow">
+                    ℹ️ Este valor se guardará en el campo "Total Biochar Húmedo Bache (KG)"
+                  </p>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeActualizarPesoModal}
+                    disabled={isSubmittingPeso}
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={submitActualizarPeso}
+                    disabled={isSubmittingPeso || !pesoHumedo.trim()}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                    {isSubmittingPeso ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        Actualizando...
+                      </div>
+                    ) : (
+                      '⚖️ Actualizar Peso'
                     )}
                   </button>
                 </div>
