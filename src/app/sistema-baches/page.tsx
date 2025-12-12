@@ -46,7 +46,6 @@ function SistemaBachesContent() {
   // State for pasar a bodega modal
   const [showPasarBodegaModal, setShowPasarBodegaModal] = useState(false);
   const [selectedBacheBodega, setSelectedBacheBodega] = useState<any>(null);
-  const [kgHumedos, setKgHumedos] = useState('');
   const [isSubmittingBodega, setIsSubmittingBodega] = useState(false);
 
   // State for laboratorios
@@ -344,7 +343,6 @@ function SistemaBachesContent() {
   // Handle pasar a bodega - Abrir modal
   const handlePasarABodega = (bache: any) => {
     setSelectedBacheBodega(bache);
-    setKgHumedos('');
     setShowPasarBodegaModal(true);
   };
 
@@ -352,29 +350,20 @@ function SistemaBachesContent() {
   const closePasarBodegaModal = () => {
     setShowPasarBodegaModal(false);
     setSelectedBacheBodega(null);
-    setKgHumedos('');
   };
 
-  // Submit pasar a bodega con kg húmedos
-  const submitPasarABodega = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!kgHumedos.trim() || parseFloat(kgHumedos) <= 0) {
-      alert('❌ Debe ingresar una cantidad válida de kg húmedos');
-      return;
-    }
-
+  // Submit pasar a bodega - solo cambiar estado
+  const submitPasarABodega = async () => {
     setIsSubmittingBodega(true);
     setUpdatingBacheId(selectedBacheBodega.id);
 
     try {
       console.log('🚀 Iniciando actualización de bache:', selectedBacheBodega.id);
 
-      // Enviar datos en el formato que espera la API
+      // Enviar solo el cambio de estado
       const updateData = {
         id: selectedBacheBodega.id,
-        "Estado Bache": 'Bache Completo Bodega',
-        "Total Biochar Humedo Bache (KG)": parseFloat(kgHumedos)
+        "Estado Bache": 'Bache Completo Bodega'
       };
 
       console.log('📤 Enviando datos a API:', updateData);
@@ -686,14 +675,8 @@ function SistemaBachesContent() {
                               }`}>
                                 {(() => {
                                   const status = getBacheStatus(bache);
-                                  const totalBiochar = getTotalBiochar(bache);
                                   
-                                  // Para baches en planta o bodega, mostrar "incompleto" si no tienen 500kg
-                                  if (status === 'Bache Completo Planta' || status === 'Bache Completo Bodega') {
-                                    return totalBiochar >= 500 ? status : 'Incompleto';
-                                  }
-                                  
-                                  // Para otros estados, mostrar el estado normal
+                                  // Mostrar el estado normal sin modificar por peso húmedo
                                   return status;
                                 })()}
                               </span>
@@ -1159,11 +1142,6 @@ function SistemaBachesContent() {
                       }`}>
                         {(() => {
                           const status = getBacheStatus(selectedBacheDetalles);
-                          const totalBiochar = getTotalBiochar(selectedBacheDetalles);
-                          
-                          if (status === 'Bache Completo Planta' || status === 'Bache Completo Bodega') {
-                            return totalBiochar >= 500 ? status : 'Incompleto';
-                          }
                           
                           return status;
                         })()}
@@ -1308,59 +1286,36 @@ function SistemaBachesContent() {
                   </div>
                 </div>
 
-                <form onSubmit={submitPasarABodega} className="space-y-4">
-                  <div>
-                    <label htmlFor="kgHumedos" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      Total Biochar Húmedo (kg) *
-                    </label>
-                    <input
-                      type="number"
-                      id="kgHumedos"
-                      name="kgHumedos"
-                      value={kgHumedos}
-                      onChange={(e) => setKgHumedos(e.target.value)}
-                      step="0.01"
-                      min="0"
-                      placeholder="Ej: 520.5"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 font-medium"
-                      required
-                    />
-                    <p className="text-xs text-white/60 mt-1 drop-shadow">
-                      Ingrese el total de kg húmedos del bache al pasar a bodega
-                    </p>
-                  </div>
+                <div className="bg-blue-500/20 border border-blue-400/50 rounded-lg p-3 mb-6">
+                  <p className="text-sm text-white drop-shadow">
+                    ℹ️ El bache cambiará su estado a "Bache Completo Bodega"
+                  </p>
+                </div>
 
-                  <div className="bg-blue-500/20 border border-blue-400/50 rounded-lg p-3">
-                    <p className="text-sm text-white drop-shadow">
-                      ℹ️ Este valor se registrará como "Total Biochar Húmedo Bache (KG)" y el bache cambiará su estado a "Bache Completo Bodega"
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={closePasarBodegaModal}
-                      disabled={isSubmittingBodega}
-                      className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmittingBodega || !kgHumedos.trim()}
-                      className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                    >
-                      {isSubmittingBodega ? (
-                        <div className="flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                          Moviendo...
-                        </div>
-                      ) : (
-                        '📦 Confirmar y Pasar a Bodega'
-                      )}
-                    </button>
-                  </div>
-                </form>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closePasarBodegaModal}
+                    disabled={isSubmittingBodega}
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={submitPasarABodega}
+                    disabled={isSubmittingBodega}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                    {isSubmittingBodega ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        Moviendo...
+                      </div>
+                    ) : (
+                      '📦 Confirmar y Pasar a Bodega'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
