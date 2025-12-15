@@ -18,12 +18,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const formData = await request.formData();
     const responsableEntrega = formData.get('responsableEntrega') as string;
     const numeroDocumentoEntrega = formData.get('numeroDocumentoEntrega') as string;
-    const firmaEntrega = formData.get('firmaEntrega') as File | null;
+    const telefonoEntrega = formData.get('telefonoEntrega') as string;
+    const emailEntrega = formData.get('emailEntrega') as string;
+    const aceptaTratamientoDatos = formData.get('aceptaTratamientoDatos') === 'true';
+    const aceptaTerminosCondiciones = formData.get('aceptaTerminosCondiciones') === 'true';
 
     console.log('📥 [entrega-remision] Datos recibidos:', {
       responsableEntrega,
       numeroDocumentoEntrega,
-      tieneFirma: !!firmaEntrega
+      telefonoEntrega,
+      emailEntrega,
+      aceptaTratamientoDatos,
+      aceptaTerminosCondiciones
     });
 
     // Validaciones
@@ -41,6 +47,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }, { status: 400 });
     }
 
+    if (!aceptaTratamientoDatos) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Debe aceptar el tratamiento de datos personales' 
+      }, { status: 400 });
+    }
+
+    if (!aceptaTerminosCondiciones) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Debe aceptar los términos y condiciones' 
+      }, { status: 400 });
+    }
+
     // Preparar datos para Airtable usando Field IDs
     const updateData: any = {
       fields: {
@@ -49,11 +69,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     };
 
-    // Si hay firma, subirla primero (por ahora solo guardamos indicación de que existe)
-    if (firmaEntrega) {
-      // TODO: Implementar subida de archivo a S3 o Airtable
-      // Por ahora solo marcamos que hay firma
-      console.log('📎 [entrega-remision] Firma recibida:', firmaEntrega.name, firmaEntrega.size);
+    // Agregar teléfono si está disponible
+    if (telefonoEntrega?.trim() && config.airtable.remisionesBachesFields.telefonoEntrega) {
+      updateData.fields[config.airtable.remisionesBachesFields.telefonoEntrega] = telefonoEntrega;
+    }
+
+    // Agregar email si está disponible
+    if (emailEntrega?.trim() && config.airtable.remisionesBachesFields.emailEntrega) {
+      updateData.fields[config.airtable.remisionesBachesFields.emailEntrega] = emailEntrega;
     }
 
     console.log('🔄 [entrega-remision] Datos a actualizar:', JSON.stringify(updateData, null, 2));

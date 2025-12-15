@@ -18,14 +18,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const formData = await request.formData();
     const responsableRecibe = formData.get('responsableRecibe') as string;
     const numeroDocumentoRecibe = formData.get('numeroDocumentoRecibe') as string;
+    const telefonoRecibe = formData.get('telefonoRecibe') as string;
+    const emailRecibe = formData.get('emailRecibe') as string;
     const observacionesRecepcion = formData.get('observacionesRecepcion') as string;
-    const firmaRecibe = formData.get('firmaRecibe') as File | null;
+    const aceptaTratamientoDatos = formData.get('aceptaTratamientoDatos') === 'true';
+    const aceptaTerminosCondiciones = formData.get('aceptaTerminosCondiciones') === 'true';
+    const aceptaUsoResponsableBiochar = formData.get('aceptaUsoResponsableBiochar') === 'true';
 
     console.log('📥 [recepcion-remision] Datos recibidos:', {
       responsableRecibe,
       numeroDocumentoRecibe,
+      telefonoRecibe,
+      emailRecibe,
       observacionesRecepcion,
-      tieneFirma: !!firmaRecibe
+      aceptaTratamientoDatos,
+      aceptaTerminosCondiciones,
+      aceptaUsoResponsableBiochar
     });
 
     // Validaciones
@@ -43,6 +51,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }, { status: 400 });
     }
 
+    if (!aceptaTratamientoDatos) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Debe aceptar el tratamiento de datos personales' 
+      }, { status: 400 });
+    }
+
+    if (!aceptaTerminosCondiciones) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Debe aceptar los términos y condiciones' 
+      }, { status: 400 });
+    }
+
+    if (!aceptaUsoResponsableBiochar) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Debe declarar el uso responsable del biochar' 
+      }, { status: 400 });
+    }
+
     // Preparar datos para Airtable usando Field IDs
     const updateData: any = {
       fields: {
@@ -50,6 +79,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         [config.airtable.remisionesBachesFields.numeroDocumentoRecibe!]: numeroDocumentoRecibe
       }
     };
+
+    // Agregar teléfono si está disponible
+    if (telefonoRecibe?.trim() && config.airtable.remisionesBachesFields.telefonoRecibe) {
+      updateData.fields[config.airtable.remisionesBachesFields.telefonoRecibe] = telefonoRecibe;
+    }
+
+    // Agregar email si está disponible
+    if (emailRecibe?.trim() && config.airtable.remisionesBachesFields.emailRecibe) {
+      updateData.fields[config.airtable.remisionesBachesFields.emailRecibe] = emailRecibe;
+    }
 
     // Agregar observaciones si se proporcionan
     if (observacionesRecepcion?.trim()) {
@@ -70,13 +109,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         
         updateData.fields[config.airtable.remisionesBachesFields.observaciones!] = newObservations;
       }
-    }
-
-    // Si hay firma, subirla primero (por ahora solo guardamos indicación de que existe)
-    if (firmaRecibe) {
-      // TODO: Implementar subida de archivo a S3 o Airtable
-      // Por ahora solo marcamos que hay firma
-      console.log('📎 [recepcion-remision] Firma recibida:', firmaRecibe.name, firmaRecibe.size);
     }
 
     console.log('🔄 [recepcion-remision] Datos a actualizar:', JSON.stringify(updateData, null, 2));

@@ -17,8 +17,12 @@ export default function RecepcionRemision() {
   const [formData, setFormData] = useState({
     responsableRecibe: '',
     numeroDocumentoRecibe: '',
-    firmaRecibe: null as File | null,
-    observacionesRecepcion: ''
+    telefonoRecibe: '',
+    emailRecibe: '',
+    observacionesRecepcion: '',
+    aceptaTratamientoDatos: false,
+    aceptaTerminosCondiciones: false,
+    aceptaUsoResponsableBiochar: false
   });
 
   // Cargar datos de la remisión
@@ -47,10 +51,11 @@ export default function RecepcionRemision() {
   }, [remisionId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, files } = e.target as HTMLInputElement;
+    const { name, value, type } = e.target as HTMLInputElement;
+    const checked = (e.target as HTMLInputElement).checked;
     
-    if (name === 'firmaRecibe' && files) {
-      setFormData(prev => ({ ...prev, [name]: files[0] }));
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: checked }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
@@ -74,19 +79,35 @@ export default function RecepcionRemision() {
       return;
     }
 
+    if (!formData.aceptaTratamientoDatos) {
+      setSubmitError('Debe aceptar el tratamiento de datos personales');
+      return;
+    }
+
+    if (!formData.aceptaTerminosCondiciones) {
+      setSubmitError('Debe aceptar los términos y condiciones');
+      return;
+    }
+
+    if (!formData.aceptaUsoResponsableBiochar) {
+      setSubmitError('Debe declarar el uso responsable del biochar');
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
-      // Crear FormData para enviar archivos
+      // Crear FormData para enviar datos
       const submitData = new FormData();
       submitData.append('responsableRecibe', formData.responsableRecibe);
       submitData.append('numeroDocumentoRecibe', formData.numeroDocumentoRecibe);
+      submitData.append('telefonoRecibe', formData.telefonoRecibe);
+      submitData.append('emailRecibe', formData.emailRecibe);
       submitData.append('observacionesRecepcion', formData.observacionesRecepcion);
-      
-      if (formData.firmaRecibe) {
-        submitData.append('firmaRecibe', formData.firmaRecibe);
-      }
+      submitData.append('aceptaTratamientoDatos', formData.aceptaTratamientoDatos.toString());
+      submitData.append('aceptaTerminosCondiciones', formData.aceptaTerminosCondiciones.toString());
+      submitData.append('aceptaUsoResponsableBiochar', formData.aceptaUsoResponsableBiochar.toString());
 
       const response = await fetch(`/api/remisiones-baches/${remisionId}/recepcion`, {
         method: 'POST',
@@ -107,8 +128,12 @@ export default function RecepcionRemision() {
       setFormData({
         responsableRecibe: '',
         numeroDocumentoRecibe: '',
-        firmaRecibe: null,
-        observacionesRecepcion: ''
+        telefonoRecibe: '',
+        emailRecibe: '',
+        observacionesRecepcion: '',
+        aceptaTratamientoDatos: false,
+        aceptaTerminosCondiciones: false,
+        aceptaUsoResponsableBiochar: false
       });
 
     } catch (error: any) {
@@ -222,6 +247,36 @@ export default function RecepcionRemision() {
                 />
               </div>
 
+              {/* Teléfono de Recepción */}
+              <div>
+                <label className="block text-sm font-medium text-white/90 mb-2">
+                  Teléfono de Contacto
+                </label>
+                <input
+                  type="tel"
+                  name="telefonoRecibe"
+                  value={formData.telefonoRecibe}
+                  onChange={handleInputChange}
+                  placeholder="Número de teléfono"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                />
+              </div>
+
+              {/* Email de Recepción */}
+              <div>
+                <label className="block text-sm font-medium text-white/90 mb-2">
+                  Correo Electrónico
+                </label>
+                <input
+                  type="email"
+                  name="emailRecibe"
+                  value={formData.emailRecibe}
+                  onChange={handleInputChange}
+                  placeholder="correo@ejemplo.com"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                />
+              </div>
+
               {/* Observaciones de Recepción */}
               <div>
                 <label className="block text-sm font-medium text-white/90 mb-2">
@@ -237,21 +292,62 @@ export default function RecepcionRemision() {
                 />
               </div>
 
-              {/* Firma de Recepción */}
+              {/* Aceptación de Tratamiento de Datos */}
               <div>
-                <label className="block text-sm font-medium text-white/90 mb-2">
-                  Firma de Recepción (Opcional)
+                <label className="flex items-start space-x-3 text-sm text-white/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="aceptaTratamientoDatos"
+                    checked={formData.aceptaTratamientoDatos}
+                    onChange={handleInputChange}
+                    required
+                    className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-white/30 rounded bg-white/10"
+                  />
+                  <span>
+                    <span className="text-red-400">*</span> Autorizo el tratamiento de mis datos personales de acuerdo con la 
+                    <strong className="text-white"> Ley 1581 de 2012</strong> de protección de datos personales de Colombia.
+                  </span>
                 </label>
-                <input
-                  type="file"
-                  name="firmaRecibe"
-                  onChange={handleInputChange}
-                  accept="image/*,.pdf"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-white/20 file:text-white hover:file:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
-                />
-                <p className="text-xs text-white/60 mt-1">
-                  Formatos permitidos: JPG, PNG, PDF (máx. 5MB)
-                </p>
+              </div>
+
+              {/* Aceptación de Términos y Condiciones */}
+              <div>
+                <label className="flex items-start space-x-3 text-sm text-white/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="aceptaTerminosCondiciones"
+                    checked={formData.aceptaTerminosCondiciones}
+                    onChange={handleInputChange}
+                    required
+                    className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-white/30 rounded bg-white/10"
+                  />
+                  <span>
+                    <span className="text-red-400">*</span> Acepto los 
+                    <strong className="text-white"> términos y condiciones</strong> y las 
+                    <strong className="text-white"> políticas de privacidad</strong> de Sirius Regenerative Solutions.
+                  </span>
+                </label>
+              </div>
+
+              {/* Declaración de Uso Responsable del Biochar */}
+              <div>
+                <label className="flex items-start space-x-3 text-sm text-white/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="aceptaUsoResponsableBiochar"
+                    checked={formData.aceptaUsoResponsableBiochar}
+                    onChange={handleInputChange}
+                    required
+                    className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-white/30 rounded bg-white/10"
+                  />
+                  <span>
+                    <span className="text-red-400">*</span> Declaro que me hago responsable de la 
+                    <strong className="text-white"> correcta aplicación del biochar</strong> devolviéndolo al suelo como una 
+                    <strong className="text-white"> enmienda para el cambio climático</strong>. Declaro que 
+                    <strong className="text-white"> NO realizaré quemas del producto</strong> ni ninguna acción que pueda conllevar 
+                    a que el producto libere el CO₂ que ha retenido durante su proceso de captura o reducción.
+                  </span>
+                </label>
               </div>
 
               {/* Error Messages */}

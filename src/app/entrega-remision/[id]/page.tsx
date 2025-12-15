@@ -17,7 +17,10 @@ export default function EntregaRemision() {
   const [formData, setFormData] = useState({
     responsableEntrega: '',
     numeroDocumentoEntrega: '',
-    firmaEntrega: null as File | null
+    telefonoEntrega: '',
+    emailEntrega: '',
+    aceptaTratamientoDatos: false,
+    aceptaTerminosCondiciones: false
   });
 
   // Cargar datos de la remisión
@@ -46,10 +49,10 @@ export default function EntregaRemision() {
   }, [remisionId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, files } = e.target;
+    const { name, value, type, checked } = e.target;
     
-    if (name === 'firmaEntrega' && files) {
-      setFormData(prev => ({ ...prev, [name]: files[0] }));
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: checked }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
@@ -73,18 +76,28 @@ export default function EntregaRemision() {
       return;
     }
 
+    if (!formData.aceptaTratamientoDatos) {
+      setSubmitError('Debe aceptar el tratamiento de datos personales');
+      return;
+    }
+
+    if (!formData.aceptaTerminosCondiciones) {
+      setSubmitError('Debe aceptar los términos y condiciones');
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
-      // Crear FormData para enviar archivos
+      // Crear FormData para enviar datos
       const submitData = new FormData();
       submitData.append('responsableEntrega', formData.responsableEntrega);
       submitData.append('numeroDocumentoEntrega', formData.numeroDocumentoEntrega);
-      
-      if (formData.firmaEntrega) {
-        submitData.append('firmaEntrega', formData.firmaEntrega);
-      }
+      submitData.append('telefonoEntrega', formData.telefonoEntrega);
+      submitData.append('emailEntrega', formData.emailEntrega);
+      submitData.append('aceptaTratamientoDatos', formData.aceptaTratamientoDatos.toString());
+      submitData.append('aceptaTerminosCondiciones', formData.aceptaTerminosCondiciones.toString());
 
       const response = await fetch(`/api/remisiones-baches/${remisionId}/entrega`, {
         method: 'POST',
@@ -105,7 +118,10 @@ export default function EntregaRemision() {
       setFormData({
         responsableEntrega: '',
         numeroDocumentoEntrega: '',
-        firmaEntrega: null
+        telefonoEntrega: '',
+        emailEntrega: '',
+        aceptaTratamientoDatos: false,
+        aceptaTerminosCondiciones: false
       });
 
     } catch (error: any) {
@@ -219,21 +235,71 @@ export default function EntregaRemision() {
                 />
               </div>
 
-              {/* Firma de Entrega */}
+              {/* Teléfono de Entrega */}
               <div>
                 <label className="block text-sm font-medium text-white/90 mb-2">
-                  Firma de Entrega (Opcional)
+                  Teléfono de Contacto
                 </label>
                 <input
-                  type="file"
-                  name="firmaEntrega"
+                  type="tel"
+                  name="telefonoEntrega"
+                  value={formData.telefonoEntrega}
                   onChange={handleInputChange}
-                  accept="image/*,.pdf"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-white/20 file:text-white hover:file:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
+                  placeholder="Número de teléfono"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
                 />
-                <p className="text-xs text-white/60 mt-1">
-                  Formatos permitidos: JPG, PNG, PDF (máx. 5MB)
-                </p>
+              </div>
+
+              {/* Email de Entrega */}
+              <div>
+                <label className="block text-sm font-medium text-white/90 mb-2">
+                  Correo Electrónico
+                </label>
+                <input
+                  type="email"
+                  name="emailEntrega"
+                  value={formData.emailEntrega}
+                  onChange={handleInputChange}
+                  placeholder="correo@ejemplo.com"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent"
+                />
+              </div>
+
+              {/* Aceptación de Tratamiento de Datos */}
+              <div>
+                <label className="flex items-start space-x-3 text-sm text-white/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="aceptaTratamientoDatos"
+                    checked={formData.aceptaTratamientoDatos}
+                    onChange={handleInputChange}
+                    required
+                    className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-white/30 rounded bg-white/10"
+                  />
+                  <span>
+                    <span className="text-red-400">*</span> Autorizo el tratamiento de mis datos personales de acuerdo con la 
+                    <strong className="text-white"> Ley 1581 de 2012</strong> de protección de datos personales de Colombia.
+                  </span>
+                </label>
+              </div>
+
+              {/* Aceptación de Términos y Condiciones */}
+              <div>
+                <label className="flex items-start space-x-3 text-sm text-white/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="aceptaTerminosCondiciones"
+                    checked={formData.aceptaTerminosCondiciones}
+                    onChange={handleInputChange}
+                    required
+                    className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-white/30 rounded bg-white/10"
+                  />
+                  <span>
+                    <span className="text-red-400">*</span> Acepto los 
+                    <strong className="text-white"> términos y condiciones</strong> y las 
+                    <strong className="text-white"> políticas de privacidad</strong> de Sirius Regenerative Solutions.
+                  </span>
+                </label>
               </div>
 
               {/* Error Messages */}
