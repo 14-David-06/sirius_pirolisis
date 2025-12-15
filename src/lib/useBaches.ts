@@ -187,6 +187,24 @@ export function useBaches() {
     return Array.isArray(monitoreoRecords) && monitoreoRecords.length > 0;
   };
 
+  // Función para verificar si el bache tiene comprobante de peso subido
+  const hasComprobanteSubido = (bache: BacheRecord) => {
+    const comprobante = bache.fields['Comprobante Peso Bache'];
+    return Array.isArray(comprobante) && comprobante.length > 0;
+  };
+
+  // Función para verificar si el peso del bache ya fue completamente actualizado
+  const isPesoCompletamenteActualizado = (bache: BacheRecord) => {
+    const tienePesoHumedo = hasPesoHumedoActualizado(bache);
+    const tieneComprobante = hasComprobanteSubido(bache);
+    const tieneMonitoreo = hasMonitoreoRegistrado(bache);
+    
+    // El peso está completamente actualizado si:
+    // 1. Tiene peso húmedo Y comprobante, O
+    // 2. Ya tiene monitoreo (flujo completo)
+    return (tienePesoHumedo && tieneComprobante) || tieneMonitoreo;
+  };
+
   return {
     data,
     loading,
@@ -201,6 +219,8 @@ export function useBaches() {
     getBiocharVendido,
     hasPesoHumedoActualizado,
     hasMonitoreoRegistrado,
+    hasComprobanteSubido,
+    isPesoCompletamenteActualizado,
     refetch: () => {
       setLoading(true);
       setError(null);

@@ -31,6 +31,9 @@ export async function PATCH(request: NextRequest) {
       }]
     };
 
+    console.log('📤 Enviando datos a Airtable:', JSON.stringify(recordData, null, 2));
+    console.log('🔗 URL Airtable:', `https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}`);
+
     const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}`, {
       method: 'PATCH',
       headers: {
@@ -40,7 +43,34 @@ export async function PATCH(request: NextRequest) {
       body: JSON.stringify(recordData),
     });
 
-    const data = await response.json();
+    console.log('📥 Status de respuesta Airtable:', response.status);
+    console.log('📋 Headers de respuesta:', Object.fromEntries(response.headers.entries()));
+
+    // Verificar si la respuesta es JSON válido
+    const contentType = response.headers.get('content-type');
+    console.log('📄 Content-Type:', contentType);
+
+    if (!contentType || !contentType.includes('application/json')) {
+      const responseText = await response.text();
+      console.error('❌ Respuesta no es JSON:', responseText);
+      return NextResponse.json({ 
+        error: 'Respuesta inválida de Airtable', 
+        details: `Content-Type: ${contentType}, Respuesta: ${responseText.substring(0, 500)}...` 
+      }, { status: 502 });
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      const responseText = await response.text();
+      console.error('❌ Error parseando JSON de Airtable:', parseError);
+      console.error('❌ Texto de respuesta:', responseText);
+      return NextResponse.json({ 
+        error: 'Error parseando respuesta de Airtable', 
+        details: `Parse error: ${parseError}, Response: ${responseText.substring(0, 500)}...` 
+      }, { status: 502 });
+    }
 
     if (!response.ok) {
       console.error('❌ Error actualizando bache en Airtable:', data);

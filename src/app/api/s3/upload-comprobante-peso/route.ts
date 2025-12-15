@@ -7,7 +7,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 const COMPROBANTES_PESO_CONFIG = {
   bucketName: 'siriuspirolisis',
   folder: 'comprobantes-peso-baches/',
-  maxFileSize: 10 * 1024 * 1024, // 10MB
+  maxFileSize: 25 * 1024 * 1024, // 25MB - Aumentado para permitir fotos de mayor calidad
   allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'] as const,
   allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp', '.pdf'] as const,
 } as const;
@@ -62,12 +62,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar tamaño del archivo
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    const maxSizeMB = COMPROBANTES_PESO_CONFIG.maxFileSize / (1024 * 1024);
+    
     if (file.size > COMPROBANTES_PESO_CONFIG.maxFileSize) {
+      console.log(`❌ Archivo demasiado grande: ${file.name} (${fileSizeMB}MB > ${maxSizeMB}MB)`);
       return NextResponse.json({
         error: 'Archivo demasiado grande',
-        details: `El archivo no debe superar ${COMPROBANTES_PESO_CONFIG.maxFileSize / (1024 * 1024)}MB`
+        details: `El archivo "${file.name}" pesa ${fileSizeMB}MB. El tamaño máximo permitido es ${maxSizeMB}MB. Intenta comprimir la imagen o usar un archivo más pequeño.`
       }, { status: 400 });
     }
+    
+    console.log(`✅ Tamaño de archivo válido: ${file.name} (${fileSizeMB}MB)`);
 
     // Generar nombre único del archivo
     const timestamp = Date.now();

@@ -16,7 +16,7 @@ export default function SistemaBaches() {
 }
 
 function SistemaBachesContent() {
-  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, hasPesoHumedoActualizado, hasMonitoreoRegistrado, getNumericValue, refetch } = useBaches();
+  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, hasPesoHumedoActualizado, hasMonitoreoRegistrado, hasComprobanteSubido, isPesoCompletamenteActualizado, getNumericValue, refetch } = useBaches();
 
   // Función para obtener el usuario de la sesión
   const getUserFromSession = () => {
@@ -425,8 +425,18 @@ function SistemaBachesContent() {
 
   // Función para verificar si el peso ya fue actualizado desde el estado inicial
   const isPesoYaActualizado = (bache: any) => {
-    // Si ya tiene monitoreo registrado, significa que el peso ya se actualizó
-    return hasMonitoreoRegistrado(bache);
+    const resultado = isPesoCompletamenteActualizado(bache);
+    
+    // Log para debugging - solo en desarrollo
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔍 [isPesoYaActualizado] Bache ${getBacheId(bache)}: ${resultado}`, {
+        tienePesoHumedo: hasPesoHumedoActualizado(bache),
+        tieneComprobante: hasComprobanteSubido(bache),
+        tieneMonitoreo: hasMonitoreoRegistrado(bache)
+      });
+    }
+    
+    return resultado;
   };
 
   // Handle actualizar peso - Abrir modal
@@ -442,6 +452,32 @@ function SistemaBachesContent() {
     setSelectedBachePeso(null);
     setPesoHumedo('');
     setComprobantePeso(null);
+  };
+
+  // Manejar selección de archivo con validación
+  const handleFileSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    
+    if (file) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      const maxSizeMB = 25; // Debe coincidir con el backend
+      
+      console.log(`📎 Archivo seleccionado: ${file.name} (${fileSizeMB}MB)`);
+      
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        alert(`❌ El archivo "${file.name}" es demasiado grande (${fileSizeMB}MB).\n\nTamaño máximo permitido: ${maxSizeMB}MB.\n\nConsejos:\n• Comprime la imagen antes de subirla\n• Usa una calidad menor al tomar la foto\n• Convierte a JPG si es PNG`);
+        e.target.value = ''; // Limpiar el input
+        setComprobantePeso(null);
+        return;
+      }
+      
+      // Mostrar información del archivo válido
+      if (parseFloat(fileSizeMB) > 10) {
+        console.log(`⚠️ Archivo grande pero válido: ${fileSizeMB}MB`);
+      }
+    }
+    
+    setComprobantePeso(file);
   };
 
   // Submit actualizar peso
@@ -474,7 +510,9 @@ function SistemaBachesContent() {
         const uploadData = await uploadResponse.json();
 
         if (!uploadResponse.ok) {
-          throw new Error(`Error subiendo archivo: ${uploadData.error}`);
+          const errorMsg = uploadData.details || uploadData.error || 'Error desconocido';
+          console.error('❌ Error subiendo archivo:', uploadData);
+          throw new Error(`❌ ${errorMsg}`);
         }
 
         comprobanteUrl = uploadData.fileUrl;
@@ -502,11 +540,36 @@ function SistemaBachesContent() {
         body: JSON.stringify(updateData)
       });
 
-      const responseData = await response.json();
+      console.log('📥 Status de respuesta:', response.status);
+      console.log('📋 Headers de respuesta:', Object.fromEntries(response.headers.entries()));
+
+      // Verificar si la respuesta es JSON antes de intentar parsearla
+      const contentType = response.headers.get('content-type');
+      let responseData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          responseData = await response.json();
+        } catch (parseError) {
+          console.error('❌ Error parseando JSON:', parseError);
+          const responseText = await response.text();
+          console.error('📄 Texto de respuesta:', responseText);
+          throw new Error(`Error parseando respuesta del servidor. Texto recibido: ${responseText.substring(0, 200)}...`);
+        }
+      } else {
+        const responseText = await response.text();
+        console.error('❌ Respuesta no es JSON. Content-Type:', contentType);
+        console.error('📄 Texto de respuesta:', responseText);
+        throw new Error(`El servidor devolvió una respuesta inválida (${contentType}). Texto: ${responseText.substring(0, 200)}...`);
+      }
+
       console.log('📥 Respuesta de API:', response.status, responseData);
 
       if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${responseData.error || 'Error desconocido'}`);
+        const errorMsg = responseData?.details 
+          ? `${responseData.error}: ${JSON.stringify(responseData.details)}` 
+          : responseData?.error || 'Error desconocido';
+        throw new Error(`Error ${response.status}: ${errorMsg}`);
       }
 
       alert(comprobantePeso ? '✅ Peso y comprobante actualizados exitosamente' : '✅ Peso actualizado exitosamente');
@@ -943,9 +1006,19 @@ function SistemaBachesContent() {
                                       ? 'bg-orange-600/80 hover:bg-orange-600 text-white cursor-pointer'
                                       : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                                   }`}
-                                  title={isPesoYaActualizado(bache) ? 'El peso ya ha sido actualizado y el bache tiene monitoreo registrado' : ''}
+                                  title={isPesoYaActualizado(bache) 
+                                    ? hasMonitoreoRegistrado(bache) 
+                                      ? 'El peso ya fue actualizado y el bache tiene monitoreo completo'
+                                      : 'El peso y comprobante ya fueron actualizados'
+                                    : 'Actualizar el peso húmedo total del bache'
+                                  }
                                 >
-                                  {isPesoYaActualizado(bache) ? '✅ Peso Actualizado' : '⚖️ Actualizar Peso'}
+                                  {isPesoYaActualizado(bache) 
+                                    ? '✅ Peso Actualizado' 
+                                    : hasPesoHumedoActualizado(bache) 
+                                      ? '📎 Agregar Comprobante'
+                                      : '⚖️ Actualizar Peso'
+                                  }
                                 </button>
                               </div>
                             )}
@@ -1549,11 +1622,21 @@ function SistemaBachesContent() {
                     name="comprobantePeso"
                     accept="image/*,.pdf"
                     capture="environment"
-                    onChange={(e) => setComprobantePeso(e.target.files?.[0] || null)}
+                    onChange={handleFileSelection}
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 font-medium file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
                   />
+                  {comprobantePeso && (
+                    <div className="mt-2 p-2 bg-white/10 rounded-lg border border-white/20">
+                      <p className="text-xs text-white/90 drop-shadow">
+                        📎 <span className="font-semibold">{comprobantePeso.name}</span>
+                      </p>
+                      <p className="text-xs text-white/70 drop-shadow">
+                        📏 Tamaño: {(comprobantePeso.size / (1024 * 1024)).toFixed(2)}MB
+                      </p>
+                    </div>
+                  )}
                   <p className="text-xs text-white/60 mt-1 drop-shadow">
-                    📷 Puede tomar una foto o adjuntar un archivo PDF como comprobante
+                    📷 Puede tomar una foto o adjuntar un archivo PDF como comprobante (máx. 25MB)
                   </p>
                 </div>
 
