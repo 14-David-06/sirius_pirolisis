@@ -91,6 +91,7 @@ export const config = {
       numeroDocumentoRecibe: process.env.AIRTABLE_REMISIONES_NUMERO_DOCUMENTO_RECIBE_FIELD_ID,
       telefonoRecibe: process.env.AIRTABLE_REMISIONES_TELEFONO_RECIBE_FIELD_ID,
       emailRecibe: process.env.AIRTABLE_REMISIONES_EMAIL_RECIBE_FIELD_ID,
+      observacionesRecepcion: process.env.AIRTABLE_REMISIONES_OBSERVACIONES_RECEPCION_FIELD_ID,
       // Documentos y Firmas
       documentoRemision: process.env.AIRTABLE_REMISIONES_DOCUMENTO_REMISION_FIELD_ID,
       qrDocumento: process.env.AIRTABLE_REMISIONES_QR_DOCUMENTO_FIELD_ID,

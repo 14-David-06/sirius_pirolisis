@@ -196,8 +196,25 @@ export default function EntregaRemision() {
             <div className="bg-green-500/20 border border-green-400/50 text-green-200 p-6 rounded-lg text-center">
               <div className="text-2xl mb-2">✅</div>
               <div className="text-lg font-semibold mb-2">¡Entrega Registrada!</div>
-              <div className="text-sm">
+              <div className="text-sm mb-4">
                 La información de entrega ha sido actualizada correctamente.
+              </div>
+              
+              {/* Mensaje de siguiente paso */}
+              <div className="bg-blue-500/20 border border-blue-400/50 text-blue-200 p-4 rounded-lg mt-4">
+                <div className="text-lg font-semibold mb-2">📱 Siguiente Paso</div>
+                <div className="text-sm mb-3">
+                  Ahora debe mostrar el siguiente código QR al usuario que va a <strong>recibir</strong> el producto para completar el proceso.
+                </div>
+                <button
+                  onClick={() => {
+                    const recepcionUrl = `${window.location.origin}/recepcion-remision/${remisionId}`;
+                    window.open(recepcionUrl, '_blank');
+                  }}
+                  className="bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                >
+                  📥 Abrir Formulario de Recepción
+                </button>
               </div>
             </div>
           ) : (

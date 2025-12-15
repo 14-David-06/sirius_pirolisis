@@ -90,25 +90,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       updateData.fields[config.airtable.remisionesBachesFields.emailRecibe] = emailRecibe;
     }
 
-    // Agregar observaciones si se proporcionan
-    if (observacionesRecepcion?.trim()) {
-      // Obtener las observaciones existentes primero
-      const getResponse = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.remisionesBachesTableId}/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${config.airtable.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (getResponse.ok) {
-        const existingData = await getResponse.json();
-        const existingObservations = existingData.fields?.[config.airtable.remisionesBachesFields.observaciones!] || '';
-        const newObservations = existingObservations 
-          ? `${existingObservations}\n\n--- Observaciones de Recepción ---\n${observacionesRecepcion}`
-          : `--- Observaciones de Recepción ---\n${observacionesRecepcion}`;
-        
-        updateData.fields[config.airtable.remisionesBachesFields.observaciones!] = newObservations;
-      }
+    // Agregar observaciones de recepción si se proporcionan
+    if (observacionesRecepcion?.trim() && config.airtable.remisionesBachesFields.observacionesRecepcion) {
+      updateData.fields[config.airtable.remisionesBachesFields.observacionesRecepcion] = observacionesRecepcion;
     }
 
     console.log('🔄 [recepcion-remision] Datos a actualizar:', JSON.stringify(updateData, null, 2));

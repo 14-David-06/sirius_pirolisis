@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { config } from '@/lib/config';
+import VoiceToText from '@/components/VoiceToText';
 
 export default function RecepcionRemision() {
   const params = useParams();
@@ -49,6 +50,14 @@ export default function RecepcionRemision() {
       fetchRemision();
     }
   }, [remisionId]);
+
+  // Función para manejar texto transcrito del micrófono
+  const handleVoiceText = (text: string) => {
+    setFormData(prev => ({ 
+      ...prev, 
+      observacionesRecepcion: prev.observacionesRecepcion + (prev.observacionesRecepcion ? ' ' : '') + text 
+    }));
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
@@ -282,14 +291,20 @@ export default function RecepcionRemision() {
                 <label className="block text-sm font-medium text-white/90 mb-2">
                   Observaciones de Recepción
                 </label>
-                <textarea
-                  name="observacionesRecepcion"
-                  value={formData.observacionesRecepcion}
-                  onChange={handleInputChange}
-                  placeholder="Estado del producto recibido, observaciones sobre la entrega, etc."
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent resize-none"
-                />
+                <div className="relative">
+                  <textarea
+                    name="observacionesRecepcion"
+                    value={formData.observacionesRecepcion}
+                    onChange={handleInputChange}
+                    placeholder="Estado del producto recibido, observaciones sobre la entrega, etc."
+                    rows={3}
+                    className="w-full px-4 py-3 pr-12 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent resize-none"
+                  />
+                  <VoiceToText 
+                    onTextExtracted={handleVoiceText}
+                    isLoading={false}
+                  />
+                </div>
               </div>
 
               {/* Aceptación de Tratamiento de Datos */}
