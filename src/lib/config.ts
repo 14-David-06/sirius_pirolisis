@@ -74,8 +74,22 @@ export const config = {
     },
     // Field IDs para Remisiones Baches Pirolisis
     remisionesBachesFields: {
+      id: process.env.AIRTABLE_REMISIONES_ID_FIELD_ID,
+      idNumerico: process.env.AIRTABLE_REMISIONES_ID_NUMERICO_FIELD_ID,
+      fechaEvento: process.env.AIRTABLE_REMISIONES_FECHA_EVENTO_FIELD_ID,
+      realizaRegistro: process.env.AIRTABLE_REMISIONES_REALIZA_REGISTRO_FIELD_ID,
+      observaciones: process.env.AIRTABLE_REMISIONES_OBSERVACIONES_FIELD_ID,
       cliente: process.env.AIRTABLE_REMISIONES_CLIENTE_FIELD_ID,
-      nitCliente: process.env.AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID
+      nitCliente: process.env.AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID,
+      responsableEntrega: process.env.AIRTABLE_REMISIONES_RESPONSABLE_ENTREGA_FIELD_ID,
+      numeroDocumentoEntrega: process.env.AIRTABLE_REMISIONES_NUMERO_DOCUMENTO_ENTREGA_FIELD_ID,
+      responsableRecibe: process.env.AIRTABLE_REMISIONES_RESPONSABLE_RECIBE_FIELD_ID,
+      numeroDocumentoRecibe: process.env.AIRTABLE_REMISIONES_NUMERO_DOCUMENTO_RECIBE_FIELD_ID,
+      documentoRemision: process.env.AIRTABLE_REMISIONES_DOCUMENTO_REMISION_FIELD_ID,
+      qrDocumento: process.env.AIRTABLE_REMISIONES_QR_DOCUMENTO_FIELD_ID,
+      firmaEntrega: process.env.AIRTABLE_REMISIONES_FIRMA_ENTREGA_FIELD_ID,
+      firmaRecibe: process.env.AIRTABLE_REMISIONES_FIRMA_RECIBE_FIELD_ID,
+      bachePirolisisAlterado: process.env.AIRTABLE_REMISIONES_BACHE_PIROLISIS_ALTERADO_FIELD_ID
     },
     // Field IDs para Detalle Cantidades Remision Pirolisis
     detalleCantidadesFields: {

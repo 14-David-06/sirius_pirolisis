@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import VoiceToText from '@/components/VoiceToText';
 import React, { useState, useEffect, useCallback } from 'react';
+import { config } from '@/lib/config';
 
 export default function RemisionesClientes() {
   return (
@@ -78,9 +79,9 @@ function RemisionesClientesContent() {
   const determinarEstado = (remision: any) => {
     const fields = remision.fields || {};
     
-    if (fields['Responsable Recibe'] && fields['Responsable Entrega']) {
+    if (fields[config.airtable.remisionesBachesFields.responsableRecibe!] && fields[config.airtable.remisionesBachesFields.responsableEntrega!]) {
       return { estado: 'Completado', color: 'bg-green-500' };
-    } else if (fields['Responsable Entrega']) {
+    } else if (fields[config.airtable.remisionesBachesFields.responsableEntrega!]) {
       return { estado: 'En Proceso', color: 'bg-yellow-500' };
     } else {
       return { estado: 'Pendiente', color: 'bg-gray-500' };
@@ -90,8 +91,8 @@ function RemisionesClientesContent() {
   // Filtrar remisiones basado en búsqueda y filtros
   const remisionesFiltradas = remisiones.filter(remision => {
     const fields = remision.fields || {};
-    const cliente = fields['Cliente'] || '';
-    const idNumerico = fields['ID Numerico'] || '';
+    const cliente = fields['Cliente'] || fields[config.airtable.remisionesBachesFields.cliente!] || ''; // Cliente
+    const idNumerico = fields['ID Numerico'] || fields[config.airtable.remisionesBachesFields.idNumerico!] || ''; // ID Numerico
     const { estado } = determinarEstado(remision);
     
     const coincideBusqueda = searchTerm === '' || 
@@ -127,7 +128,7 @@ function RemisionesClientesContent() {
         // Calcular estadísticas
         const total = data.records.length;
         const completadas = data.records.filter((r: any) => 
-          r.fields?.['Responsable Recibe'] && r.fields?.['Responsable Entrega']
+          r.fields?.[config.airtable.remisionesBachesFields.responsableRecibe!] && r.fields?.[config.airtable.remisionesBachesFields.responsableEntrega!]
         ).length;
         const pendientes = total - completadas;
         
@@ -159,10 +160,8 @@ function RemisionesClientesContent() {
     
     setLoadingClientes(true);
     try {
-      // Usar nombres de campos en lugar de field IDs para evitar hardcodeo
-      const fields = ['Cliente', 'NIT/CC Cliente'];
-      
-      const response = await fetch(`/api/remisiones-baches?fields=${fields.join(',')}`);
+      // Obtener todos los campos sin especificar Field IDs específicos
+      const response = await fetch('/api/remisiones-baches');
       
       if (!response.ok) {
         console.error('API Response not OK:', response.status, response.statusText);
@@ -177,8 +176,9 @@ function RemisionesClientesContent() {
         const clientesMap = new Map();
         
         data.records.forEach((record: any) => {
-          const cliente = record.fields?.['Cliente']; // Campo Cliente
-          const nit = record.fields?.['NIT/CC Cliente']; // Campo NIT/CC Cliente
+          // Buscar los campos de cliente usando nombres alternativos posibles
+          const cliente = record.fields?.['Cliente'] || record.fields?.[config.airtable.remisionesBachesFields.cliente!] || '';
+          const nit = record.fields?.['NIT/CC Cliente'] || record.fields?.[config.airtable.remisionesBachesFields.nitCliente!] || '';
           
           if (cliente && nit && !clientesMap.has(cliente)) {
             clientesMap.set(cliente, { nombre: cliente, nit: nit });
@@ -1163,7 +1163,7 @@ function RemisionesClientesContent() {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
                               <span className="text-lg font-semibold text-white">
-                                #{fields['ID Numerico'] || 'N/A'}
+                                #{fields['ID Numerico'] || fields[config.airtable.remisionesBachesFields.idNumerico!] || 'N/A'}
                               </span>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium text-white ${color}`}>
                                 {estado}
@@ -1173,34 +1173,34 @@ function RemisionesClientesContent() {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
                               <div className="text-white/90">
                                 <span className="text-white/60">Cliente:</span>
-                                <div className="font-medium">{fields['Cliente'] || 'No especificado'}</div>
+                                <div className="font-medium">{fields['Cliente'] || fields[config.airtable.remisionesBachesFields.cliente!] || 'No especificado'}</div>
                               </div>
                               <div className="text-white/90">
                                 <span className="text-white/60">NIT/CC:</span>
-                                <div className="font-medium">{fields['NIT/CC Cliente'] || 'No especificado'}</div>
+                                <div className="font-medium">{fields['NIT/CC Cliente'] || fields[config.airtable.remisionesBachesFields.nitCliente!] || 'No especificado'}</div>
                               </div>
                               <div className="text-white/90">
                                 <span className="text-white/60">Fecha Evento:</span>
-                                <div className="font-medium">{formatearFecha(fields['Fecha Evento'])}</div>
+                                <div className="font-medium">{formatearFecha(fields['Fecha Evento'] || fields[config.airtable.remisionesBachesFields.fechaEvento!])}</div>
                               </div>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mt-2">
                               <div className="text-white/90">
                                 <span className="text-white/60">Registrado por:</span>
-                                <div className="font-medium">{fields['Realiza Registro'] || 'No especificado'}</div>
+                                <div className="font-medium">{fields['Realiza Registro'] || fields[config.airtable.remisionesBachesFields.realizaRegistro!] || 'No especificado'}</div>
                               </div>
                               <div className="text-white/90">
-                                <span className="text-white/60">Fecha Creación:</span>
-                                <div className="font-medium">{formatearFecha(fields['Fecha Creacion'])}</div>
+                                <span className="text-white/60">ID:</span>
+                                <div className="font-medium">{fields[config.airtable.remisionesBachesFields.id!] || 'N/A'}</div>
                               </div>
                             </div>
                             
-                            {fields['Observaciones'] && (
+                            {(fields['Observaciones'] || fields[config.airtable.remisionesBachesFields.observaciones!]) && (
                               <div className="text-white/90 mt-2">
                                 <span className="text-white/60">Observaciones:</span>
                                 <div className="text-sm bg-white/5 p-2 rounded mt-1">
-                                  {fields['Observaciones']}
+                                  {fields['Observaciones'] || fields[config.airtable.remisionesBachesFields.observaciones!]}
                                 </div>
                               </div>
                             )}
@@ -1210,47 +1210,47 @@ function RemisionesClientesContent() {
                               <div>
                                 <div className="text-xs text-white/60 mb-1">📤 ENTREGA</div>
                                 <div className="text-sm text-white/90">
-                                  <div><span className="text-white/60">Responsable:</span> {fields['Responsable Entrega'] || 'Pendiente'}</div>
-                                  <div><span className="text-white/60">Documento:</span> {fields['Numero Documento Entrega'] || 'No especificado'}</div>
+                                  <div><span className="text-white/60">Responsable:</span> {fields['Responsable Entrega'] || fields[config.airtable.remisionesBachesFields.responsableEntrega!] || 'Pendiente'}</div>
+                                  <div><span className="text-white/60">Documento:</span> {fields['Numero Documento Entrega'] || fields[config.airtable.remisionesBachesFields.numeroDocumentoEntrega!] || 'No especificado'}</div>
                                 </div>
                               </div>
                               <div>
                                 <div className="text-xs text-white/60 mb-1">📥 RECEPCIÓN</div>
                                 <div className="text-sm text-white/90">
-                                  <div><span className="text-white/60">Responsable:</span> {fields['Responsable Recibe'] || 'Pendiente'}</div>
-                                  <div><span className="text-white/60">Documento:</span> {fields['Numero Documento Recibe'] || 'No especificado'}</div>
+                                  <div><span className="text-white/60">Responsable:</span> {fields['Responsable Recibe'] || fields[config.airtable.remisionesBachesFields.responsableRecibe!] || 'Pendiente'}</div>
+                                  <div><span className="text-white/60">Documento:</span> {fields['Numero Documento Recibe'] || fields[config.airtable.remisionesBachesFields.numeroDocumentoRecibe!] || 'No especificado'}</div>
                                 </div>
                               </div>
                             </div>
                             
                             {/* Baches vinculados */}
-                            {fields['Bache Pirolisis Alterado'] && Array.isArray(fields['Bache Pirolisis Alterado']) && fields['Bache Pirolisis Alterado'].length > 0 && (
+                            {((fields['Bache Pirolisis Alterado'] && Array.isArray(fields['Bache Pirolisis Alterado']) && fields['Bache Pirolisis Alterado'].length > 0) || (fields['fldoFVv9YJoxFtg1G'] && Array.isArray(fields['fldoFVv9YJoxFtg1G']) && fields['fldoFVv9YJoxFtg1G'].length > 0)) && (
                               <div className="mt-3 pt-3 border-t border-white/20">
                                 <div className="text-xs text-white/60 mb-2">🗂️ BACHES VINCULADOS</div>
                                 <div className="text-sm text-white/90">
-                                  {fields['Bache Pirolisis Alterado'].length} bache(s) asociado(s)
+                                  {(fields['Bache Pirolisis Alterado'] || fields['fldoFVv9YJoxFtg1G'] || []).length} bache(s) asociado(s)
                                 </div>
                               </div>
                             )}
                             
                             {/* Documentos adjuntos */}
                             <div className="flex flex-wrap gap-2 mt-3">
-                              {fields['Documento Remisión'] && (
+                              {(fields['Documento Remisión'] || fields[config.airtable.remisionesBachesFields.documentoRemision!]) && (
                                 <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
                                   📄 Documento Remisión
                                 </span>
                               )}
-                              {fields['QR Documento Remisión'] && (
+                              {(fields['QR Documento Remisión'] || fields[config.airtable.remisionesBachesFields.qrDocumento!]) && (
                                 <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">
                                   🔗 QR Documento
                                 </span>
                               )}
-                              {fields['Firma Entrega'] && (
+                              {(fields['Firma Entrega'] || fields[config.airtable.remisionesBachesFields.firmaEntrega!]) && (
                                 <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
                                   ✍️ Firma Entrega
                                 </span>
                               )}
-                              {fields['Firma Recibe'] && (
+                              {(fields['Firma Recibe'] || fields[config.airtable.remisionesBachesFields.firmaRecibe!]) && (
                                 <span className="px-2 py-1 bg-orange-500/20 text-orange-300 rounded text-xs">
                                   ✍️ Firma Recepción
                                 </span>

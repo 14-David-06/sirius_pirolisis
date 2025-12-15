@@ -30,27 +30,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const fields = searchParams.get('fields');
     const maxRecords = searchParams.get('maxRecords') || '100';
-    const sort = searchParams.get('sort') || 'desc'; // Por defecto, más recientes primero
 
     let url = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.remisionesBachesTableId}?maxRecords=${maxRecords}`;
     
-    // Ordenar por fecha de creación (más recientes primero)
-    url += `&sort[0][field]=Fecha Creacion&sort[0][direction]=${sort}`;
-    
     if (fields) {
       const fieldParams = fields.split(',').map(field => `fields[]=${encodeURIComponent(field)}`).join('&');
-      url += `&${fieldParams}`;
-    } else {
-      // Si no se especifican fields, traer todos los campos importantes
-      const allFields = [
-        'ID', 'ID Numerico', 'Fecha Creacion', 'Fecha Evento',
-        'Realiza Registro', 'Observaciones', 'Cliente', 'NIT/CC Cliente',
-        'Documento Remisión', 'QR Documento Remisión',
-        'Responsable Entrega', 'Numero Documento Entrega', 'Firma Entrega',
-        'Responsable Recibe', 'Numero Documento Recibe', 'Firma Recibe',
-        'Bache Pirolisis Alterado', 'Detalle Cantidades Bache Pirolisis'
-      ];
-      const fieldParams = allFields.map(field => `fields[]=${encodeURIComponent(field)}`).join('&');
       url += `&${fieldParams}`;
     }
     
@@ -126,21 +110,21 @@ export async function POST(request: NextRequest) {
     // PASO 1: Crear el registro principal en "Remisiones Baches Pirolisis"
     const remisionRecord = {
       fields: {
-        // Campos básicos usando field IDs de la documentación
-        'fldmNHfw9SbO681TG': body.fechaEvento, // Fecha Evento
-        'fldObqYpC3cLTBj37': body.realizaRegistro, // Realiza Registro
-        'fldRPpV3y45VhKRSI': body.observaciones || '', // Observaciones
+        // Campos básicos usando field IDs desde configuración
+        [config.airtable.remisionesBachesFields.fechaEvento!]: body.fechaEvento, // Fecha Evento
+        [config.airtable.remisionesBachesFields.realizaRegistro!]: body.realizaRegistro, // Realiza Registro
+        [config.airtable.remisionesBachesFields.observaciones!]: body.observaciones || '', // Observaciones
         
         // Información del cliente
-        'fldVARtVS53dq9pDY': body.cliente, // Cliente
-        'fldYg8R8RpJQQqadA': body.nitCcCliente, // NIT/CC Cliente
+        [config.airtable.remisionesBachesFields.cliente!]: body.cliente, // Cliente
+        [config.airtable.remisionesBachesFields.nitCliente!]: body.nitCcCliente, // NIT/CC Cliente
         
         // Información de recepción (opcional)
-        'fldXnVGzelY4i2giG': body.responsableRecibe || '', // Responsable Recibe
-        'fldhrzAUojnYobB5f': body.numeroDocumentoRecibe || '', // Numero Documento Recibe
+        [config.airtable.remisionesBachesFields.responsableRecibe!]: body.responsableRecibe || '', // Responsable Recibe
+        [config.airtable.remisionesBachesFields.numeroDocumentoRecibe!]: body.numeroDocumentoRecibe || '', // Numero Documento Recibe
         
         // Baches Pirólisis Alterados (IDs de los baches)
-        'fldoFVv9YJoxFtg1G': body.bachesSeleccionados.map((bache: any) => bache.bacheId)
+        [config.airtable.remisionesBachesFields.bachePirolisisAlterado!]: body.bachesSeleccionados.map((bache: any) => bache.bacheId)
       }
     };
 
@@ -173,10 +157,10 @@ export async function POST(request: NextRequest) {
     // PASO 2: Crear los registros de detalle en "Detalle Cantidades Remision Pirolisis"
     const detalleRecords = body.bachesSeleccionados.map((bache: any) => ({
       fields: {
-        // Usando field IDs de la documentación de Airtable
-        'fldG3TWFNPP0NeM1S': parseFloat(bache.cantidadSolicitada) || 0, // Cantidad Especificada (KG)
-        'fldidpnUMEMARpMto': [remisionData.id], // Remisión Bache Pirolisis (link a registro principal)
-        'fldAbWHgKSnS2qAtY': [bache.bacheId] // Bache Pirolisis (link a bache específico)
+        // Usando field IDs desde configuración
+        [config.airtable.detalleCantidadesFields.cantidadEspecificada!]: parseFloat(bache.cantidadSolicitada) || 0, // Cantidad Especificada (KG)
+        [config.airtable.detalleCantidadesFields.remisionBachePirolisis!]: [remisionData.id], // Remisión Bache Pirolisis (link a registro principal)
+        [config.airtable.detalleCantidadesFields.bachePirolisis!]: [bache.bacheId] // Bache Pirolisis (link a bache específico)
       }
     }));
 
