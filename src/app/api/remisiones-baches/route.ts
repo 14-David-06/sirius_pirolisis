@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📥 [remisiones-baches] Datos recibidos:', JSON.stringify(body, null, 2));
 
-    // Validaciones ya realizadas en el GET, pero verificamos por completitud
+    // Validaciones de configuración
     if (!config.airtable.token || !config.airtable.baseId || !config.airtable.remisionesBachesTableId) {
       return NextResponse.json({ 
         success: false, 
@@ -92,10 +92,25 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Mapear los campos del formulario a los field IDs de Airtable
-    const airtableRecord = {
+    if (!config.airtable.detalleCantidadesRemisionTableId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Tabla de Detalle Cantidades no configurada' 
+      }, { status: 500 });
+    }
+
+    // Validaciones de datos
+    if (!body.bachesSeleccionados || !Array.isArray(body.bachesSeleccionados) || body.bachesSeleccionados.length === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Debe seleccionar al menos un bache' 
+      }, { status: 400 });
+    }
+
+    // PASO 1: Crear el registro principal en "Remisiones Baches Pirolisis"
+    const remisionRecord = {
       fields: {
-        // Campos básicos
+        // Campos básicos usando field IDs de la documentación
         'fldmNHfw9SbO681TG': body.fechaEvento, // Fecha Evento
         'fldObqYpC3cLTBj37': body.realizaRegistro, // Realiza Registro
         'fldRPpV3y45VhKRSI': body.observaciones || '', // Observaciones
@@ -104,47 +119,94 @@ export async function POST(request: NextRequest) {
         'fldVARtVS53dq9pDY': body.cliente, // Cliente
         'fldYg8R8RpJQQqadA': body.nitCcCliente, // NIT/CC Cliente
         
-        // Información de recepción
+        // Información de recepción (opcional)
         'fldXnVGzelY4i2giG': body.responsableRecibe || '', // Responsable Recibe
         'fldhrzAUojnYobB5f': body.numeroDocumentoRecibe || '', // Numero Documento Recibe
         
-        // Bache vinculado (si existe)
-        ...(body.bachePirolisisAlterado && { 'fldoFVv9YJoxFtg1G': [body.bachePirolisisAlterado] })
+        // Baches Pirólisis Alterados (IDs de los baches)
+        'fldoFVv9YJoxFtg1G': body.bachesSeleccionados.map((bache: any) => bache.bacheId)
       }
     };
 
-    console.log('🔄 [remisiones-baches] Registro a enviar:', JSON.stringify(airtableRecord, null, 2));
+    console.log('🔄 [remisiones-baches] Registro principal a crear:', JSON.stringify(remisionRecord, null, 2));
 
-    const url = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.remisionesBachesTableId}`;
+    const remisionUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.remisionesBachesTableId}`;
     
-    const response = await fetch(url, {
+    const remisionResponse = await fetch(remisionUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.airtable.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(airtableRecord)
+      body: JSON.stringify(remisionRecord)
     });
 
-    console.log(`📡 [remisiones-baches] Status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ [remisiones-baches] Error: ${errorText}`);
+    if (!remisionResponse.ok) {
+      const errorText = await remisionResponse.text();
+      console.error(`❌ [remisiones-baches] Error creando remisión: ${errorText}`);
       return NextResponse.json({
         success: false,
-        error: `Error de Airtable: ${response.status}`,
+        error: `Error creando remisión: ${remisionResponse.status}`,
         details: errorText
-      }, { status: response.status });
+      }, { status: remisionResponse.status });
     }
 
-    const data = await response.json();
-    console.log(`✅ [remisiones-baches] Registro creado con ID: ${data.id}`);
+    const remisionData = await remisionResponse.json();
+    console.log(`✅ [remisiones-baches] Remisión creada con ID: ${remisionData.id}`);
+
+    // PASO 2: Crear los registros de detalle en "Detalle Cantidades Remision Pirolisis"
+    const detalleRecords = body.bachesSeleccionados.map((bache: any) => ({
+      fields: {
+        // Usando field IDs de la documentación de Airtable
+        'fldG3TWFNPP0NeM1S': parseFloat(bache.cantidadSolicitada) || 0, // Cantidad Especificada (KG)
+        'fldidpnUMEMARpMto': [remisionData.id], // Remisión Bache Pirolisis (link a registro principal)
+        'fldAbWHgKSnS2qAtY': [bache.bacheId] // Bache Pirolisis (link a bache específico)
+      }
+    }));
+
+    console.log('🔄 [remisiones-baches] Registros de detalle a crear:', JSON.stringify(detalleRecords, null, 2));
+
+    const detalleUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.detalleCantidadesRemisionTableId}`;
+    
+    const detalleResponse = await fetch(detalleUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.airtable.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ records: detalleRecords })
+    });
+
+    if (!detalleResponse.ok) {
+      const errorText = await detalleResponse.text();
+      console.error(`❌ [remisiones-baches] Error creando detalles: ${errorText}`);
+      
+      // En caso de error, intentar limpiar el registro principal creado
+      try {
+        await fetch(`${remisionUrl}/${remisionData.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${config.airtable.token}` }
+        });
+        console.log('🧹 [remisiones-baches] Registro principal eliminado por rollback');
+      } catch (deleteError) {
+        console.error('❌ [remisiones-baches] Error en rollback:', deleteError);
+      }
+      
+      return NextResponse.json({
+        success: false,
+        error: `Error creando detalles de cantidades: ${detalleResponse.status}`,
+        details: errorText
+      }, { status: detalleResponse.status });
+    }
+
+    const detalleData = await detalleResponse.json();
+    console.log(`✅ [remisiones-baches] ${detalleData.records?.length || 0} registros de detalle creados`);
 
     return NextResponse.json({
       success: true,
-      record: data,
-      message: 'Remisión creada exitosamente'
+      record: remisionData,
+      detalleRecords: detalleData.records,
+      message: 'Remisión y detalles creados exitosamente'
     });
 
   } catch (error) {

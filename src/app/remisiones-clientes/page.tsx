@@ -133,13 +133,13 @@ function RemisionesClientesContent() {
           
           if (Array.isArray(cantidadRaw)) {
             // Si es array, tomar el primer valor
-            cantidadDisponible = parseFloat(cantidadRaw[0]) || 0;
+            cantidadDisponible = Math.round(parseFloat(cantidadRaw[0]) || 0);
           } else if (typeof cantidadRaw === 'string') {
             // Si es string, intentar parsear
-            cantidadDisponible = parseFloat(cantidadRaw.replace(/"/g, '')) || 0;
+            cantidadDisponible = Math.round(parseFloat(cantidadRaw.replace(/"/g, '')) || 0);
           } else if (typeof cantidadRaw === 'number') {
-            // Si es número, usar directamente
-            cantidadDisponible = cantidadRaw;
+            // Si es número, redondear
+            cantidadDisponible = Math.round(cantidadRaw);
           }
           
           // Procesar código usando el nombre del campo
@@ -265,23 +265,23 @@ function RemisionesClientesContent() {
         }));
       }
     } else if (field === 'cantidadSolicitada') {
-      // Validación especial para cantidad solicitada
+      // Validación especial para cantidad solicitada - solo números enteros
       let cantidad = 0;
       if (typeof value === 'string') {
-        // Remover caracteres no numéricos excepto punto decimal
-        const cleanValue = value.replace(/[^\d.]/g, '');
-        cantidad = parseFloat(cleanValue) || 0;
+        // Remover caracteres no numéricos (solo permitir dígitos)
+        const cleanValue = value.replace(/[^\d]/g, '');
+        cantidad = parseInt(cleanValue) || 0;
       } else {
-        cantidad = Number(value) || 0;
+        cantidad = Math.round(Number(value)) || 0;
       }
       
-      // Limitar la cantidad a la disponible del bache
+      // Limitar la cantidad a la disponible del bache (redondeada)
       const currentBache = formData.bachesSeleccionados[index];
-      if (currentBache && cantidad > currentBache.cantidadDisponible) {
-        cantidad = currentBache.cantidadDisponible;
+      if (currentBache && cantidad > Math.round(currentBache.cantidadDisponible)) {
+        cantidad = Math.round(currentBache.cantidadDisponible);
       }
       
-      // Limitar a un máximo razonable para evitar notación científica
+      // Limitar a un máximo razonable
       if (cantidad > 999999) {
         cantidad = 999999;
       }
@@ -393,8 +393,8 @@ function RemisionesClientesContent() {
         if (!bache.cantidadSolicitada || bache.cantidadSolicitada <= 0) {
           missingFields.push(`Bache ${i + 1}: Debe especificar una cantidad mayor a 0`);
         }
-        if (bache.cantidadSolicitada > bache.cantidadDisponible) {
-          missingFields.push(`Bache ${i + 1}: La cantidad solicitada (${bache.cantidadSolicitada} KG) excede la disponible (${bache.cantidadDisponible} KG)`);
+        if (bache.cantidadSolicitada > Math.round(bache.cantidadDisponible)) {
+          missingFields.push(`Bache ${i + 1}: La cantidad solicitada (${Math.round(bache.cantidadSolicitada)} KG) excede la disponible (${Math.round(bache.cantidadDisponible)} KG)`);
         }
       }
 
@@ -877,7 +877,7 @@ function RemisionesClientesContent() {
                                     )
                                     .map((bache) => (
                                       <option key={bache.id} value={bache.id} className="bg-gray-800">
-                                        {bache.codigo} - {bache.cantidadDisponible} KG disponibles
+                                        {bache.codigo} - {Math.round(bache.cantidadDisponible)} KG disponibles
                                       </option>
                                     ))}
                                 </select>
@@ -888,7 +888,7 @@ function RemisionesClientesContent() {
                                 <label className="block text-xs font-medium text-white/80 mb-1">
                                   Cantidad a Sacar (KG)
                                   {bacheSeleccionado.cantidadDisponible > 0 && (
-                                    <span className="text-white/60"> - Disponible: {bacheSeleccionado.cantidadDisponible} KG</span>
+                                    <span className="text-white/60"> - Disponible: {Math.round(bacheSeleccionado.cantidadDisponible)} KG</span>
                                   )}
                                 </label>
                                 <input
@@ -896,9 +896,9 @@ function RemisionesClientesContent() {
                                   value={bacheSeleccionado.cantidadSolicitada || ''}
                                   onChange={(e) => handleBacheChange(index, 'cantidadSolicitada', e.target.value)}
                                   placeholder="Ej: 100"
-                                  min="0.1"
-                                  max={bacheSeleccionado.cantidadDisponible}
-                                  step="0.1"
+                                  min="1"
+                                  max={Math.round(bacheSeleccionado.cantidadDisponible)}
+                                  step="1"
                                   disabled={!bacheSeleccionado.bacheId}
                                   className={`w-full px-3 py-2 bg-white/10 border ${
                                     bacheSeleccionado.cantidadSolicitada > bacheSeleccionado.cantidadDisponible 
@@ -908,7 +908,7 @@ function RemisionesClientesContent() {
                                 />
                                 {bacheSeleccionado.cantidadSolicitada > bacheSeleccionado.cantidadDisponible && (
                                   <div className="mt-1 text-xs text-red-400">
-                                    ⚠️ La cantidad excede lo disponible ({bacheSeleccionado.cantidadDisponible} KG)
+                                    ⚠️ La cantidad excede lo disponible ({Math.round(bacheSeleccionado.cantidadDisponible)} KG)
                                   </div>
                                 )}
                               </div>
@@ -918,7 +918,7 @@ function RemisionesClientesContent() {
                               <div className="mt-2 text-xs text-white/70">
                                 <span className="font-medium">{bacheSeleccionado.codigoBache}</span>
                                 {bacheSeleccionado.cantidadSolicitada > 0 && (
-                                  <span> - Solicitando: {Number(bacheSeleccionado.cantidadSolicitada).toFixed(2)} KG</span>
+                                  <span> - Solicitando: {Math.round(bacheSeleccionado.cantidadSolicitada)} KG</span>
                                 )}
                               </div>
                             )}
@@ -931,7 +931,7 @@ function RemisionesClientesContent() {
                             Resumen: {formData.bachesSeleccionados.length} bache(s) seleccionado(s)
                           </div>
                           <div className="text-xs text-white/70 mt-1">
-                            Total a sacar: {formData.bachesSeleccionados.reduce((total, bache) => total + (bache.cantidadSolicitada || 0), 0).toFixed(2)} KG
+                            Total a sacar: {Math.round(formData.bachesSeleccionados.reduce((total, bache) => total + (bache.cantidadSolicitada || 0), 0))} KG
                           </div>
                         </div>
                       </div>

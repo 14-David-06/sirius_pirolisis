@@ -11,6 +11,7 @@ export const config = {
     tableName: process.env.AIRTABLE_TABLE_NAME,
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
     remisionesBachesTableId: process.env.AIRTABLE_REMISIONES_BACHES_TABLE_ID,
+    detalleCantidadesRemisionTableId: process.env.AIRTABLE_DETALLE_CANTIDADES_REMISION_TABLE_ID,
     inventarioTableId: process.env.AIRTABLE_INVENTARIO_TABLE_ID,
     entradasTableId: process.env.AIRTABLE_ENTRADAS_TABLE_ID,
     salidasTableId: process.env.AIRTABLE_SALIDAS_TABLE_ID,
@@ -75,6 +76,12 @@ export const config = {
     remisionesBachesFields: {
       cliente: process.env.AIRTABLE_REMISIONES_CLIENTE_FIELD_ID,
       nitCliente: process.env.AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID
+    },
+    // Field IDs para Detalle Cantidades Remision Pirolisis
+    detalleCantidadesFields: {
+      cantidadEspecificada: process.env.AIRTABLE_DETALLE_CANTIDAD_ESPECIFICADA_FIELD_ID,
+      remisionBachePirolisis: process.env.AIRTABLE_DETALLE_REMISION_BACHE_FIELD_ID,
+      bachePirolisis: process.env.AIRTABLE_DETALLE_BACHE_PIROLISIS_FIELD_ID
     }
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
