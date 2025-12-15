@@ -10,6 +10,7 @@ export const config = {
     baseId: process.env.AIRTABLE_BASE_ID,
     tableName: process.env.AIRTABLE_TABLE_NAME,
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
+    remisionesBachesTableId: process.env.AIRTABLE_REMISIONES_BACHES_TABLE_ID,
     inventarioTableId: process.env.AIRTABLE_INVENTARIO_TABLE_ID,
     entradasTableId: process.env.AIRTABLE_ENTRADAS_TABLE_ID,
     salidasTableId: process.env.AIRTABLE_SALIDAS_TABLE_ID,
@@ -69,6 +70,11 @@ export const config = {
       inventarioInsumos: process.env.AIRTABLE_SALIDAS_INVENTARIO_INSUMOS_FIELD_ID,
       turnoPirolisis: process.env.AIRTABLE_SALIDAS_TURNO_PIROLISIS_FIELD_ID,
       mantenimiento: process.env.AIRTABLE_SALIDAS_MANTENIMIENTO_FIELD_ID || 'Mantenimientos'
+    },
+    // Field IDs para Remisiones Baches Pirolisis
+    remisionesBachesFields: {
+      cliente: process.env.AIRTABLE_REMISIONES_CLIENTE_FIELD_ID,
+      nitCliente: process.env.AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID
     }
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
@@ -88,6 +94,7 @@ export function validateEnvVars() {
     'AIRTABLE_BASE_ID',
     'AIRTABLE_TABLE_NAME',
     'AIRTABLE_BACHES_TABLE_ID',
+    'AIRTABLE_REMISIONES_BACHES_TABLE_ID',
     'AIRTABLE_INVENTARIO_TABLE_ID',
     'AIRTABLE_LABORATORIOS_TABLE_ID',
     'AIRTABLE_EQUIPOS_TABLE_ID',
@@ -115,7 +122,10 @@ export function validateEnvVars() {
     // Field IDs del inventario (requeridos para campos existentes)
     'AIRTABLE_INVENTARIO_INSUMO_FIELD_ID',
     'AIRTABLE_INVENTARIO_CATEGORIA_FIELD_ID',
-    'AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID'
+    'AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID',
+    // Field IDs de Remisiones Baches Pirolisis
+    'AIRTABLE_REMISIONES_CLIENTE_FIELD_ID',
+    'AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID'
   ];
 
   // Variables opcionales (no causan error si faltan, pero se recomienda configurarlas)

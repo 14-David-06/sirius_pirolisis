@@ -16,6 +16,9 @@ const config = {
   airtableToken: process.env.AIRTABLE_TOKEN,
   airtableBaseId: process.env.AIRTABLE_BASE_ID,
   bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
+  remisionesBachesTableId: process.env.AIRTABLE_REMISIONES_BACHES_TABLE_ID,
+  remisionesClienteFieldId: process.env.AIRTABLE_REMISIONES_CLIENTE_FIELD_ID,
+  remisionesNitClienteFieldId: process.env.AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID,
 };
 
 console.log('🔍 Diagnóstico de configuración Airtable\n');
@@ -24,9 +27,12 @@ console.log('🔍 Diagnóstico de configuración Airtable\n');
 console.log('1. Verificando variables de entorno:');
 console.log(`   AIRTABLE_TOKEN: ${config.airtableToken ? '✅ Configurado' : '❌ Faltante'}`);
 console.log(`   AIRTABLE_BASE_ID: ${config.airtableBaseId ? '✅ Configurado' : '❌ Faltante'}`);
-console.log(`   AIRTABLE_BACHES_TABLE_ID: ${config.bachesTableId ? '✅ Configurado' : '❌ Faltante'}\n`);
+console.log(`   AIRTABLE_BACHES_TABLE_ID: ${config.bachesTableId ? '✅ Configurado' : '❌ Faltante'}`);
+console.log(`   AIRTABLE_REMISIONES_BACHES_TABLE_ID: ${config.remisionesBachesTableId ? '✅ Configurado' : '❌ Faltante'}`);
+console.log(`   AIRTABLE_REMISIONES_CLIENTE_FIELD_ID: ${config.remisionesClienteFieldId ? '✅ Configurado' : '❌ Faltante'}`);
+console.log(`   AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID: ${config.remisionesNitClienteFieldId ? '✅ Configurado' : '❌ Faltante'}\n`);
 
-if (!config.airtableToken || !config.airtableBaseId || !config.bachesTableId) {
+if (!config.airtableToken || !config.airtableBaseId || !config.bachesTableId || !config.remisionesBachesTableId || !config.remisionesClienteFieldId || !config.remisionesNitClienteFieldId) {
   console.log('❌ Error: Faltan variables de entorno requeridas');
   process.exit(1);
 }

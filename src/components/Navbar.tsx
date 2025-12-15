@@ -88,7 +88,6 @@ export default function Navbar() {
           { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
           { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
           { label: "🔧 Mantenimientos", href: "/mantenimientos", icon: "🔧", description: "Registro de mantenimientos" },
-          { label: "📚 Histórico Pirolisis", href: "/historico-pirolisis", icon: "📚", description: "Historial de procesos de pirolisis" },
         ]
       },
       {
