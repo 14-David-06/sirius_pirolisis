@@ -39,6 +39,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const record = await response.json();
     console.log(`✅ [remision-detail] Remisión obtenida`);
+    
+    // Debug: mostrar campos relevantes usando fallback
+    const responsableEntregaField = config.airtable.remisionesBachesFields.responsableEntrega || 'Responsable Entrega';
+    const numeroDocumentoEntregaField = config.airtable.remisionesBachesFields.numeroDocumentoEntrega || 'Numero Documento Entrega';
+    
+    console.log('🔍 [remision-detail] Campos de entrega:', {
+      responsableEntrega: record.fields?.[responsableEntregaField],
+      numeroDocumentoEntrega: record.fields?.[numeroDocumentoEntregaField]
+    });
 
     return NextResponse.json({
       success: true,

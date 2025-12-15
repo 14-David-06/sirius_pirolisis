@@ -13,6 +13,9 @@ export default function EntregaRemision() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [recepcionQrUrl, setRecepcionQrUrl] = useState<string | null>(null);
+  const [generatingQR, setGeneratingQR] = useState(false);
+  const [entregaYaCompletada, setEntregaYaCompletada] = useState(false);
   
   const [formData, setFormData] = useState({
     responsableEntrega: '',
@@ -34,6 +37,14 @@ export default function EntregaRemision() {
         const data = await response.json();
         if (data.success) {
           setRemision(data.record);
+          // Verificar si ya se completó la entrega
+          const record = data.record;
+          const responsableEntregaField = config.airtable.remisionesBachesFields.responsableEntrega || 'Responsable Entrega';
+          const numeroDocumentoEntregaField = config.airtable.remisionesBachesFields.numeroDocumentoEntrega || 'Numero Documento Entrega';
+          
+          const entregaCompleta = record.fields?.[responsableEntregaField] && 
+                                 record.fields?.[numeroDocumentoEntregaField];
+          setEntregaYaCompletada(!!entregaCompleta);
         }
       } catch (error) {
         console.error('Error cargando remisión:', error);
@@ -47,6 +58,41 @@ export default function EntregaRemision() {
       fetchRemision();
     }
   }, [remisionId]);
+
+  // Función para generar QR de recepción
+  const generateRecepcionQR = async () => {
+    setGeneratingQR(true);
+    try {
+      const recepcionUrl = `${window.location.origin}/recepcion-remision/${remisionId}`;
+      
+      const response = await fetch('/api/generate-qr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          remisionId: remisionId,
+          url: recepcionUrl,
+          type: 'remision'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Error generando QR');
+      }
+      
+      if (result.success) {
+        setRecepcionQrUrl(result.qrUrl);
+      }
+    } catch (error: any) {
+      console.error('Error generando QR de recepción:', error);
+      setSubmitError('Error generando el código QR de recepción');
+    } finally {
+      setGeneratingQR(false);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -124,6 +170,11 @@ export default function EntregaRemision() {
         aceptaTerminosCondiciones: false
       });
 
+      // Generar automáticamente el QR de recepción
+      setTimeout(() => {
+        generateRecepcionQR();
+      }, 1000);
+
     } catch (error: any) {
       console.error('Error actualizando entrega:', error);
       setSubmitError(error.message || 'Error al actualizar la información de entrega');
@@ -144,6 +195,46 @@ export default function EntregaRemision() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2C5234] to-[#1a3d23] flex items-center justify-center">
         <div className="text-white text-lg">Remisión no encontrada</div>
+      </div>
+    );
+  }
+
+  // Si la entrega ya fue completada, mostrar mensaje
+  if (entregaYaCompletada) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#2C5234] to-[#1a3d23] flex items-center justify-center p-4">
+        <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-2xl w-full border border-white/30">
+          <div className="text-center">
+            <div className="mb-6">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-500/20 border border-green-400/50 mb-4">
+                <svg className="h-8 w-8 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-white mb-2">✅ Entrega Ya Completada</h1>
+              <p className="text-white/80 mb-4">
+                Este formulario de entrega ya fue llenado y firmado. Para prevenir suplantación de información, 
+                el formulario ha sido deshabilitado.
+              </p>
+              <div className="bg-blue-500/20 border border-blue-400/50 rounded-lg p-4 mb-4">
+                <p className="text-blue-200 font-medium">
+                  📋 Remisión: {remision?.fields?.[config.airtable.remisionesBachesFields.id || 'ID'] || remisionId}
+                </p>
+                <p className="text-blue-300 text-sm mt-1">
+                  Responsable de entrega: {remision?.fields?.[config.airtable.remisionesBachesFields.responsableEntrega || 'Responsable Entrega']}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => window.history.back()}
+                  className="inline-flex items-center px-4 py-2 border border-white/30 text-sm font-medium rounded-md text-white bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  ← Regresar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -202,19 +293,50 @@ export default function EntregaRemision() {
               
               {/* Mensaje de siguiente paso */}
               <div className="bg-blue-500/20 border border-blue-400/50 text-blue-200 p-4 rounded-lg mt-4">
-                <div className="text-lg font-semibold mb-2">📱 Siguiente Paso</div>
-                <div className="text-sm mb-3">
-                  Ahora debe mostrar el siguiente código QR al usuario que va a <strong>recibir</strong> el producto para completar el proceso.
+                <div className="text-lg font-semibold mb-3">📥 PASO 2: Formulario de Recepción</div>
+                <div className="text-sm mb-4">
+                  Ahora muestre este código QR al usuario que va a <strong>recibir</strong> el producto:
                 </div>
-                <button
-                  onClick={() => {
-                    const recepcionUrl = `${window.location.origin}/recepcion-remision/${remisionId}`;
-                    window.open(recepcionUrl, '_blank');
-                  }}
-                  className="bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
-                >
-                  📥 Abrir Formulario de Recepción
-                </button>
+                
+                {!recepcionQrUrl && !generatingQR && (
+                  <button
+                    onClick={generateRecepcionQR}
+                    className="bg-gradient-to-r from-green-600 to-green-500 text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg mb-4"
+                  >
+                    📋 Generar QR de Recepción
+                  </button>
+                )}
+                
+                {generatingQR && (
+                  <div className="text-center py-4">
+                    <div className="animate-spin inline-block w-6 h-6 border-2 border-white/20 border-t-white rounded-full mr-2"></div>
+                    Generando código QR...
+                  </div>
+                )}
+                
+                {recepcionQrUrl && (
+                  <div className="text-center">
+                    <div className="bg-white p-4 rounded-lg inline-block mb-4">
+                      <img 
+                        src={recepcionQrUrl} 
+                        alt="QR Code Recepción" 
+                        className="w-48 h-48 mx-auto"
+                      />
+                    </div>
+                    <div className="text-xs text-blue-300 mb-4">
+                      URL: {window.location.origin}/recepcion-remision/{remisionId}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const recepcionUrl = `${window.location.origin}/recepcion-remision/${remisionId}`;
+                        window.open(recepcionUrl, '_blank');
+                      }}
+                      className="bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                    >
+                      🔗 Abrir Formulario de Recepción
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (

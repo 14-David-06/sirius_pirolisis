@@ -14,6 +14,8 @@ export default function RecepcionRemision() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [recepcionYaCompletada, setRecepcionYaCompletada] = useState(false);
+  const [entregaNoCompletada, setEntregaNoCompletada] = useState(false);
   
   const [formData, setFormData] = useState({
     responsableRecibe: '',
@@ -37,6 +39,50 @@ export default function RecepcionRemision() {
         const data = await response.json();
         if (data.success) {
           setRemision(data.record);
+          // Verificar estados de entrega y recepción
+          const record = data.record;
+          
+          // Debug: mostrar field IDs y valores
+          console.log('🔍 [recepcion] Field IDs de configuración:', {
+            responsableEntrega: config.airtable.remisionesBachesFields.responsableEntrega,
+            numeroDocumentoEntrega: config.airtable.remisionesBachesFields.numeroDocumentoEntrega,
+            responsableRecibe: config.airtable.remisionesBachesFields.responsableRecibe,
+            numeroDocumentoRecibe: config.airtable.remisionesBachesFields.numeroDocumentoRecibe
+          });
+          
+          // Usar field IDs o nombres de campo directos como fallback
+          const responsableEntregaField = config.airtable.remisionesBachesFields.responsableEntrega || 'Responsable Entrega';
+          const numeroDocumentoEntregaField = config.airtable.remisionesBachesFields.numeroDocumentoEntrega || 'Numero Documento Entrega';
+          const responsableRecibeField = config.airtable.remisionesBachesFields.responsableRecibe || 'Responsable Recibe';
+          const numeroDocumentoRecibeField = config.airtable.remisionesBachesFields.numeroDocumentoRecibe || 'Numero Documento Recibe';
+          
+          console.log('🔍 [recepcion] Campos del record:', Object.keys(record.fields || {}));
+          console.log('🔍 [recepcion] Valores de entrega:', {
+            responsableEntrega: record.fields?.[responsableEntregaField],
+            numeroDocumentoEntrega: record.fields?.[numeroDocumentoEntregaField]
+          });
+          
+          const entregaCompleta = record.fields?.[responsableEntregaField] && 
+                                 record.fields?.[numeroDocumentoEntregaField];
+          const recepcionCompleta = record.fields?.[responsableRecibeField] && 
+                                   record.fields?.[numeroDocumentoRecibeField];
+          
+          console.log('🔍 [recepcion] Valores con fallback:', {
+            responsableEntrega: record.fields?.[responsableEntregaField],
+            numeroDocumentoEntrega: record.fields?.[numeroDocumentoEntregaField],
+            responsableRecibe: record.fields?.[responsableRecibeField],
+            numeroDocumentoRecibe: record.fields?.[numeroDocumentoRecibeField]
+          });
+          
+          console.log('🔍 [recepcion] Estados:', {
+            entregaCompleta,
+            recepcionCompleta,
+            entregaNoCompletada: !entregaCompleta,
+            recepcionYaCompletada: !!recepcionCompleta
+          });
+          
+          setEntregaNoCompletada(!entregaCompleta);
+          setRecepcionYaCompletada(!!recepcionCompleta);
         }
       } catch (error) {
         console.error('Error cargando remisión:', error);
@@ -165,6 +211,85 @@ export default function RecepcionRemision() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#2C5234] to-[#1a3d23] flex items-center justify-center">
         <div className="text-white text-lg">Remisión no encontrada</div>
+      </div>
+    );
+  }
+
+  // Si la entrega no está completada, no se puede recibir
+  if (entregaNoCompletada) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#2C5234] to-[#1a3d23] flex items-center justify-center p-4">
+        <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-2xl w-full border border-white/30">
+          <div className="text-center">
+            <div className="mb-6">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-yellow-500/20 border border-yellow-400/50 mb-4">
+                <svg className="h-8 w-8 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-white mb-2">⏳ Entrega Pendiente</h1>
+              <p className="text-white/80 mb-4">
+                No se puede completar la recepción hasta que se haya completado y firmado el formulario de entrega.
+              </p>
+              <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-4 mb-4">
+                <p className="text-yellow-200 font-medium">
+                  📋 Remisión: {remision?.fields?.[config.airtable.remisionesBachesFields.id || 'ID'] || remisionId}
+                </p>
+                <p className="text-yellow-300 text-sm mt-1">
+                  Debe completarse primero el proceso de entrega
+                </p>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => window.history.back()}
+                  className="inline-flex items-center px-4 py-2 border border-white/30 text-sm font-medium rounded-md text-white bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  ← Regresar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Si la recepción ya fue completada, mostrar mensaje
+  if (recepcionYaCompletada) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#2C5234] to-[#1a3d23] flex items-center justify-center p-4">
+        <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-2xl w-full border border-white/30">
+          <div className="text-center">
+            <div className="mb-6">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-500/20 border border-green-400/50 mb-4">
+                <svg className="h-8 w-8 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-white mb-2">✅ Recepción Ya Completada</h1>
+              <p className="text-white/80 mb-4">
+                Este formulario de recepción ya fue llenado y firmado. Para prevenir suplantación de información, 
+                el formulario ha sido deshabilitado.
+              </p>
+              <div className="bg-blue-500/20 border border-blue-400/50 rounded-lg p-4 mb-4">
+                <p className="text-blue-200 font-medium">
+                  📋 Remisión: {remision?.fields?.[config.airtable.remisionesBachesFields.id || 'ID'] || remisionId}
+                </p>
+                <p className="text-blue-300 text-sm mt-1">
+                  Responsable de recepción: {remision?.fields?.[config.airtable.remisionesBachesFields.responsableRecibe || 'Responsable Recibe']}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => window.history.back()}
+                  className="inline-flex items-center px-4 py-2 border border-white/30 text-sm font-medium rounded-md text-white bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  ← Regresar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

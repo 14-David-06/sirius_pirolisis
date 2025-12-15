@@ -81,7 +81,7 @@ function RemisionesClientesContent() {
           qrWindow.document.write(`
             <html>
               <head>
-                <title>Flujo de Entrega y Recepción - Remisión ${remisionId}</title>
+                <title>Formulario de Entrega - Remisión ${remisionId}</title>
                 <style>
                   body { 
                     font-family: Arial, sans-serif; 
@@ -92,7 +92,7 @@ function RemisionesClientesContent() {
                     margin: 0;
                   }
                   .container { 
-                    max-width: 800px; 
+                    max-width: 600px; 
                     margin: 0 auto; 
                     background: rgba(255,255,255,0.1); 
                     padding: 30px; 
@@ -102,40 +102,33 @@ function RemisionesClientesContent() {
                   .step { 
                     background: rgba(255,255,255,0.1); 
                     margin: 20px 0; 
-                    padding: 20px; 
+                    padding: 25px; 
                     border-radius: 10px;
-                    border: 2px solid rgba(255,255,255,0.2);
-                  }
-                  .step.active { 
-                    border-color: #4ade80;
+                    border: 3px solid #4ade80;
                     background: rgba(74,222,128,0.1);
                   }
                   .qr-code { 
-                    max-width: 250px; 
+                    max-width: 280px; 
                     border: 3px solid #fff; 
                     padding: 15px; 
                     border-radius: 10px;
                     background: white;
+                    margin: 20px 0;
                   }
                   .url { 
                     font-size: 12px; 
                     color: #ccc; 
-                    margin-top: 10px;
+                    margin-top: 15px;
                     word-break: break-all;
-                  }
-                  .warning {
-                    background: rgba(251,191,36,0.2);
-                    border: 2px solid #fbbf24;
-                    color: #fbbf24;
-                    padding: 15px;
-                    border-radius: 10px;
-                    margin: 20px 0;
+                    padding: 10px;
+                    background: rgba(0,0,0,0.2);
+                    border-radius: 5px;
                   }
                   .instructions {
                     background: rgba(59,130,246,0.2);
                     border: 2px solid #3b82f6;
                     color: #93c5fd;
-                    padding: 15px;
+                    padding: 20px;
                     border-radius: 10px;
                     margin: 20px 0;
                     text-align: left;
@@ -143,60 +136,57 @@ function RemisionesClientesContent() {
                   .btn {
                     background: linear-gradient(135deg, #059669, #065f46);
                     color: white;
-                    padding: 12px 24px;
+                    padding: 15px 30px;
                     border: none;
                     border-radius: 8px;
-                    font-size: 16px;
+                    font-size: 18px;
                     cursor: pointer;
-                    margin: 10px;
+                    margin: 15px;
                     transition: all 0.3s;
                   }
                   .btn:hover {
                     transform: scale(1.05);
                     box-shadow: 0 4px 15px rgba(5,150,105,0.4);
                   }
-                  .btn-secondary {
-                    background: linear-gradient(135deg, #6366f1, #4338ca);
+                  .next-step {
+                    background: rgba(251,191,36,0.2);
+                    border: 2px solid #fbbf24;
+                    color: #fbbf24;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 25px 0;
+                    font-weight: bold;
                   }
                 </style>
               </head>
               <body>
                 <div class="container">
-                  <h1>🔄 Proceso de Entrega y Recepción</h1>
-                  <p>Complete el proceso en el siguiente orden:</p>
+                  <h1>📦 PASO 1: Formulario de Entrega</h1>
                   
                   <div class="instructions">
                     <h3>📋 Instrucciones:</h3>
-                    <ul style="text-align: left;">
-                      <li><strong>Paso 1:</strong> El responsable de la entrega debe escanear el QR de abajo</li>
-                      <li><strong>Paso 2:</strong> Completar el formulario de entrega</li>
-                      <li><strong>Paso 3:</strong> Una vez completado, se mostrará el enlace para recepción</li>
-                      <li><strong>Paso 4:</strong> Mostrar el formulario de recepción al usuario que recibe</li>
-                    </ul>
-                  </div>
-                  
-                  <div class="step active">
-                    <h2>📦 PASO 1: Formulario de Entrega</h2>
-                    <p><strong>Para el usuario que entrega:</strong></p>
-                    <p>Escanee este código QR para registrar la entrega</p>
-                    <img src="${result.qrUrl}" alt="QR Code Entrega" class="qr-code"/>
-                    <div class="url">URL: ${entregaUrl}</div>
-                    
-                    <button class="btn" onclick="window.open('${entregaUrl}', '_blank')">🔗 Abrir Formulario de Entrega</button>
-                  </div>
-                  
-                  <div class="warning">
-                    ⚠️ <strong>IMPORTANTE:</strong> Debe completar PRIMERO el formulario de entrega antes de proceder con la recepción.
+                    <ol style="text-align: left;">
+                      <li><strong>El responsable de la entrega</strong> debe escanear el código QR de abajo</li>
+                      <li><strong>Completar</strong> todo el formulario de entrega</li>
+                      <li><strong>Enviar</strong> la información</li>
+                      <li><strong>Después</strong> se habilitará automáticamente el formulario para quien recibe</li>
+                    </ol>
                   </div>
                   
                   <div class="step">
-                    <h2>📥 PASO 2: Formulario de Recepción</h2>
-                    <p><strong>Para el usuario que recibe:</strong></p>
-                    <p>Una vez completada la entrega, use este enlace para registrar la recepción</p>
+                    <h2>🎯 Escanee este código QR</h2>
+                    <p><strong>Para el usuario que ENTREGA el producto:</strong></p>
+                    <img src="${result.qrUrl}" alt="QR Code Entrega" class="qr-code"/>
                     
-                    <button class="btn btn-secondary" onclick="window.open('${recepcionUrl}', '_blank')">📥 Abrir Formulario de Recepción</button>
+                    <button class="btn" onclick="window.open('${entregaUrl}', '_blank')">🔗 Abrir Formulario de Entrega</button>
                     
-                    <div class="url">URL: ${recepcionUrl}</div>
+                    <div class="url">URL: ${entregaUrl}</div>
+                  </div>
+                  
+                  <div class="next-step">
+                    ⚠️ <strong>IMPORTANTE:</strong><br>
+                    Una vez completado el formulario de entrega, automáticamente se mostrará<br>
+                    el enlace para que el <strong>usuario que RECIBE</strong> complete su formulario.
                   </div>
                   
                   <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2);">
@@ -210,7 +200,7 @@ function RemisionesClientesContent() {
             </html>
           `);
         } else {
-          alert(`QR generado. Entrega: ${entregaUrl}\nRecepción: ${recepcionUrl}`);
+          alert(`QR generado para entrega. URL: ${entregaUrl}`);
         }
       }
     } catch (error: any) {
@@ -257,12 +247,20 @@ function RemisionesClientesContent() {
   const determinarEstado = (remision: any) => {
     const fields = remision.fields || {};
     
-    if (fields[config.airtable.remisionesBachesFields.responsableRecibe!] && fields[config.airtable.remisionesBachesFields.responsableEntrega!]) {
-      return { estado: 'Completado', color: 'bg-green-500' };
-    } else if (fields[config.airtable.remisionesBachesFields.responsableEntrega!]) {
-      return { estado: 'En Proceso', color: 'bg-yellow-500' };
+    // Usar field IDs o nombres directos como fallback
+    const responsableEntregaField = config.airtable.remisionesBachesFields.responsableEntrega || 'Responsable Entrega';
+    const responsableRecibeField = config.airtable.remisionesBachesFields.responsableRecibe || 'Responsable Recibe';
+    
+    const tieneEntrega = fields[responsableEntregaField];
+    const tieneRecepcion = fields[responsableRecibeField];
+    
+    // Verificar si tanto entrega como recepción están completas
+    if (tieneEntrega && tieneRecepcion) {
+      return { estado: 'Completado', color: 'bg-green-500', completo: true };
+    } else if (tieneEntrega) {
+      return { estado: 'En Proceso', color: 'bg-yellow-500', completo: false };
     } else {
-      return { estado: 'Pendiente', color: 'bg-gray-500' };
+      return { estado: 'Pendiente', color: 'bg-gray-500', completo: false };
     }
   };
 
@@ -1445,13 +1443,32 @@ function RemisionesClientesContent() {
                               👁️ Ver Detalles
                             </button>
 
-                            <button 
-                              onClick={() => generateEntregaQR(remision.id)}
-                              disabled={generatingQR === `entrega-${remision.id}`}
-                              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm transition-colors duration-200"
-                            >
-                              {generatingQR === `entrega-${remision.id}` ? '⏳' : '📋'} Generar QR Entrega-Recepción
-                            </button>
+                            {(() => {
+                              const { completo } = determinarEstado(remision);
+                              const isGenerating = generatingQR === `entrega-${remision.id}`;
+                              const isDisabled = completo || isGenerating;
+                              
+                              return (
+                                <button 
+                                  onClick={() => !isDisabled && generateEntregaQR(remision.id)}
+                                  disabled={isDisabled}
+                                  className={`px-3 py-1 text-white rounded text-sm transition-colors duration-200 ${
+                                    completo 
+                                      ? 'bg-green-600 cursor-not-allowed' 
+                                      : isGenerating 
+                                        ? 'bg-gray-600 cursor-not-allowed'
+                                        : 'bg-purple-600 hover:bg-purple-700'
+                                  }`}
+                                >
+                                  {completo 
+                                    ? '✅ Proceso Completo' 
+                                    : isGenerating 
+                                      ? '⏳ Generando QR...'
+                                      : '📋 Generar QR Entrega-Recepción'
+                                  }
+                                </button>
+                              );
+                            })()}
 
                           </div>
                         </div>

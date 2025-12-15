@@ -61,22 +61,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }, { status: 400 });
     }
 
-    // Preparar datos para Airtable usando Field IDs
+    // Debug: verificar field IDs
+    console.log('🔍 [entrega-remision] Field IDs:', {
+      responsableEntrega: config.airtable.remisionesBachesFields.responsableEntrega,
+      numeroDocumentoEntrega: config.airtable.remisionesBachesFields.numeroDocumentoEntrega,
+      telefonoEntrega: config.airtable.remisionesBachesFields.telefonoEntrega,
+      emailEntrega: config.airtable.remisionesBachesFields.emailEntrega
+    });
+
+    // Usar field IDs o nombres de campo directos como fallback
+    const responsableEntregaField = config.airtable.remisionesBachesFields.responsableEntrega || 'Responsable Entrega';
+    const numeroDocumentoEntregaField = config.airtable.remisionesBachesFields.numeroDocumentoEntrega || 'Numero Documento Entrega';
+    const telefonoEntregaField = config.airtable.remisionesBachesFields.telefonoEntrega || 'Telefono Entrega';
+    const emailEntregaField = config.airtable.remisionesBachesFields.emailEntrega || 'Email Entrega';
+
+    // Preparar datos para Airtable usando Field IDs o nombres directos
     const updateData: any = {
       fields: {
-        [config.airtable.remisionesBachesFields.responsableEntrega!]: responsableEntrega,
-        [config.airtable.remisionesBachesFields.numeroDocumentoEntrega!]: numeroDocumentoEntrega
+        [responsableEntregaField]: responsableEntrega,
+        [numeroDocumentoEntregaField]: numeroDocumentoEntrega
       }
     };
 
     // Agregar teléfono si está disponible
-    if (telefonoEntrega?.trim() && config.airtable.remisionesBachesFields.telefonoEntrega) {
-      updateData.fields[config.airtable.remisionesBachesFields.telefonoEntrega] = telefonoEntrega;
+    if (telefonoEntrega?.trim()) {
+      updateData.fields[telefonoEntregaField] = telefonoEntrega;
     }
 
     // Agregar email si está disponible
-    if (emailEntrega?.trim() && config.airtable.remisionesBachesFields.emailEntrega) {
-      updateData.fields[config.airtable.remisionesBachesFields.emailEntrega] = emailEntrega;
+    if (emailEntrega?.trim()) {
+      updateData.fields[emailEntregaField] = emailEntrega;
     }
 
     console.log('🔄 [entrega-remision] Datos a actualizar:', JSON.stringify(updateData, null, 2));
