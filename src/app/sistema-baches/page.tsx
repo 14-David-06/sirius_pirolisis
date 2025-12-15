@@ -16,7 +16,7 @@ export default function SistemaBaches() {
 }
 
 function SistemaBachesContent() {
-  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, hasPesoHumedoActualizado, hasMonitoreoRegistrado, hasComprobanteSubido, isPesoCompletamenteActualizado, getNumericValue, refetch } = useBaches();
+  const { data, loading, error, getLatestBache, calculateProgress, getBacheStatus, getBacheId, getDateValue, getTotalBiochar, getBiocharVendido, getTotalBiomasaHumeda, getBiomasaSecaActual, getMasaSecaTotal, hasPesoHumedoActualizado, hasMonitoreoRegistrado, hasComprobanteSubido, isPesoCompletamenteActualizado, getNumericValue, refetch } = useBaches();
 
   // Función para obtener el usuario de la sesión
   const getUserFromSession = () => {
@@ -682,6 +682,11 @@ function SistemaBachesContent() {
     return status === 'Bache Completo Planta' || status === 'Bache Completo Bodega' || status === 'Bache Agotado';
   }).length || 0;
   const totalBiochar = data?.records?.reduce((sum, b) => sum + getTotalBiochar(b), 0) || 0;
+  
+  // Nuevas estadísticas de biomasa
+  const totalBiomasaHumeda = data?.records?.reduce((sum, b) => sum + getTotalBiomasaHumeda(b), 0) || 0;
+  const totalBiomasaSecaActual = data?.records?.reduce((sum, b) => sum + getBiomasaSecaActual(b), 0) || 0;
+  const totalMasaSeca = data?.records?.reduce((sum, b) => sum + getMasaSecaTotal(b), 0) || 0;
 
   return (
     <div
@@ -719,8 +724,20 @@ function SistemaBachesContent() {
                   <span className="font-semibold">{bachesCompletados}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="drop-shadow">Total Biochar Producido:</span>
+                  <span className="drop-shadow">Total Biochar Producido (Referencia):</span>
                   <span className="font-semibold">{totalBiochar} kg</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="drop-shadow">Total Biomasa Húmeda:</span>
+                  <span className="font-semibold">{totalBiomasaHumeda.toFixed(1)} kg</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="drop-shadow">Total Biomasa Seca Actual:</span>
+                  <span className="font-semibold">{totalBiomasaSecaActual.toFixed(1)} kg</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="drop-shadow">Total Masa Seca (Histórico):</span>
+                  <span className="font-semibold">{totalMasaSeca.toFixed(1)} kg</span>
                 </div>
               </div>
             </div>

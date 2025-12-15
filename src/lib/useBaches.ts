@@ -14,6 +14,8 @@ interface BacheRecord {
     'Cantidad Biochar Vendido'?: number;
     'Cantidad Biochar Blend'?: number;
     'Total Biochar Humedo Bache (KG)'?: number;
+    'Total Cantidad Actual Biochar Seco'?: number;
+    'Masa Seca (DM kg) (from Monitoreo Baches)'?: number[];
     'Codigo Bache'?: string;
     'Estado Bache'?: string;
     'Monitoreado'?: string;
@@ -166,6 +168,35 @@ export function useBaches() {
     ]);
   };
 
+  // Función para obtener la biomasa húmeda total
+  const getTotalBiomasaHumeda = (bache: BacheRecord) => {
+    return getNumericValue(bache, [
+      'Total Biochar Humedo Bache (KG)', // Campo principal según documentación
+      'Peso Humedo',
+      'Biochar Humedo',
+      'Biomasa Humeda'
+    ]);
+  };
+
+  // Función para obtener la biomasa seca actual
+  const getBiomasaSecaActual = (bache: BacheRecord) => {
+    return getNumericValue(bache, [
+      'Total Cantidad Actual Biochar Seco', // Campo calculado según documentación
+      'Biochar Seco Actual',
+      'Masa Seca Actual'
+    ]);
+  };
+
+  // Función para obtener la masa seca total desde monitoreo
+  const getMasaSecaTotal = (bache: BacheRecord) => {
+    const masaSeca = bache.fields['Masa Seca (DM kg) (from Monitoreo Baches)'];
+    if (Array.isArray(masaSeca) && masaSeca.length > 0) {
+      // Sumar todos los valores si hay múltiples registros
+      return masaSeca.reduce((sum: number, value: number) => sum + (value || 0), 0);
+    }
+    return 0;
+  };
+
   // Función para obtener fecha con fallbacks
   const getDateValue = (bache: BacheRecord) => {
     return bache.fields['Fecha Creacion'] || bache.fields['Fecha'] || bache.fields['Creado'] || bache.createdTime;
@@ -217,6 +248,9 @@ export function useBaches() {
     getDateValue,
     getTotalBiochar,
     getBiocharVendido,
+    getTotalBiomasaHumeda,
+    getBiomasaSecaActual,
+    getMasaSecaTotal,
     hasPesoHumedoActualizado,
     hasMonitoreoRegistrado,
     hasComprobanteSubido,
