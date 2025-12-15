@@ -13,17 +13,20 @@ const s3Client = new S3Client({
 const AWS_S3_BUCKET = 'siriuspirolisis';
 
 interface QRRequestData {
-  balanceId: string;
+  balanceId?: string;
+  remisionId?: string;
   url: string;
+  type: 'balance' | 'remision';
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { balanceId, url }: QRRequestData = await request.json();
+    const { balanceId, remisionId, url, type }: QRRequestData = await request.json();
     
-    console.log('🔗 Generando QR para balance:', balanceId);
+    const recordId = balanceId || remisionId;
+    console.log(`🔗 Generando QR para ${type}:`, recordId);
 
-    // Crear la URL que contendrá la información completa del balance
+    // Crear la URL que contendrá la información completa
     const qrUrl = url;
 
     // Generar el código QR como buffer
@@ -40,7 +43,8 @@ export async function POST(request: NextRequest) {
 
     // Generar nombre único para el archivo
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `balance-masa/qr-${balanceId}-${timestamp}.png`;
+    const folderName = type === 'balance' ? 'balance-masa' : 'remisiones';
+    const fileName = `${folderName}/qr-${recordId}-${timestamp}.png`;
 
     // Subir a S3
     const uploadCommand = new PutObjectCommand({
@@ -49,7 +53,8 @@ export async function POST(request: NextRequest) {
       Body: qrBuffer,
       ContentType: 'image/png',
       Metadata: {
-        'balance-id': balanceId,
+        'record-id': recordId || 'unknown',
+        'record-type': type,
         'generated-date': new Date().toISOString(),
         'qr-content': qrUrl,
       }

@@ -44,6 +44,121 @@ function RemisionesClientesContent() {
   // Estados para el dropdown de baches
   const [bachesDisponibles, setBachesDisponibles] = useState<{id: string, codigo: string, cantidadDisponible: number, estado: string}[]>([]);
   const [loadingBaches, setLoadingBaches] = useState(false);
+  const [generatingQR, setGeneratingQR] = useState<string | null>(null);
+
+  // Función para generar QR de entrega
+  const generateEntregaQR = async (remisionId: string) => {
+    setGeneratingQR(`entrega-${remisionId}`);
+    try {
+      console.log('🔗 Generando QR para entrega:', remisionId);
+      
+      // URL del formulario de entrega
+      const entregaUrl = `${window.location.origin}/entrega-remision/${remisionId}`;
+      
+      const response = await fetch('/api/generate-qr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          remisionId: remisionId,
+          url: entregaUrl,
+          type: 'remision'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Error generando QR');
+      }
+      
+      if (result.success) {
+        // Abrir el QR en una nueva ventana o descargar
+        const qrWindow = window.open('', '_blank');
+        if (qrWindow) {
+          qrWindow.document.write(`
+            <html>
+              <head><title>QR - Formulario de Entrega</title></head>
+              <body style="text-align: center; padding: 20px; font-family: Arial, sans-serif;">
+                <h2>QR - Formulario de Entrega</h2>
+                <p>Escaneé este código para acceder al formulario de entrega</p>
+                <img src="${result.qrUrl}" alt="QR Code" style="max-width: 300px; border: 2px solid #ccc; padding: 10px;"/>
+                <br/><br/>
+                <p style="font-size: 12px; color: #666;">
+                  URL: ${entregaUrl}
+                </p>
+              </body>
+            </html>
+          `);
+        } else {
+          alert(`QR generado. URL: ${entregaUrl}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error generando QR:', error);
+      alert('Error generando el código QR: ' + error.message);
+    } finally {
+      setGeneratingQR(null);
+    }
+  };
+
+  // Función para generar QR de recepción
+  const generateRecepcionQR = async (remisionId: string) => {
+    setGeneratingQR(`recepcion-${remisionId}`);
+    try {
+      console.log('🔗 Generando QR para recepción:', remisionId);
+      
+      // URL del formulario de recepción
+      const recepcionUrl = `${window.location.origin}/recepcion-remision/${remisionId}`;
+      
+      const response = await fetch('/api/generate-qr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          remisionId: remisionId,
+          url: recepcionUrl,
+          type: 'remision'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Error generando QR');
+      }
+      
+      if (result.success) {
+        // Abrir el QR en una nueva ventana
+        const qrWindow = window.open('', '_blank');
+        if (qrWindow) {
+          qrWindow.document.write(`
+            <html>
+              <head><title>QR - Formulario de Recepción</title></head>
+              <body style="text-align: center; padding: 20px; font-family: Arial, sans-serif;">
+                <h2>QR - Formulario de Recepción</h2>
+                <p>Escaneé este código para confirmar la recepción del producto</p>
+                <img src="${result.qrUrl}" alt="QR Code" style="max-width: 300px; border: 2px solid #ccc; padding: 10px;"/>
+                <br/><br/>
+                <p style="font-size: 12px; color: #666;">
+                  URL: ${recepcionUrl}
+                </p>
+              </body>
+            </html>
+          `);
+        } else {
+          alert(`QR generado. URL: ${recepcionUrl}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error generando QR:', error);
+      alert('Error generando el código QR: ' + error.message);
+    } finally {
+      setGeneratingQR(null);
+    }
+  };
 
   // Función para obtener el usuario de la sesión
   const getUserFromSession = () => {
@@ -1224,14 +1339,18 @@ function RemisionesClientesContent() {
                             </div>
                             
                             {/* Baches vinculados */}
-                            {((fields['Bache Pirolisis Alterado'] && Array.isArray(fields['Bache Pirolisis Alterado']) && fields['Bache Pirolisis Alterado'].length > 0) || (fields['fldoFVv9YJoxFtg1G'] && Array.isArray(fields['fldoFVv9YJoxFtg1G']) && fields['fldoFVv9YJoxFtg1G'].length > 0)) && (
-                              <div className="mt-3 pt-3 border-t border-white/20">
-                                <div className="text-xs text-white/60 mb-2">🗂️ BACHES VINCULADOS</div>
-                                <div className="text-sm text-white/90">
-                                  {(fields['Bache Pirolisis Alterado'] || fields['fldoFVv9YJoxFtg1G'] || []).length} bache(s) asociado(s)
+                            {(() => {
+                              const bachesField = fields['Bache Pirolisis Alterado'] || (config.airtable.remisionesBachesFields.bachePirolisisAlterado && fields[config.airtable.remisionesBachesFields.bachePirolisisAlterado]);
+                              const hasBaches = bachesField && Array.isArray(bachesField) && bachesField.length > 0;
+                              return hasBaches && (
+                                <div className="mt-3 pt-3 border-t border-white/20">
+                                  <div className="text-xs text-white/60 mb-2">🗂️ BACHES VINCULADOS</div>
+                                  <div className="text-sm text-white/90">
+                                    {bachesField.length} bache(s) asociado(s)
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
                             
                             {/* Documentos adjuntos */}
                             <div className="flex flex-wrap gap-2 mt-3">
@@ -1264,6 +1383,20 @@ function RemisionesClientesContent() {
                             </button>
                             <button className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors duration-200">
                               📄 Generar PDF
+                            </button>
+                            <button 
+                              onClick={() => generateEntregaQR(remision.id)}
+                              disabled={generatingQR === `entrega-${remision.id}`}
+                              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm transition-colors duration-200"
+                            >
+                              {generatingQR === `entrega-${remision.id}` ? '⏳' : '📦'} QR Entrega
+                            </button>
+                            <button 
+                              onClick={() => generateRecepcionQR(remision.id)}
+                              disabled={generatingQR === `recepcion-${remision.id}`}
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-sm transition-colors duration-200"
+                            >
+                              {generatingQR === `recepcion-${remision.id}` ? '⏳' : '📥'} QR Recepción
                             </button>
                           </div>
                         </div>
