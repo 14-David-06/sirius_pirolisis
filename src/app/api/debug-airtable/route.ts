@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '../../../../lib/config';
+import { config } from '../../../lib/config';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // Verificar configuración básica
     const configStatus = {
