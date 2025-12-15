@@ -301,6 +301,13 @@ function SistemaBachesContent() {
         return;
       }
 
+      // Validar que se haya seleccionado un laboratorio
+      if (!monitoreoForm.laboratorio.trim()) {
+        alert('❌ Debe seleccionar un laboratorio');
+        setIsSubmittingMonitoreo(false);
+        return;
+      }
+
       let laboratorioId = monitoreoForm.laboratorio;
 
       // Si se seleccionó "nuevo-laboratorio", crear el laboratorio primero
@@ -355,8 +362,8 @@ function SistemaBachesContent() {
         records: [{
           fields: {
             'ID BigBag': monitoreoForm.idBigBag,
-            '% Humedad (MC)': monitoreoForm.humedadMC,
-            'Masa Seca (DM kg)': monitoreoForm.masaSecaDM,
+            '% Humedad (MC)': monitoreoForm.humedadMC, // String según documentación de Airtable
+            'Masa Seca (DM kg)': parseFloat(monitoreoForm.masaSecaDM), // Number según documentación
             'Realiza Registro': getUserFromSession(),
             'Bache': [selectedBache.id], // Link to the bache record
             'Laboratorio': laboratorioId && laboratorioId !== 'nuevo-laboratorio' ? [laboratorioId] : []
@@ -1100,7 +1107,7 @@ function SistemaBachesContent() {
 
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
-                    Laboratorio
+                    Laboratorio *
                   </label>
                   <select
                     name="laboratorio"
@@ -1108,9 +1115,10 @@ function SistemaBachesContent() {
                     onChange={handleMonitoreoInputChange}
                     className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-gray-800"
                     disabled={loadingLaboratorios}
+                    required
                   >
                     <option value="">
-                      {loadingLaboratorios ? 'Cargando laboratorios...' : 'Seleccionar laboratorio (opcional)'}
+                      {loadingLaboratorios ? 'Cargando laboratorios...' : 'Seleccionar laboratorio *'}
                     </option>
                     {laboratorios.map((lab) => (
                       <option key={lab.id} value={lab.id}>

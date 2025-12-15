@@ -5,15 +5,15 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { useState } from 'react';
 
-export default function PedidosClientes() {
+export default function RemisionesClientes() {
   return (
     <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
-      <PedidosClientesContent />
+      <RemisionesClientesContent />
     </TurnoProtection>
   );
 }
 
-function PedidosClientesContent() {
+function RemisionesClientesContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('Todos');
 
@@ -31,9 +31,9 @@ function PedidosClientesContent() {
         <Navbar />
         <main className="container mx-auto px-6 py-8">
           <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-6xl mx-auto border border-white/30">
-            <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">📋 Pedidos de Clientes</h1>
+            <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">📋 Remisiones de Clientes</h1>
             <p className="text-center text-white/90 mb-6 drop-shadow">
-              Gestión y seguimiento de pedidos de biochar a clientes
+              Gestión y seguimiento de remisiones de biochar a clientes
             </p>
 
             {/* Estadísticas Generales */}
@@ -42,15 +42,15 @@ function PedidosClientesContent() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-white">
                 <div className="text-center">
                   <div className="text-2xl font-bold">0</div>
-                  <div className="text-sm drop-shadow">Total Pedidos</div>
+                  <div className="text-sm drop-shadow">Total Remisiones</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold">0</div>
-                  <div className="text-sm drop-shadow">Pedidos Pendientes</div>
+                  <div className="text-sm drop-shadow">Remisiones Pendientes</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold">0</div>
-                  <div className="text-sm drop-shadow">Pedidos Completados</div>
+                  <div className="text-sm drop-shadow">Remisiones Completadas</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold">0 kg</div>
@@ -89,23 +89,23 @@ function PedidosClientesContent() {
                 </div>
                 <div className="flex items-end">
                   <button className="w-full bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-[#5A7836]/30">
-                    ➕ Nuevo Pedido
+                    ➕ Nueva Remisión
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Lista de Pedidos */}
+            {/* Lista de Remisiones */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Lista de Pedidos</h2>
+              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Lista de Remisiones</h2>
 
               {/* Estado vacío */}
               <div className="text-center text-white/70 py-12">
                 <div className="text-6xl mb-4">📋</div>
-                <h3 className="text-xl font-semibold mb-2">No hay pedidos registrados</h3>
-                <p className="text-sm">Los pedidos de clientes aparecerán aquí una vez que sean creados.</p>
+                <h3 className="text-xl font-semibold mb-2">No hay remisiones registradas</h3>
+                <p className="text-sm">Las remisiones de clientes aparecerán aquí una vez que sean creadas.</p>
                 <button className="mt-4 bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white py-2 px-6 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-[#5A7836]/30">
-                  Crear Primer Pedido
+                  Crear Primera Remisión
                 </button>
               </div>
             </div>

@@ -104,7 +104,7 @@ export default function Navbar() {
         title: "Ventas",
         icon: "💰",
         items: [
-          { label: "📋 Pedidos Clientes", href: "/pedidos-clientes", icon: "📋", description: "Gestión de pedidos de clientes" },
+          { label: "📋 Remisiones Clientes", href: "/remisiones-clientes", icon: "📋", description: "Gestión de remisiones de clientes" },
         ]
       }
     ];
