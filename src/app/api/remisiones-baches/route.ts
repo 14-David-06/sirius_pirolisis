@@ -30,11 +30,27 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const fields = searchParams.get('fields');
     const maxRecords = searchParams.get('maxRecords') || '100';
+    const sort = searchParams.get('sort') || 'desc'; // Por defecto, más recientes primero
 
     let url = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.remisionesBachesTableId}?maxRecords=${maxRecords}`;
     
+    // Ordenar por fecha de creación (más recientes primero)
+    url += `&sort[0][field]=Fecha Creacion&sort[0][direction]=${sort}`;
+    
     if (fields) {
       const fieldParams = fields.split(',').map(field => `fields[]=${encodeURIComponent(field)}`).join('&');
+      url += `&${fieldParams}`;
+    } else {
+      // Si no se especifican fields, traer todos los campos importantes
+      const allFields = [
+        'ID', 'ID Numerico', 'Fecha Creacion', 'Fecha Evento',
+        'Realiza Registro', 'Observaciones', 'Cliente', 'NIT/CC Cliente',
+        'Documento Remisión', 'QR Documento Remisión',
+        'Responsable Entrega', 'Numero Documento Entrega', 'Firma Entrega',
+        'Responsable Recibe', 'Numero Documento Recibe', 'Firma Recibe',
+        'Bache Pirolisis Alterado', 'Detalle Cantidades Bache Pirolisis'
+      ];
+      const fieldParams = allFields.map(field => `fields[]=${encodeURIComponent(field)}`).join('&');
       url += `&${fieldParams}`;
     }
     

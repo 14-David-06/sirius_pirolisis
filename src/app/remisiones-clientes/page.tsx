@@ -4,7 +4,7 @@ import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import VoiceToText from '@/components/VoiceToText';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 export default function RemisionesClientes() {
   return (
@@ -18,6 +18,16 @@ function RemisionesClientesContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('Todos');
   const [showNuevaRemisionForm, setShowNuevaRemisionForm] = useState(false);
+  
+  // Estados para las remisiones
+  const [remisiones, setRemisiones] = useState<any[]>([]);
+  const [loadingRemisiones, setLoadingRemisiones] = useState(false);
+  const [estadisticas, setEstadisticas] = useState({
+    totalRemisiones: 0,
+    remisionesPendientes: 0,
+    remisionesCompletadas: 0,
+    biocharVendido: 0
+  });
   
   // Estados para el dropdown de clientes
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
@@ -49,8 +59,102 @@ function RemisionesClientesContent() {
     return 'Usuario';
   };
 
+  // Función para formatear fechas
+  const formatearFecha = (fechaString: string) => {
+    if (!fechaString) return 'No definida';
+    try {
+      const fecha = new Date(fechaString);
+      return fecha.toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    } catch {
+      return 'Fecha inválida';
+    }
+  };
+
+  // Función para determinar el estado de una remisión
+  const determinarEstado = (remision: any) => {
+    const fields = remision.fields || {};
+    
+    if (fields['Responsable Recibe'] && fields['Responsable Entrega']) {
+      return { estado: 'Completado', color: 'bg-green-500' };
+    } else if (fields['Responsable Entrega']) {
+      return { estado: 'En Proceso', color: 'bg-yellow-500' };
+    } else {
+      return { estado: 'Pendiente', color: 'bg-gray-500' };
+    }
+  };
+
+  // Filtrar remisiones basado en búsqueda y filtros
+  const remisionesFiltradas = remisiones.filter(remision => {
+    const fields = remision.fields || {};
+    const cliente = fields['Cliente'] || '';
+    const idNumerico = fields['ID Numerico'] || '';
+    const { estado } = determinarEstado(remision);
+    
+    const coincideBusqueda = searchTerm === '' || 
+      cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(idNumerico).includes(searchTerm);
+    
+    const coincideEstado = estadoFilter === 'Todos' || estado === estadoFilter;
+    
+    return coincideBusqueda && coincideEstado;
+  });
+
+  // Función para obtener todas las remisiones desde Airtable
+  const fetchRemisiones = useCallback(async () => {
+    if (loadingRemisiones) return;
+    
+    setLoadingRemisiones(true);
+    try {
+      console.log('📋 Cargando remisiones...');
+      
+      const response = await fetch('/api/remisiones-baches');
+      
+      if (!response.ok) {
+        console.error('API Response not OK:', response.status, response.statusText);
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('📋 Remisiones obtenidas:', data);
+      
+      if (data.success && Array.isArray(data.records)) {
+        setRemisiones(data.records);
+        
+        // Calcular estadísticas
+        const total = data.records.length;
+        const completadas = data.records.filter((r: any) => 
+          r.fields?.['Responsable Recibe'] && r.fields?.['Responsable Entrega']
+        ).length;
+        const pendientes = total - completadas;
+        
+        // Calcular biochar vendido (necesitaríamos obtener los detalles de cantidades)
+        const biocharTotal = 0;
+        // TODO: Implementar cálculo desde tabla de detalle cantidades
+        
+        setEstadisticas({
+          totalRemisiones: total,
+          remisionesPendientes: pendientes,
+          remisionesCompletadas: completadas,
+          biocharVendido: biocharTotal
+        });
+      } else {
+        console.error('API Response structure unexpected:', data);
+        setRemisiones([]);
+      }
+    } catch (err) {
+      console.error('Error al cargar remisiones:', err);
+      setRemisiones([]);
+    } finally {
+      setLoadingRemisiones(false);
+    }
+  }, []);
+
   // Función para obtener clientes únicos desde Airtable
-  const fetchClientesExistentes = async () => {
+  const fetchClientesExistentes = useCallback(async () => {
     if (loadingClientes) return;
     
     setLoadingClientes(true);
@@ -103,10 +207,10 @@ function RemisionesClientesContent() {
     } finally {
       setLoadingClientes(false);
     }
-  };
+  }, []);
 
   // Función para obtener baches disponibles desde Airtable
-  const fetchBachesDisponibles = async () => {
+  const fetchBachesDisponibles = useCallback(async () => {
     if (loadingBaches) return;
     
     setLoadingBaches(true);
@@ -187,12 +291,12 @@ function RemisionesClientesContent() {
       setLoadingBaches(false);
       console.log('🏁 Finalizando carga de baches disponibles');
     }
-  };
+  }, []);
 
   // Cargar baches disponibles al montar el componente
   useEffect(() => {
     fetchBachesDisponibles();
-  }, []);
+  }, [fetchBachesDisponibles]);
 
   const [formData, setFormData] = useState({
     // Información básica
@@ -302,10 +406,7 @@ function RemisionesClientesContent() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
-    const file = e.target.files?.[0] || null;
-    setFormData(prev => ({ ...prev, [fieldName]: file }));
-  };
+
 
   const handleVoiceText = (text: string) => {
     setFormData(prev => ({ ...prev, observaciones: prev.observaciones + (prev.observaciones ? ' ' : '') + text }));
@@ -350,9 +451,10 @@ function RemisionesClientesContent() {
       realizaRegistro: getUserFromSession()
     }));
     
-    // Cargar clientes existentes desde Airtable
+    // Cargar datos iniciales
     fetchClientesExistentes();
-  }, []);
+    fetchRemisiones();
+  }, [fetchClientesExistentes, fetchRemisiones]);
 
   // useEffect para cerrar el dropdown al hacer clic fuera
   React.useEffect(() => {
@@ -449,6 +551,9 @@ function RemisionesClientesContent() {
         setAllowAutoDropdown(true);
         setShowNuevaRemisionForm(false);
         setSubmitSuccess(false);
+        
+        // Recargar la lista de remisiones
+        fetchRemisiones();
       }, 2000);
 
     } catch (error) {
@@ -480,23 +585,39 @@ function RemisionesClientesContent() {
 
             {/* Estadísticas Generales */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Estadísticas Generales</h2>
-              <div className="space-y-3 text-white">
-                <div className="flex justify-between">
-                  <span className="drop-shadow">Total Remisiones:</span>
-                  <span className="font-semibold">0</span>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white drop-shadow-lg">Estadísticas Generales</h2>
+                <button
+                  onClick={fetchRemisiones}
+                  disabled={loadingRemisiones}
+                  className="px-3 py-1 bg-white/10 hover:bg-white/20 disabled:bg-gray-500/20 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 text-sm"
+                >
+                  {loadingRemisiones ? (
+                    <>
+                      <div className="animate-spin inline-block w-3 h-3 border border-white/20 border-t-white rounded-full mr-1"></div>
+                      Actualizando...
+                    </>
+                  ) : (
+                    <>🔄 Actualizar</>
+                  )}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-white">
+                <div className="bg-white/10 p-3 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-300">{estadisticas.totalRemisiones}</div>
+                  <div className="text-xs text-white/80 drop-shadow">Total Remisiones</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="drop-shadow">Remisiones Pendientes:</span>
-                  <span className="font-semibold">0</span>
+                <div className="bg-white/10 p-3 rounded-lg">
+                  <div className="text-2xl font-bold text-yellow-300">{estadisticas.remisionesPendientes}</div>
+                  <div className="text-xs text-white/80 drop-shadow">Pendientes</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="drop-shadow">Remisiones Completadas:</span>
-                  <span className="font-semibold">0</span>
+                <div className="bg-white/10 p-3 rounded-lg">
+                  <div className="text-2xl font-bold text-green-300">{estadisticas.remisionesCompletadas}</div>
+                  <div className="text-xs text-white/80 drop-shadow">Completadas</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="drop-shadow">Biochar Vendido:</span>
-                  <span className="font-semibold">0 kg</span>
+                <div className="bg-white/10 p-3 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-300">{estadisticas.biocharVendido}</div>
+                  <div className="text-xs text-white/80 drop-shadow">Biochar (kg)</div>
                 </div>
               </div>
             </div>
@@ -1006,20 +1127,151 @@ function RemisionesClientesContent() {
 
             {/* Lista de Remisiones */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Lista de Remisiones</h2>
-
-              {/* Estado vacío */}
-              <div className="text-center text-white/70 py-12">
-                <div className="text-6xl mb-4">📋</div>
-                <h3 className="text-xl font-semibold mb-2">No hay remisiones registradas</h3>
-                <p className="text-sm">Las remisiones de clientes aparecerán aquí una vez que sean creadas.</p>
-                <button 
-                  onClick={() => setShowNuevaRemisionForm(true)}
-                  className="mt-4 bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white py-2 px-6 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-[#5A7836]/30"
-                >
-                  Crear Primera Remisión
-                </button>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white drop-shadow-lg">Lista de Remisiones</h2>
+                <div className="text-sm text-white/80">
+                  {loadingRemisiones ? 'Cargando...' : `${remisionesFiltradas.length} de ${remisiones.length} remisiones`}
+                </div>
               </div>
+
+              {loadingRemisiones ? (
+                <div className="text-center text-white/70 py-12">
+                  <div className="animate-spin inline-block w-8 h-8 border-4 border-white/20 border-t-white rounded-full mb-4"></div>
+                  <p>Cargando remisiones...</p>
+                </div>
+              ) : remisiones.length === 0 ? (
+                <div className="text-center text-white/70 py-12">
+                  <div className="text-6xl mb-4">📋</div>
+                  <h3 className="text-xl font-semibold mb-2">No hay remisiones registradas</h3>
+                  <p className="text-sm">Las remisiones de clientes aparecerán aquí una vez que sean creadas.</p>
+                  <button 
+                    onClick={() => setShowNuevaRemisionForm(true)}
+                    className="mt-4 bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white py-2 px-6 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-[#5A7836]/30"
+                  >
+                    Crear Primera Remisión
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {remisionesFiltradas.map((remision, index) => {
+                    const fields = remision.fields || {};
+                    const { estado, color } = determinarEstado(remision);
+                    
+                    return (
+                      <div key={remision.id || index} className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20 hover:bg-white/15 transition-colors duration-200">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-lg font-semibold text-white">
+                                #{fields['ID Numerico'] || 'N/A'}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium text-white ${color}`}>
+                                {estado}
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                              <div className="text-white/90">
+                                <span className="text-white/60">Cliente:</span>
+                                <div className="font-medium">{fields['Cliente'] || 'No especificado'}</div>
+                              </div>
+                              <div className="text-white/90">
+                                <span className="text-white/60">NIT/CC:</span>
+                                <div className="font-medium">{fields['NIT/CC Cliente'] || 'No especificado'}</div>
+                              </div>
+                              <div className="text-white/90">
+                                <span className="text-white/60">Fecha Evento:</span>
+                                <div className="font-medium">{formatearFecha(fields['Fecha Evento'])}</div>
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mt-2">
+                              <div className="text-white/90">
+                                <span className="text-white/60">Registrado por:</span>
+                                <div className="font-medium">{fields['Realiza Registro'] || 'No especificado'}</div>
+                              </div>
+                              <div className="text-white/90">
+                                <span className="text-white/60">Fecha Creación:</span>
+                                <div className="font-medium">{formatearFecha(fields['Fecha Creacion'])}</div>
+                              </div>
+                            </div>
+                            
+                            {fields['Observaciones'] && (
+                              <div className="text-white/90 mt-2">
+                                <span className="text-white/60">Observaciones:</span>
+                                <div className="text-sm bg-white/5 p-2 rounded mt-1">
+                                  {fields['Observaciones']}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Información de Entrega y Recepción */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-white/20">
+                              <div>
+                                <div className="text-xs text-white/60 mb-1">📤 ENTREGA</div>
+                                <div className="text-sm text-white/90">
+                                  <div><span className="text-white/60">Responsable:</span> {fields['Responsable Entrega'] || 'Pendiente'}</div>
+                                  <div><span className="text-white/60">Documento:</span> {fields['Numero Documento Entrega'] || 'No especificado'}</div>
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-white/60 mb-1">📥 RECEPCIÓN</div>
+                                <div className="text-sm text-white/90">
+                                  <div><span className="text-white/60">Responsable:</span> {fields['Responsable Recibe'] || 'Pendiente'}</div>
+                                  <div><span className="text-white/60">Documento:</span> {fields['Numero Documento Recibe'] || 'No especificado'}</div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Baches vinculados */}
+                            {fields['Bache Pirolisis Alterado'] && Array.isArray(fields['Bache Pirolisis Alterado']) && fields['Bache Pirolisis Alterado'].length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-white/20">
+                                <div className="text-xs text-white/60 mb-2">🗂️ BACHES VINCULADOS</div>
+                                <div className="text-sm text-white/90">
+                                  {fields['Bache Pirolisis Alterado'].length} bache(s) asociado(s)
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Documentos adjuntos */}
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {fields['Documento Remisión'] && (
+                                <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
+                                  📄 Documento Remisión
+                                </span>
+                              )}
+                              {fields['QR Documento Remisión'] && (
+                                <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">
+                                  🔗 QR Documento
+                                </span>
+                              )}
+                              {fields['Firma Entrega'] && (
+                                <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
+                                  ✍️ Firma Entrega
+                                </span>
+                              )}
+                              {fields['Firma Recibe'] && (
+                                <span className="px-2 py-1 bg-orange-500/20 text-orange-300 rounded text-xs">
+                                  ✍️ Firma Recepción
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col gap-2 min-w-[120px]">
+                            <button className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors duration-200">
+                              👁️ Ver Detalles
+                            </button>
+                            <button className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors duration-200">
+                              📄 Generar PDF
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </main>
