@@ -63,6 +63,24 @@ function SistemaBachesContent() {
   const [selectedBacheBodega, setSelectedBacheBodega] = useState<any>(null);
   const [isSubmittingBodega, setIsSubmittingBodega] = useState(false);
 
+  // State for multiple selection in Completos Planta
+  const [selectedBachesPlanta, setSelectedBachesPlanta] = useState<Set<string>>(new Set());
+  const [isSubmittingMultipleBodega, setIsSubmittingMultipleBodega] = useState(false);
+
+  // State for transport form modal
+  const [showTransportModal, setShowTransportModal] = useState(false);
+  const [transportForm, setTransportForm] = useState({
+    tipoVehiculo: 'Dump truck',
+    referenciaVehiculo: 'Kodiak',
+    distanciaPlantaBodega: '6',
+    tipoCombustible: 'Diesel',
+    funcionVehiculo: 'Transport of Biochar slugs to storage',
+    distanciaMetros: 500,
+    dieselConsumidoTransporte: 0.3,
+    esVehiculoNuevo: false
+  });
+  const [isSubmittingTransport, setIsSubmittingTransport] = useState(false);
+
   // State for actualizar peso modal
   const [showActualizarPesoModal, setShowActualizarPesoModal] = useState(false);
   const [selectedBachePeso, setSelectedBachePeso] = useState<any>(null);
@@ -430,6 +448,47 @@ function SistemaBachesContent() {
     setSelectedBacheBodega(null);
   };
 
+  // Manejar selección de baches en planta
+  const handleBachePlantaSelection = (bacheId: string, isSelected: boolean) => {
+    setSelectedBachesPlanta(prev => {
+      const newSelection = new Set(prev);
+      if (isSelected) {
+        newSelection.add(bacheId);
+      } else {
+        newSelection.delete(bacheId);
+      }
+      return newSelection;
+    });
+  };
+
+  // Limpiar selección
+  const clearSelection = () => {
+    setSelectedBachesPlanta(new Set());
+  };
+
+  // Verificar si se pueden pasar baches seleccionados a bodega
+  const canProcessSelectedBaches = selectedBachesPlanta.size === 10;
+
+  // Seleccionar los próximos 10 baches disponibles
+  const selectNext10Baches = () => {
+    const bachesPlanta = groupedBaches['Completos Planta'] || [];
+    const nextBaches = bachesPlanta.slice(0, 10);
+    setSelectedBachesPlanta(new Set(nextBaches.map(b => b.id)));
+  };
+
+  // Toggle selección de un bache individual (para click en card)
+  const toggleBacheSelection = (bacheId: string) => {
+    setSelectedBachesPlanta(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(bacheId)) {
+        newSelection.delete(bacheId);
+      } else if (newSelection.size < 10) {
+        newSelection.add(bacheId);
+      }
+      return newSelection;
+    });
+  };
+
   // Función para verificar si el peso ya fue actualizado desde el estado inicial
   const isPesoYaActualizado = (bache: any) => {
     const resultado = isPesoCompletamenteActualizado(bache);
@@ -635,6 +694,104 @@ function SistemaBachesContent() {
     }
   };
 
+  // Cerrar modal de transporte
+  const closeTransportModal = () => {
+    setShowTransportModal(false);
+    // Resetear formulario a valores por defecto
+    setTransportForm({
+      tipoVehiculo: 'Dump truck',
+      referenciaVehiculo: 'Kodiak',
+      distanciaPlantaBodega: '6',
+      tipoCombustible: 'Diesel',
+      funcionVehiculo: 'Transport of Biochar slugs to storage',
+      distanciaMetros: 500,
+      dieselConsumidoTransporte: 0.3,
+      esVehiculoNuevo: false
+    });
+  };
+
+  // Procesar transporte y actualizar baches a bodega
+  const processTransportToBodega = async () => {
+    if (!canProcessSelectedBaches) return;
+
+    setIsSubmittingTransport(true);
+    try {
+      const bacheIds = Array.from(selectedBachesPlanta);
+      
+      // Datos del vehículo para cada bache
+      const vehicleData = {
+        "Tipo Vehiculo": transportForm.tipoVehiculo,
+        "Referencia Vehiculo": transportForm.referenciaVehiculo,
+        "Distancia Planta Bodega": transportForm.distanciaPlantaBodega,
+        "Tipo Combustible": transportForm.tipoCombustible,
+        "Funcion Vehiculo": transportForm.funcionVehiculo,
+        "Distancia Metros": transportForm.distanciaMetros,
+        "Diesel Consumido Transporte": transportForm.dieselConsumidoTransporte
+      };
+
+      // Procesar todos los baches seleccionados
+      const promises = bacheIds.map(bacheId => 
+        fetch('/api/baches/update', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: bacheId,
+            "Estado Bache": 'Bache Completo Bodega',
+            ...vehicleData
+          }),
+        })
+      );
+
+      const results = await Promise.all(promises);
+      
+      // Verificar que todas las operaciones fueron exitosas
+      for (let i = 0; i < results.length; i++) {
+        if (!results[i].ok) {
+          const errorData = await results[i].json();
+          throw new Error(`Error al procesar bache ${bacheIds[i]}: ${errorData.error}`);
+        }
+      }
+
+      // Refetch data to update the UI
+      await refetch();
+      
+      // Limpiar selección y cerrar modal
+      clearSelection();
+      closeTransportModal();
+      
+      alert(`✅ ${bacheIds.length} baches movidos a bodega con información de transporte`);
+    } catch (error: any) {
+      console.error('❌ Error al procesar transporte:', error);
+      alert(`❌ Error al procesar el transporte: ${error.message || 'Error desconocido'}`);
+    } finally {
+      setIsSubmittingTransport(false);
+    }
+  };
+
+  // Manejar cambios en el formulario de transporte
+  const handleTransportFormChange = (field: string, value: string | number | boolean) => {
+    setTransportForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Resetear formulario para vehículo nuevo
+  const resetToNewVehicle = () => {
+    setTransportForm({
+      tipoVehiculo: '',
+      referenciaVehiculo: '',
+      distanciaPlantaBodega: '',
+      tipoCombustible: '',
+      funcionVehiculo: '',
+      distanciaMetros: 0,
+      dieselConsumidoTransporte: 0,
+      esVehiculoNuevo: true
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
@@ -728,11 +885,11 @@ function SistemaBachesContent() {
                   <span className="font-semibold">{totalBiochar} kg</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="drop-shadow">Total Biomasa Húmeda:</span>
+                  <span className="drop-shadow">Total Biochar Húmedo:</span>
                   <span className="font-semibold">{totalBiomasaHumeda.toFixed(1)} kg</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="drop-shadow">Total Biomasa Seca Actual:</span>
+                  <span className="drop-shadow">Total Biochar Seco Actual:</span>
                   <span className="font-semibold">{totalBiomasaSecaActual.toFixed(1)} kg</span>
                 </div>
                 <div className="flex justify-between">
@@ -893,26 +1050,115 @@ function SistemaBachesContent() {
 
                 return (
                   <div key={categoria} className={`bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6 border ${blockColors[categoria as keyof typeof blockColors]}`}>
-                    <h3 className="text-xl font-semibold text-white mb-4 drop-shadow-lg flex items-center">
-                      <span className={`w-4 h-4 rounded-full mr-3 ${
-                        categoria === 'En Proceso' ? 'bg-blue-400' :
-                        categoria === 'Completos Planta' ? 'bg-green-400' :
-                        categoria === 'Completos Bodega' ? 'bg-emerald-400' :
-                        categoria === 'Agotados' ? 'bg-red-400' : 'bg-yellow-400'
-                      }`}></span>
-                      {categoria} ({baches.length})
-                    </h3>
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-xl font-semibold text-white drop-shadow-lg flex items-center">
+                        <span className={`w-4 h-4 rounded-full mr-3 ${
+                          categoria === 'En Proceso' ? 'bg-blue-400' :
+                          categoria === 'Completos Planta' ? 'bg-green-400' :
+                          categoria === 'Completos Bodega' ? 'bg-emerald-400' :
+                          categoria === 'Agotados' ? 'bg-red-400' : 'bg-yellow-400'
+                        }`}></span>
+                        {categoria} ({baches.length})
+                      </h3>
+                      
+                      {categoria === 'Completos Planta' && (
+                        <div className="flex items-center space-x-2">
+                          {/* Botón de limpiar selección */}
+                          {selectedBachesPlanta.size > 0 && (
+                            <button
+                              onClick={clearSelection}
+                              className="bg-gray-600/80 hover:bg-gray-600 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200"
+                              title="Limpiar selección"
+                            >
+                              🗑️ Limpiar ({selectedBachesPlanta.size})
+                            </button>
+                          )}
+
+                          {/* Contador y botón principal */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-white/80 text-sm font-medium">
+                              {selectedBachesPlanta.size}/10
+                            </span>
+                            <button
+                              onClick={() => setShowTransportModal(true)}
+                              disabled={!canProcessSelectedBaches}
+                              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 transform ${
+                                canProcessSelectedBaches
+                                  ? 'bg-blue-600/90 hover:bg-blue-600 hover:scale-105 text-white shadow-lg cursor-pointer'
+                                  : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                              }`}
+                              title={!canProcessSelectedBaches ? 'Selecciona exactamente 10 baches' : 'Configurar transporte a bodega'}
+                            >
+                              📦 Pasar a Bodega
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {baches.length === 0 ? (
                       <div className="text-center text-white/70 py-8">
                         <p>No hay baches en esta categoría</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {baches.map((bache) => (
-                          <div key={bache.id} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 hover:bg-white/20 transition-all duration-200">
-                            <div className="mb-3">
-                              <h4 className="font-bold text-white text-lg drop-shadow">{getBacheId(bache)}</h4>
+                      <>
+                        {categoria === 'Completos Planta' && baches.length >= 10 && (
+                          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-400/50 rounded-lg">
+                            <p className="text-blue-200 text-sm flex items-center">
+                              <span className="mr-2">💡</span>
+                              <strong>Tip:</strong> Haz click en cualquier bache para seleccionarlo. Selecciona exactamente 10 baches para proceder.
+                            </p>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {baches.map((bache) => {
+                            const isSelected = selectedBachesPlanta.has(bache.id);
+                            const isSelectableCategory = categoria === 'Completos Planta';
+                            
+                            return (
+                              <div 
+                                key={bache.id} 
+                                onClick={() => isSelectableCategory ? toggleBacheSelection(bache.id) : undefined}
+                                className={`backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 relative cursor-pointer transform ${
+                                  isSelectableCategory 
+                                    ? isSelected 
+                                      ? 'bg-blue-500/30 border-blue-400 shadow-lg scale-105 ring-2 ring-blue-400/50' 
+                                      : 'bg-white/10 border-white/20 hover:bg-blue-500/20 hover:border-blue-400/50 hover:scale-102'
+                                    : 'bg-white/10 border-white/20 hover:bg-white/20 cursor-default'
+                                }`}
+                              >
+                                {isSelectableCategory && (
+                                  <>
+                                    {/* Indicador visual de selección */}
+                                    <div className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+                                      isSelected 
+                                        ? 'bg-blue-500 border-blue-400 text-white shadow-md' 
+                                        : 'bg-white/20 border-white/40 hover:border-blue-400/60'
+                                    }`}>
+                                      {isSelected && (
+                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Overlay de selección */}
+                                    {isSelected && (
+                                      <div className="absolute inset-0 bg-blue-500/10 rounded-xl pointer-events-none" />
+                                    )}
+                                  </>
+                                )}
+                                <div className="mb-3">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className={`font-bold text-lg drop-shadow ${
+                                      isSelected ? 'text-blue-200' : 'text-white'
+                                    }`}>
+                                      {isSelected ? '✓ ' : ''}{getBacheId(bache)}
+                                    </h4>
+                                    {isSelectableCategory && selectedBachesPlanta.size >= 10 && !isSelected && (
+                                      <span className="text-xs text-orange-300 opacity-75">Máximo alcanzado</span>
+                                    )}
+                                  </div>
                               <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
                                 (() => {
                                   const status = getBacheStatus(bache);
@@ -983,25 +1229,7 @@ function SistemaBachesContent() {
                                 👁️ Ver Detalles
                               </button>
                             </div>
-                            
-                            {categoria === 'Completos Planta' && (
-                              <div className="mt-3">
-                                <button
-                                  onClick={() => handlePasarABodega(bache)}
-                                  disabled={updatingBacheId === bache.id}
-                                  className="w-full bg-blue-600/80 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {updatingBacheId === bache.id ? (
-                                    <>
-                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
-                                      <span className="ml-1">Moviendo...</span>
-                                    </>
-                                  ) : (
-                                    '📦 Pasar a Bodega'
-                                  )}
-                                </button>
-                              </div>
-                            )}
+
                             {categoria === 'Completos Bodega' && (
                               <div className="space-y-2 mt-3">
                                 <button
@@ -1046,9 +1274,11 @@ function SistemaBachesContent() {
                                 </button>
                               </div>
                             )}
-                          </div>
-                        ))}
-                      </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
                     )}
                   </div>
                 );
@@ -1692,6 +1922,195 @@ function SistemaBachesContent() {
                       </div>
                     ) : (
                       '⚖️ Actualizar Peso'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Configuración de Transporte */}
+        {showTransportModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">🚚 Configurar Transporte a Bodega</h2>
+                <button
+                  onClick={closeTransportModal}
+                  className="text-white/70 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mb-6">
+                {/* Información de baches seleccionados */}
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20 mb-6">
+                  <h3 className="text-lg font-semibold text-white mb-2 drop-shadow">
+                    Baches Seleccionados: {selectedBachesPlanta.size}
+                  </h3>
+                  <div className="text-sm text-white/80">
+                    <p>Los {selectedBachesPlanta.size} baches serán trasladados de planta a bodega</p>
+                  </div>
+                </div>
+
+                {/* Toggle para vehículo existente o nuevo */}
+                <div className="mb-6">
+                  <div className="flex space-x-4">
+                    <button
+                      onClick={() => setTransportForm(prev => ({ ...prev, esVehiculoNuevo: false, tipoVehiculo: 'Dump truck', referenciaVehiculo: 'Kodiak', distanciaPlantaBodega: '6', tipoCombustible: 'Diesel', funcionVehiculo: 'Transport of Biochar slugs to storage', distanciaMetros: 500, dieselConsumidoTransporte: 0.3 }))}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                        !transportForm.esVehiculoNuevo 
+                          ? 'bg-blue-600/80 text-white' 
+                          : 'bg-white/20 text-white/70 hover:bg-white/30'
+                      }`}
+                    >
+                      🚛 Vehículo Existente
+                    </button>
+                    <button
+                      onClick={resetToNewVehicle}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                        transportForm.esVehiculoNuevo 
+                          ? 'bg-emerald-600/80 text-white' 
+                          : 'bg-white/20 text-white/70 hover:bg-white/30'
+                      }`}
+                    >
+                      ➕ Nuevo Vehículo
+                    </button>
+                  </div>
+                </div>
+
+                {/* Formulario de datos del vehículo */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Tipo Vehículo *
+                      </label>
+                      <input
+                        type="text"
+                        value={transportForm.tipoVehiculo}
+                        onChange={(e) => handleTransportFormChange('tipoVehiculo', e.target.value)}
+                        className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="ej. Dump truck"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Referencia Vehículo *
+                      </label>
+                      <input
+                        type="text"
+                        value={transportForm.referenciaVehiculo}
+                        onChange={(e) => handleTransportFormChange('referenciaVehiculo', e.target.value)}
+                        className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="ej. Kodiak"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Distancia Planta-Bodega (km) *
+                      </label>
+                      <input
+                        type="text"
+                        value={transportForm.distanciaPlantaBodega}
+                        onChange={(e) => handleTransportFormChange('distanciaPlantaBodega', e.target.value)}
+                        className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="ej. 6"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Tipo Combustible *
+                      </label>
+                      <input
+                        type="text"
+                        value={transportForm.tipoCombustible}
+                        onChange={(e) => handleTransportFormChange('tipoCombustible', e.target.value)}
+                        className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="ej. Diesel"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                      Función Vehículo *
+                    </label>
+                    <input
+                      type="text"
+                      value={transportForm.funcionVehiculo}
+                      onChange={(e) => handleTransportFormChange('funcionVehiculo', e.target.value)}
+                      className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="ej. Transport of Biochar slugs to storage"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Distancia Metros *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={transportForm.distanciaMetros}
+                        onChange={(e) => handleTransportFormChange('distanciaMetros', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="ej. 500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2 drop-shadow">
+                        Diesel Consumido Transporte *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={transportForm.dieselConsumidoTransporte}
+                        onChange={(e) => handleTransportFormChange('dieselConsumidoTransporte', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="ej. 0.3"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeTransportModal}
+                    disabled={isSubmittingTransport}
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={processTransportToBodega}
+                    disabled={isSubmittingTransport || !transportForm.tipoVehiculo || !transportForm.referenciaVehiculo}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                    {isSubmittingTransport ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        Procesando...
+                      </div>
+                    ) : (
+                      '🚚 Confirmar Transporte'
                     )}
                   </button>
                 </div>
