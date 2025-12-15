@@ -25,6 +25,7 @@ function CerrarTurnoContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [activeTurno, setActiveTurno] = useState<any>(null);
+  const [syncing, setSyncing] = useState(false);
   const router = useRouter();
 
   const [formData, setFormData] = useState<CerrarTurnoFormData>({
@@ -46,6 +47,75 @@ function CerrarTurnoContent() {
     }
     setIsAuthenticated(true);
   }, []);
+
+  // Función para actualizar el cache del turno
+  const actualizarCacheTurno = async () => {
+    setSyncing(true);
+    try {
+      const userSession = localStorage.getItem('userSession');
+      if (!userSession) {
+        throw new Error('No hay sesión de usuario');
+      }
+
+      const sessionData = JSON.parse(userSession);
+      const userId = sessionData.user?.id;
+      
+      if (!userId) {
+        throw new Error('ID de usuario no encontrado');
+      }
+
+      const response = await fetch(`/api/turno/check?userId=${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(10000) // 10 segundos timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+
+      if (data.hasTurnoAbierto && data.turnoPerteneceAlUsuario) {
+        // Actualizar información local del turno
+        localStorage.setItem('turnoActivo', JSON.stringify(data.turnoAbierto));
+        setActiveTurno(data.turnoAbierto);
+        setMensaje('✅ Cache del turno actualizado correctamente');
+      } else if (data.hasTurnoAbierto && !data.turnoPerteneceAlUsuario) {
+        // Hay un turno pero no pertenece al usuario actual
+        localStorage.removeItem('turnoActivo');
+        setActiveTurno(null);
+        setMensaje('⚠️ ' + data.mensaje);
+      } else {
+        // No hay turno activo
+        localStorage.removeItem('turnoActivo');
+        setActiveTurno(null);
+        setMensaje('🔍 No se encontró turno activo en el sistema');
+      }
+    } catch (error) {
+      console.error('Error actualizando cache del turno:', error);
+      let errorMessage = 'Error al actualizar el cache del turno';
+      
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorMessage = 'No se puede conectar al servidor';
+      } else if (error instanceof Error && error.name === 'AbortError') {
+        errorMessage = 'La solicitud tardó demasiado tiempo';
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      setMensaje('❌ ' + errorMessage);
+    } finally {
+      setSyncing(false);
+      
+      // Limpiar mensaje después de 5 segundos
+      setTimeout(() => {
+        setMensaje('');
+      }, 5000);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -138,12 +208,43 @@ function CerrarTurnoContent() {
                 </p>
               </div>
               
+              {/* Mensaje de estado */}
+              {mensaje && (
+                <div className={`mb-4 p-3 rounded-lg ${
+                  mensaje.startsWith('✅') 
+                    ? 'bg-green-50 border border-green-200 text-green-800' 
+                    : mensaje.startsWith('⚠️')
+                    ? 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+                    : 'bg-red-50 border border-red-200 text-red-800'
+                }`}>
+                  <p className="text-sm font-medium">{mensaje}</p>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <button
                   onClick={() => router.push('/abrir-turno')}
                   className="w-full bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
                 >
                   🔄 Abrir Turno
+                </button>
+                
+                <button
+                  onClick={actualizarCacheTurno}
+                  disabled={syncing}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg flex items-center justify-center space-x-2"
+                >
+                  {syncing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Actualizando Cache...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔄</span>
+                      <span>Actualizar Cache Turno</span>
+                    </>
+                  )}
                 </button>
                 
                 <button
@@ -175,7 +276,39 @@ function CerrarTurnoContent() {
       <div className="relative z-10">
         <Navbar />
         <main className="container mx-auto px-6 py-8">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-4xl mx-auto border border-white/30">
+          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-4xl mx-auto border border-white/30">            {/* Botón de Actualizar Cache */}
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={actualizarCacheTurno}
+                disabled={syncing}
+                className="px-4 py-2 bg-blue-600/80 hover:bg-blue-700/80 disabled:bg-gray-500/50 disabled:cursor-not-allowed text-white rounded-lg transition-all duration-200 flex items-center space-x-2 backdrop-blur-sm border border-white/30"
+              >
+                {syncing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Actualizando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔄</span>
+                    <span>Actualizar Cache Turno</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Mensaje de estado */}
+            {mensaje && (
+              <div className={`mb-4 p-3 rounded-lg backdrop-blur-sm border ${
+                mensaje.startsWith('✅') 
+                  ? 'bg-green-500/20 border-green-400/30 text-green-100' 
+                  : mensaje.startsWith('⚠️')
+                  ? 'bg-yellow-500/20 border-yellow-400/30 text-yellow-100'
+                  : 'bg-red-500/20 border-red-400/30 text-red-100'
+              }`}>
+                <p className="text-sm font-medium drop-shadow">{mensaje}</p>
+              </div>
+            )}
             <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">🛑 Cerrar Turno de Pirólisis</h1>
             <p className="text-center text-white/90 mb-6 drop-shadow">
               Registra las lecturas de consumo final para cerrar el turno de {activeTurno?.operador || 'operador'}
