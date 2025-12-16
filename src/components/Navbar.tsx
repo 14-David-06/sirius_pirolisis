@@ -97,6 +97,7 @@ export default function Navbar() {
           { label: "📦 Inventario Pirolisis", href: "/inventario-pirolisis", icon: "📦", description: "Gestión de inventario" },
           { label: "♻️ Manejo Residuos", href: "/manejo-residuos", icon: "♻️", description: "Gestión de residuos" },
           { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
+          { label: "🌱 Producción Final", href: "/produccion-final", icon: "🌱", description: "Producción de biochar blend" },
         ]
       },
       {
@@ -128,8 +129,17 @@ export default function Navbar() {
         </div>
         
         {!isLoggedIn ? (
-          // Mostrar botón de acceder si no está logueado
-          <div className="flex items-center">
+          // Mostrar opciones públicas si no está logueado
+          <div className="flex items-center space-x-4">
+            {/* Dashboard Producción - Acceso público */}
+            <Link href="/dashboard-produccion">
+              <button className="bg-gradient-to-r from-blue-600 to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-blue-600/30 active:scale-95 flex items-center space-x-2">
+                <span>📊</span>
+                <span>Dashboard</span>
+              </button>
+            </Link>
+            
+            {/* Botón de login */}
             <Link href="/login">
               <button className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white px-8 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-[#5A7836]/30 active:scale-95 flex items-center space-x-2">
                 <span>🔐</span>
