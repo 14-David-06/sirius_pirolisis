@@ -87,3 +87,28 @@ body {
   z-index: -1;
   opacity: 0.3;
 }
+
+/* Print styles for QR codes */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .print\:gap-4 {
+    gap: 1rem !important;
+  }
+  
+  .print\:p-4 {
+    padding: 1rem !important;
+  }
+  
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+}

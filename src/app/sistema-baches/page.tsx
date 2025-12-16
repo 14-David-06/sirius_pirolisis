@@ -6,6 +6,7 @@ import Footer from '@/components/Footer';
 import { useBaches } from '@/lib/useBaches';
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import QRCode from 'qrcode';
 
 export default function SistemaBaches() {
   return (
@@ -52,7 +53,6 @@ function SistemaBachesContent() {
     laboratorio: ''
   });
   const [isSubmittingMonitoreo, setIsSubmittingMonitoreo] = useState(false);
-  const [updatingBacheId, setUpdatingBacheId] = useState<string | null>(null);
 
   // State for detalles modal
   const [showDetallesModal, setShowDetallesModal] = useState(false);
@@ -65,7 +65,6 @@ function SistemaBachesContent() {
 
   // State for multiple selection in Completos Planta
   const [selectedBachesPlanta, setSelectedBachesPlanta] = useState<Set<string>>(new Set());
-  const [isSubmittingMultipleBodega, setIsSubmittingMultipleBodega] = useState(false);
 
   // State for transport form modal
   const [showTransportModal, setShowTransportModal] = useState(false);
@@ -80,6 +79,13 @@ function SistemaBachesContent() {
     esVehiculoNuevo: false
   });
   const [isSubmittingTransport, setIsSubmittingTransport] = useState(false);
+
+  // State for QR functionality
+  const [selectedBachesForQR, setSelectedBachesForQR] = useState<Set<string>>(new Set());
+  const [showQRPrintView, setShowQRPrintView] = useState(false);
+  const [qrSelectionMode, setQrSelectionMode] = useState(false);
+  const [enlargedQRBache, setEnlargedQRBache] = useState<any>(null);
+  const [showEnlargedQR, setShowEnlargedQR] = useState(false);
 
   // State for actualizar peso modal
   const [showActualizarPesoModal, setShowActualizarPesoModal] = useState(false);
@@ -436,29 +442,10 @@ function SistemaBachesContent() {
     loadLaboratorios();
   }, []);
 
-  // Handle pasar a bodega - Abrir modal
-  const handlePasarABodega = (bache: any) => {
-    setSelectedBacheBodega(bache);
-    setShowPasarBodegaModal(true);
-  };
-
   // Cerrar modal de pasar a bodega
   const closePasarBodegaModal = () => {
     setShowPasarBodegaModal(false);
     setSelectedBacheBodega(null);
-  };
-
-  // Manejar selección de baches en planta
-  const handleBachePlantaSelection = (bacheId: string, isSelected: boolean) => {
-    setSelectedBachesPlanta(prev => {
-      const newSelection = new Set(prev);
-      if (isSelected) {
-        newSelection.add(bacheId);
-      } else {
-        newSelection.delete(bacheId);
-      }
-      return newSelection;
-    });
   };
 
   // Limpiar selección
@@ -469,12 +456,7 @@ function SistemaBachesContent() {
   // Verificar si se pueden pasar baches seleccionados a bodega
   const canProcessSelectedBaches = selectedBachesPlanta.size === 10;
 
-  // Seleccionar los próximos 10 baches disponibles
-  const selectNext10Baches = () => {
-    const bachesPlanta = groupedBaches['Completos Planta'] || [];
-    const nextBaches = bachesPlanta.slice(0, 10);
-    setSelectedBachesPlanta(new Set(nextBaches.map(b => b.id)));
-  };
+
 
   // Toggle selección de un bache individual (para click en card)
   const toggleBacheSelection = (bacheId: string) => {
@@ -653,7 +635,6 @@ function SistemaBachesContent() {
   // Submit pasar a bodega - solo cambiar estado
   const submitPasarABodega = async () => {
     setIsSubmittingBodega(true);
-    setUpdatingBacheId(selectedBacheBodega.id);
 
     try {
       console.log('🚀 Iniciando actualización de bache:', selectedBacheBodega.id);
@@ -690,7 +671,6 @@ function SistemaBachesContent() {
       alert(`❌ Error al mover el bache a bodega: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     } finally {
       setIsSubmittingBodega(false);
-      setUpdatingBacheId(null);
     }
   };
 
@@ -790,6 +770,62 @@ function SistemaBachesContent() {
       dieselConsumidoTransporte: 0,
       esVehiculoNuevo: true
     });
+  };
+
+  // Funciones para QR
+  const generateQRUrl = (bacheId: string) => {
+    return `${window.location.origin}/bache/${bacheId}`;
+  };
+
+  // Toggle selección de baches para QR
+  const toggleQRSelection = (bacheId: string) => {
+    setSelectedBachesForQR(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(bacheId)) {
+        newSelection.delete(bacheId);
+      } else {
+        newSelection.add(bacheId);
+      }
+      return newSelection;
+    });
+  };
+
+  // Seleccionar todos los baches visibles para QR
+  const selectAllForQR = () => {
+    const allBacheIds = data?.records?.map(b => b.id) || [];
+    setSelectedBachesForQR(new Set(allBacheIds));
+  };
+
+  // Limpiar selección de QR
+  const clearQRSelection = () => {
+    setSelectedBachesForQR(new Set());
+  };
+
+  // Abrir vista de impresión de QRs
+  const openQRPrintView = () => {
+    if (selectedBachesForQR.size > 0) {
+      setShowQRPrintView(true);
+    }
+  };
+
+  // Toggle modo selección QR
+  const toggleQRSelectionMode = () => {
+    setQrSelectionMode(!qrSelectionMode);
+    if (qrSelectionMode) {
+      clearQRSelection();
+    }
+  };
+
+  // Mostrar QR ampliado
+  const showEnlargedQRModal = (bache: any) => {
+    setEnlargedQRBache(bache);
+    setShowEnlargedQR(true);
+  };
+
+  // Cerrar QR ampliado
+  const closeEnlargedQR = () => {
+    setShowEnlargedQR(false);
+    setEnlargedQRBache(null);
   };
 
   if (loading) {
@@ -1024,14 +1060,56 @@ function SistemaBachesContent() {
               </div>
             </div>
 
-            {/* Botón Ver Laboratorios */}
+            {/* Controles de QR y Laboratorios */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <div className="flex justify-center">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <Link href="/laboratorios">
-                  <button className="bg-[#5A7836]/80 hover:bg-[#5A7836] text-white px-8 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg">
+                  <button className="bg-[#5A7836]/80 hover:bg-[#5A7836] text-white px-6 py-2 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg">
                     🧪 Ver Laboratorios
                   </button>
                 </Link>
+                
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={toggleQRSelectionMode}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 ${
+                      qrSelectionMode 
+                        ? 'bg-orange-600/80 hover:bg-orange-600 text-white shadow-lg' 
+                        : 'bg-blue-600/80 hover:bg-blue-600 text-white hover:shadow-lg'
+                    }`}
+                  >
+                    {qrSelectionMode ? '❌ Cancelar QR' : '📱 Generar QRs'}
+                  </button>
+                  
+                  {qrSelectionMode && (
+                    <>
+                      <button
+                        onClick={selectAllForQR}
+                        className="bg-emerald-600/80 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+                      >
+                        ✅ Todos ({data?.records?.length || 0})
+                      </button>
+                      
+                      {selectedBachesForQR.size > 0 && (
+                        <>
+                          <button
+                            onClick={clearQRSelection}
+                            className="bg-gray-600/80 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+                          >
+                            🗑️ Limpiar
+                          </button>
+                          
+                          <button
+                            onClick={openQRPrintView}
+                            className="bg-purple-600/80 hover:bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg"
+                          >
+                            🖨️ Imprimir QRs ({selectedBachesForQR.size})
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1155,9 +1233,48 @@ function SistemaBachesContent() {
                                     }`}>
                                       {isSelected ? '✓ ' : ''}{getBacheId(bache)}
                                     </h4>
-                                    {isSelectableCategory && selectedBachesPlanta.size >= 10 && !isSelected && (
-                                      <span className="text-xs text-orange-300 opacity-75">Máximo alcanzado</span>
-                                    )}
+                                    
+                                    <div className="flex items-center space-x-2">
+                                      {isSelectableCategory && selectedBachesPlanta.size >= 10 && !isSelected && (
+                                        <span className="text-xs text-orange-300 opacity-75">Máximo alcanzado</span>
+                                      )}
+                                      
+                                      {/* QR Code siempre visible */}
+                                      <div className="relative group">
+                                        <div 
+                                          className="cursor-pointer"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!qrSelectionMode) {
+                                              showEnlargedQRModal(bache);
+                                            }
+                                          }}
+                                        >
+                                          <QRCodeDisplay bacheId={bache.id} size={24} />
+                                        </div>
+                                        
+                                        {/* QR Selection overlay en modo selección */}
+                                        {qrSelectionMode && (
+                                          <div 
+                                            className={`absolute -inset-1 rounded border-2 cursor-pointer transition-all duration-200 ${
+                                              selectedBachesForQR.has(bache.id)
+                                                ? 'border-purple-400 bg-purple-500/20' 
+                                                : 'border-transparent hover:border-purple-400/50'
+                                            }`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleQRSelection(bache.id);
+                                            }}
+                                          >
+                                            {selectedBachesForQR.has(bache.id) && (
+                                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
+                                                <span className="text-white text-xs">✓</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                               <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
                                 (() => {
@@ -1676,6 +1793,35 @@ function SistemaBachesContent() {
                   </div>
                 </div>
 
+                {/* Código QR */}
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">📱 Código QR</h3>
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="flex-shrink-0">
+                      <div 
+                        className="cursor-pointer transform hover:scale-110 transition-transform duration-200"
+                        onClick={() => showEnlargedQRModal(selectedBacheDetalles)}
+                      >
+                        <QRCodeDisplay bacheId={selectedBacheDetalles.id} size={120} />
+                      </div>
+                    </div>
+                    <div className="flex-1 text-center sm:text-left">
+                      <p className="text-white/80 text-sm mb-2">
+                        Escanea este código para acceder a la información en tiempo real del bache
+                      </p>
+                      <p className="text-white font-medium text-xs break-all bg-white/5 p-2 rounded border border-white/10">
+                        {generateQRUrl(selectedBacheDetalles.id)}
+                      </p>
+                      <button
+                        onClick={() => showEnlargedQRModal(selectedBacheDetalles)}
+                        className="mt-2 bg-blue-600/80 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200"
+                      >
+                        🔍 Ampliar QR
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Información de producción */}
                 <div className="bg-white/10 rounded-lg p-4 border border-white/20">
                   <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">🏭 Información de Producción</h3>
@@ -2119,8 +2265,181 @@ function SistemaBachesContent() {
           </div>
         )}
 
+        {/* Vista de Impresión de QRs */}
+        {showQRPrintView && (
+          <div className="fixed inset-0 bg-white z-[100]">
+            <div className="p-4 no-print bg-gray-100 border-b">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-800">
+                  Códigos QR para Impresión ({selectedBachesForQR.size} baches)
+                </h2>
+                <div className="space-x-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold"
+                  >
+                    🖨️ Imprimir
+                  </button>
+                  <button
+                    onClick={() => setShowQRPrintView(false)}
+                    className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold"
+                  >
+                    ❌ Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-8 print:p-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 print:gap-4">
+                {Array.from(selectedBachesForQR).map(bacheId => {
+                  const bache = data?.records?.find(b => b.id === bacheId);
+                  if (!bache) return null;
+                  
+                  return (
+                    <div key={bacheId} className="border border-gray-300 rounded-lg p-4 text-center bg-white shadow-sm">
+                      <div className="mb-2">
+                        <QRCodeDisplay bacheId={bacheId} size={120} />
+                      </div>
+                      <h3 className="font-bold text-lg text-gray-800 mb-1">
+                        {getBacheId(bache)}
+                      </h3>
+                      <p className="text-sm text-gray-600 mb-1">
+                        {getBacheStatus(bache)}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(getDateValue(bache)).toLocaleDateString('es-ES')}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-2 break-all">
+                        {generateQRUrl(bacheId)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de QR Ampliado */}
+        {showEnlargedQR && enlargedQRBache && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-white/30 max-w-md w-full text-center">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">📱 Código QR</h2>
+                <button
+                  onClick={closeEnlargedQR}
+                  className="text-white/70 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Información del bache */}
+                <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                  <h3 className="text-xl font-bold text-white mb-2 drop-shadow">
+                    {getBacheId(enlargedQRBache)}
+                  </h3>
+                  <p className="text-white/80 text-sm mb-1">
+                    Estado: <span className="font-semibold text-white">{getBacheStatus(enlargedQRBache)}</span>
+                  </p>
+                  <p className="text-white/80 text-sm">
+                    Biochar: <span className="font-semibold text-white">{getTotalBiochar(enlargedQRBache)} kg</span>
+                  </p>
+                </div>
+
+                {/* QR Code ampliado */}
+                <div className="bg-white rounded-lg p-6 shadow-xl flex justify-center items-center">
+                  <QRCodeDisplay bacheId={enlargedQRBache.id} size={200} />
+                </div>
+
+                {/* URL del QR */}
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <p className="text-white/70 text-xs mb-2">URL de acceso:</p>
+                  <p className="text-white font-mono text-xs break-all">
+                    {generateQRUrl(enlargedQRBache.id)}
+                  </p>
+                </div>
+
+                {/* Instrucciones */}
+                <div className="bg-blue-500/20 border border-blue-400/50 rounded-lg p-3">
+                  <p className="text-blue-200 text-sm">
+                    💡 <strong>Tip:</strong> Escanea este código con cualquier lector QR para acceder 
+                    a la información actualizada del bache desde tu dispositivo móvil.
+                  </p>
+                </div>
+
+                {/* Acciones */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(generateQRUrl(enlargedQRBache.id));
+                      alert('URL copiada al portapapeles');
+                    }}
+                    className="flex-1 bg-emerald-600/80 hover:bg-emerald-600 text-white py-2 px-4 rounded-lg font-semibold transition-all duration-200"
+                  >
+                    📋 Copiar URL
+                  </button>
+                  <button
+                    onClick={closeEnlargedQR}
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white py-2 px-4 rounded-lg font-semibold transition-all duration-200 border border-white/30"
+                  >
+                    ✅ Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Footer />
       </div>
     </div>
+  );
+}
+
+// Componente para mostrar códigos QR
+function QRCodeDisplay({ bacheId, size = 24 }: { bacheId: string; size?: number }) {
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  
+  useEffect(() => {
+    const generateQR = async () => {
+      try {
+        const url = `${window.location.origin}/bache/${bacheId}`;
+        const dataUrl = await QRCode.toDataURL(url, {
+          width: size * 4, // Higher resolution for better quality
+          margin: 1,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        });
+        setQrDataUrl(dataUrl);
+      } catch (err) {
+        console.error('Error generating QR:', err);
+      }
+    };
+    
+    generateQR();
+  }, [bacheId, size]);
+  
+  if (!qrDataUrl) {
+    return (
+      <div 
+        className="bg-gray-300 animate-pulse rounded" 
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  
+  return (
+    <img 
+      src={qrDataUrl} 
+      alt={`QR Code for bache ${bacheId}`}
+      className="rounded cursor-pointer hover:scale-110 transition-transform duration-200 shadow-sm hover:shadow-md"
+      style={{ width: size, height: size }}
+      title={size > 100 ? `QR Code del bache ${bacheId}` : `Click para ampliar QR del bache ${bacheId}`}
+    />
   );
 }
