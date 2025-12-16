@@ -184,6 +184,16 @@ export default function Navbar() {
               {/* Separador visual */}
               <div className="h-8 w-px bg-white/30 mx-2"></div>
               
+              {/* Dashboard Producción - Botón independiente */}
+              <Link href="/dashboard-produccion">
+                <button className="group relative bg-gradient-to-r from-blue-600 to-purple-700 text-white hover:from-blue-700 hover:to-purple-800 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-md hover:shadow-lg hover:shadow-blue-600/30">
+                  <span className="text-lg">📊</span>
+                  <span>Dashboard Producción</span>
+                </button>
+              </Link>
+              
+              {/* Separador visual */}
+              <div className="h-8 w-px bg-white/30 mx-2"></div>
               
               <button
                 onClick={handleLogout}
@@ -214,53 +224,111 @@ export default function Navbar() {
 
               {/* Menú desplegable móvil */}
               {isMenuOpen && (
-                <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 py-3 z-50 backdrop-blur-sm">
-                  <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-sm font-semibold text-gray-600">🔧 Panel de Control</p>
-                  </div>
+                <div className="fixed inset-0 z-50 lg:hidden">
+                  {/* Overlay para cerrar el menú */}
+                  <div 
+                    className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+                    onClick={() => setIsMenuOpen(false)}
+                  ></div>
                   
-                  {menuCategories.map((category) => (
-                    <div key={category.title} className="border-b border-gray-50 last:border-b-0">
-                      <div className="px-4 py-2">
-                        <h3 className="text-sm font-semibold text-[#5A7836] flex items-center">
-                          <span className="mr-2">{category.icon}</span>
-                          {category.title}
-                        </h3>
+                  {/* Panel del menú */}
+                  <div className="fixed top-0 right-0 h-full w-80 max-w-sm bg-white shadow-2xl transform transition-transform duration-300 ease-in-out overflow-y-auto">
+                    
+                    {/* Header del menú */}
+                    <div className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] px-6 py-4 flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-2xl">🔧</span>
+                        <h2 className="text-white font-bold text-lg">Panel de Control</h2>
                       </div>
-                      {category.items.map((item) => (
+                      <button
+                        onClick={() => setIsMenuOpen(false)}
+                        className="text-white hover:text-gray-200 transition-colors duration-200 p-1"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Contenido del menú */}
+                    <div className="px-4 py-4 space-y-2">
+                      
+                      {/* Dashboard Producción - Destacado */}
+                      <div className="mb-4">
                         <Link
-                          key={item.href}
-                          href={item.href}
-                          className="flex items-center px-6 py-2 text-[#5A7836] hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg mx-2"
+                          href="/dashboard-produccion"
+                          className="flex items-center p-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 group"
                           onClick={() => setIsMenuOpen(false)}
                         >
-                          <span className="text-lg mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
+                          <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-200">📊</span>
                           <div className="flex-1">
-                            <div className="font-semibold text-sm">{item.label.replace(/^.+?\s/, '')}</div>
-                            <div className="text-xs text-gray-500 group-hover:text-white/80">{item.description}</div>
+                            <div className="font-bold text-base">Dashboard Producción</div>
+                            <div className="text-xs text-blue-100">Métricas y análisis en tiempo real</div>
                           </div>
+                          <svg className="w-5 h-5 text-white opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </Link>
+                      </div>
+
+                      {/* Categorías del menú */}
+                      {menuCategories.map((category, categoryIndex) => (
+                        <div key={category.title} className="mb-6">
+                          {/* Título de la categoría */}
+                          <div className="flex items-center mb-3 px-2">
+                            <span className="text-lg mr-2">{category.icon}</span>
+                            <h3 className="text-[#5A7836] font-bold text-sm uppercase tracking-wide">{category.title}</h3>
+                            <div className="flex-1 h-px bg-gradient-to-r from-[#5A7836] to-transparent ml-3"></div>
+                          </div>
+                          
+                          {/* Items de la categoría */}
+                          <div className="space-y-1">
+                            {category.items.map((item, itemIndex) => (
+                              <Link
+                                key={item.href}
+                                href={item.href}
+                                className="flex items-center p-3 text-gray-700 hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg border border-transparent hover:border-[#5A7836]/20 hover:shadow-sm"
+                                onClick={() => setIsMenuOpen(false)}
+                              >
+                                <span className="text-xl mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-sm truncate">{item.label.replace(/^.+?\s/, '')}</div>
+                                  <div className="text-xs text-gray-500 group-hover:text-white/80 truncate">{item.description}</div>
+                                </div>
+                                <svg className="w-4 h-4 text-gray-400 group-hover:text-white opacity-0 group-hover:opacity-100 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
-                  ))}
-                  
-                  <hr className="my-2 border-gray-100" />
-                  
-                  
-                  <button
-                    onClick={handleLogout}
-                    className={`w-full flex items-center px-4 py-3 transition-all duration-200 font-semibold rounded-lg mx-2 ${
-                      activeTurno 
-                        ? 'text-gray-400 cursor-not-allowed' 
-                        : 'text-red-600 hover:bg-red-50'
-                    }`}
-                    disabled={!!activeTurno}
-                    title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
-                  >
-                    <span className="text-xl mr-3">🚪</span>
-                    <span>Cerrar Sesión</span>
-                    {activeTurno && <span className="ml-2 text-xs">⚠️</span>}
-                  </button>
+
+                    {/* Footer del menú */}
+                    <div className="border-t border-gray-200 p-4 mt-auto">
+                      <button
+                        onClick={handleLogout}
+                        className={`w-full flex items-center justify-center p-4 transition-all duration-200 font-semibold rounded-xl ${
+                          activeTurno 
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                            : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 hover:border-red-300'
+                        }`}
+                        disabled={!!activeTurno}
+                        title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
+                      >
+                        <span className="text-xl mr-3">🚪</span>
+                        <span>Cerrar Sesión</span>
+                        {activeTurno && <span className="ml-2 text-xs">⚠️</span>}
+                      </button>
+                      
+                      {activeTurno && (
+                        <p className="text-xs text-gray-500 text-center mt-2">
+                          Cierra el turno activo para poder salir
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
