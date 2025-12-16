@@ -453,6 +453,15 @@ function SistemaBachesContent() {
     setSelectedBachesPlanta(new Set());
   };
 
+  // Seleccionar automáticamente los primeros 10 baches completos en planta
+  const selectFirst10Baches = () => {
+    const completosPlanta = groupedBaches['Completos Planta'] || [];
+    if (completosPlanta.length >= 10) {
+      const first10Ids = completosPlanta.slice(0, 10).map(bache => bache.id);
+      setSelectedBachesPlanta(new Set(first10Ids));
+    }
+  };
+
   // Verificar si se pueden pasar baches seleccionados a bodega
   const canProcessSelectedBaches = selectedBachesPlanta.size === 10;
 
@@ -1140,7 +1149,18 @@ function SistemaBachesContent() {
                       </h3>
                       
                       {categoria === 'Completos Planta' && (
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 flex-wrap gap-2">
+                          {/* Botón de selección rápida */}
+                          {groupedBaches['Completos Planta']?.length >= 10 && selectedBachesPlanta.size === 0 && (
+                            <button
+                              onClick={selectFirst10Baches}
+                              className="bg-green-600/80 hover:bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200 flex items-center"
+                              title="Seleccionar automáticamente los primeros 10 baches"
+                            >
+                              ⚡ Seleccionar 10 Rápido
+                            </button>
+                          )}
+
                           {/* Botón de limpiar selección */}
                           {selectedBachesPlanta.size > 0 && (
                             <button

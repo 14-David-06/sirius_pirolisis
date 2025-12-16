@@ -237,77 +237,67 @@ export default function Navbar() {
                 <div className="fixed inset-0 z-50 lg:hidden">
                   {/* Overlay para cerrar el menú */}
                   <div 
-                    className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+                    className="fixed inset-0 bg-black/50"
                     onClick={() => setIsMenuOpen(false)}
                   ></div>
                   
                   {/* Panel del menú */}
-                  <div className="fixed top-0 right-0 h-full w-80 max-w-sm bg-white shadow-2xl transform transition-transform duration-300 ease-in-out overflow-y-auto">
+                  <div className="fixed top-0 right-0 h-full w-full max-w-xs bg-white shadow-2xl overflow-y-auto">
                     
                     {/* Header del menú */}
-                    <div className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] px-6 py-4 flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-2xl">🔧</span>
-                        <h2 className="text-white font-bold text-lg">Panel de Control</h2>
+                    <div className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xl">🔧</span>
+                        <h2 className="text-white font-bold text-base">Panel</h2>
                       </div>
                       <button
                         onClick={() => setIsMenuOpen(false)}
-                        className="text-white hover:text-gray-200 transition-colors duration-200 p-1"
+                        className="text-white p-1 hover:bg-white/20 rounded"
                       >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
                     </div>
 
                     {/* Contenido del menú */}
-                    <div className="px-4 py-4 space-y-2">
+                    <div className="p-3 space-y-1">
                       
                       {/* Dashboard Producción - Destacado */}
-                      <div className="mb-4">
-                        <Link
-                          href="/dashboard-produccion"
-                          className="flex items-center p-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 group"
-                          onClick={() => setIsMenuOpen(false)}
-                        >
-                          <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-200">📊</span>
-                          <div className="flex-1">
-                            <div className="font-bold text-base">Dashboard Producción</div>
-                            <div className="text-xs text-blue-100">Métricas y análisis en tiempo real</div>
-                          </div>
-                          <svg className="w-5 h-5 text-white opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </Link>
-                      </div>
+                      <Link
+                        href="/dashboard-produccion"
+                        className="flex items-center p-3 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-lg mb-3"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        <span className="text-xl mr-3">📊</span>
+                        <div className="flex-1 text-left">
+                          <div className="font-semibold text-sm">Dashboard</div>
+                          <div className="text-xs text-blue-100">Producción</div>
+                        </div>
+                      </Link>
 
                       {/* Categorías del menú */}
-                      {menuCategories.map((category, categoryIndex) => (
-                        <div key={category.title} className="mb-6">
+                      {menuCategories.map((category) => (
+                        <div key={category.title} className="mb-4">
                           {/* Título de la categoría */}
-                          <div className="flex items-center mb-3 px-2">
-                            <span className="text-lg mr-2">{category.icon}</span>
-                            <h3 className="text-[#5A7836] font-bold text-sm uppercase tracking-wide">{category.title}</h3>
-                            <div className="flex-1 h-px bg-gradient-to-r from-[#5A7836] to-transparent ml-3"></div>
+                          <div className="flex items-center mb-2 px-1">
+                            <span className="text-sm mr-2">{category.icon}</span>
+                            <h3 className="text-[#5A7836] font-semibold text-xs uppercase">{category.title}</h3>
                           </div>
                           
                           {/* Items de la categoría */}
-                          <div className="space-y-1">
-                            {category.items.map((item, itemIndex) => (
+                          <div className="space-y-1 ml-2">
+                            {category.items.map((item) => (
                               <Link
                                 key={item.href}
                                 href={item.href}
-                                className="flex items-center p-3 text-gray-700 hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg border border-transparent hover:border-[#5A7836]/20 hover:shadow-sm"
+                                className="flex items-center p-2 text-gray-700 hover:bg-[#5A7836] hover:text-white rounded-md transition-all duration-200"
                                 onClick={() => setIsMenuOpen(false)}
                               >
-                                <span className="text-xl mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
+                                <span className="text-sm mr-2">{item.icon}</span>
                                 <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-sm truncate">{item.label.replace(/^.+?\s/, '')}</div>
-                                  <div className="text-xs text-gray-500 group-hover:text-white/80 truncate">{item.description}</div>
+                                  <div className="text-xs font-medium truncate">{item.label.replace(/^.+?\s/, '')}</div>
                                 </div>
-                                <svg className="w-4 h-4 text-gray-400 group-hover:text-white opacity-0 group-hover:opacity-100 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
                               </Link>
                             ))}
                           </div>
@@ -316,27 +306,21 @@ export default function Navbar() {
                     </div>
 
                     {/* Footer del menú */}
-                    <div className="border-t border-gray-200 p-4 mt-auto">
+                    <div className="border-t border-gray-200 p-3 sticky bottom-0 bg-white">
                       <button
                         onClick={handleLogout}
-                        className={`w-full flex items-center justify-center p-4 transition-all duration-200 font-semibold rounded-xl ${
+                        className={`w-full flex items-center justify-center p-3 transition-all duration-200 font-semibold rounded-lg text-sm ${
                           activeTurno 
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                            : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 hover:border-red-300'
+                            : 'bg-red-50 text-red-600 hover:bg-red-100'
                         }`}
                         disabled={!!activeTurno}
                         title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
                       >
-                        <span className="text-xl mr-3">🚪</span>
+                        <span className="text-sm mr-2">🚪</span>
                         <span>Cerrar Sesión</span>
                         {activeTurno && <span className="ml-2 text-xs">⚠️</span>}
                       </button>
-                      
-                      {activeTurno && (
-                        <p className="text-xs text-gray-500 text-center mt-2">
-                          Cierra el turno activo para poder salir
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
