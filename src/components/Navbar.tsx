@@ -97,7 +97,7 @@ export default function Navbar() {
           { label: "📦 Inventario Pirolisis", href: "/inventario-pirolisis", icon: "📦", description: "Gestión de inventario" },
           { label: "♻️ Manejo Residuos", href: "/manejo-residuos", icon: "♻️", description: "Gestión de residuos" },
           { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
-          { label: "🌱 Producción Final", href: "/produccion-final", icon: "🌱", description: "Producción de biochar blend" },
+          // { label: "🌱 Producción Final", href: "/produccion-final", icon: "🌱", description: "Producción de biochar blend" },
         ]
       },
       {
