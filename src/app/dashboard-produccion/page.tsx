@@ -192,7 +192,7 @@ function DashboardProduccionContent() {
           }
 
           const totalBiocharTurno = pesos.reduce((sum, peso) => sum + peso, 0);
-          const biocharPorHora = totalBiocharTurno / horasTurno;
+          const biocharPorHora = horasTurno > 0 ? totalBiocharTurno / horasTurno : 0;
           
           console.log(`Turno ${turnoId}: ${totalBiocharTurno}kg / ${horasTurno}h = ${biocharPorHora.toFixed(2)}kg/h`);
           
@@ -262,18 +262,19 @@ function DashboardProduccionContent() {
     const consumoPorOperador: any = {};
 
     turnoData.forEach(turno => {
-      const horas = turno.fields?.['Cálculo'] || 0;
-      const energia = turno.fields?.['Total Energia Consumida'] || 0;
-      const biogas = turno.fields?.['Total Biogas Consumido'] || 0;
-      const aguaInicio = turno.fields?.['Consumo Agua Inicio'] || 0;
-      const aguaFin = turno.fields?.['Consumo Agua Fin'] || 0;
-      const alimentacionPorMin = turno.fields?.['🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg)'] || 0;
+      const horas = Math.max(0, turno.fields?.['Cálculo'] || 0);
+      const energia = Math.max(0, turno.fields?.['Total Energia Consumida'] || 0);
+      const biogas = Math.max(0, turno.fields?.['Total Biogas Consumido'] || 0);
+      const aguaInicio = Math.max(0, turno.fields?.['Consumo Agua Inicio'] || 0);
+      const aguaFin = Math.max(0, turno.fields?.['Consumo Agua Fin'] || 0);
+      const alimentacionPorMin = Math.max(0, turno.fields?.['🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg)'] || 0);
       const operador = turno.fields?.['Operador'] || 'Sin asignar';
 
       horasTotales += horas;
       energiaTotal += energia;
       biogasTotal += biogas;
-      aguaTotal += (aguaFin - aguaInicio);
+      const consumoAgua = Math.max(0, aguaFin - aguaInicio);
+      aguaTotal += consumoAgua;
       biomasaTotalIngresada += (alimentacionPorMin * horas * 60);
 
       operadoresSet.add(operador);
@@ -362,8 +363,8 @@ function DashboardProduccionContent() {
 
     // Procesar TODOS los registros
     balanceMasaData.forEach((balance, index) => {
-      const peso = balance.fields?.['Peso Biochar (KG)'];
-      pesoTotalBiochar += peso || 0;
+      const peso = Math.max(0, balance.fields?.['Peso Biochar (KG)'] || 0);
+      pesoTotalBiochar += peso;
       
       const r1 = balance.fields?.['Temperatura Reactor (R1)'];
       const r2 = balance.fields?.['Temperatura Reactor (R2)'];
@@ -378,14 +379,14 @@ function DashboardProduccionContent() {
         console.log(`Registro ${index}:`, { r1, r2, r3, h1, h2, h3, h4, g9, peso });
       }
 
-      if (r1 !== undefined && r1 !== null && r1 > 0) temps.r1.push(r1);
-      if (r2 !== undefined && r2 !== null && r2 > 0) temps.r2.push(r2);
-      if (r3 !== undefined && r3 !== null && r3 > 0) temps.r3.push(r3);
-      if (h1 !== undefined && h1 !== null && h1 > 0) temps.h1.push(h1);
-      if (h2 !== undefined && h2 !== null && h2 > 0) temps.h2.push(h2);
-      if (h3 !== undefined && h3 !== null && h3 > 0) temps.h3.push(h3);
-      if (h4 !== undefined && h4 !== null && h4 > 0) temps.h4.push(h4);
-      if (g9 !== undefined && g9 !== null && g9 > 0) temps.g9.push(g9);
+      if (r1 !== undefined && r1 !== null && r1 > 0) temps.r1.push(Math.max(0, r1));
+      if (r2 !== undefined && r2 !== null && r2 > 0) temps.r2.push(Math.max(0, r2));
+      if (r3 !== undefined && r3 !== null && r3 > 0) temps.r3.push(Math.max(0, r3));
+      if (h1 !== undefined && h1 !== null && h1 > 0) temps.h1.push(Math.max(0, h1));
+      if (h2 !== undefined && h2 !== null && h2 > 0) temps.h2.push(Math.max(0, h2));
+      if (h3 !== undefined && h3 !== null && h3 > 0) temps.h3.push(Math.max(0, h3));
+      if (h4 !== undefined && h4 !== null && h4 > 0) temps.h4.push(Math.max(0, h4));
+      if (g9 !== undefined && g9 !== null && g9 > 0) temps.g9.push(Math.max(0, g9));
     });
 
     console.log('Temperaturas recolectadas:', {
@@ -514,7 +515,7 @@ function DashboardProduccionContent() {
     const porOperador: any = {};
 
     viajesBiomasa.forEach((viaje) => {
-      const peso = viaje.fields?.['Peso entregado de masa fresca'] || 0;
+      const peso = Math.max(0, viaje.fields?.['Peso entregado de masa fresca'] || 0);
       const tipoBiomasa = viaje.fields?.['Tipo Biomasa'] || 'Sin especificar';
       const tipoVehiculo = viaje.fields?.['Tipo Vehículo'] || 'Sin especificar';
       const operador = viaje.fields?.['Nombre Quien Entrega'] || 'Sin especificar';
@@ -603,7 +604,7 @@ function DashboardProduccionContent() {
       console.log('🔄 Iniciando carga de datos de turnos, balances y viajes biomasa...');
       
       const [turnoResponse, balanceResponse, viajesResponse] = await Promise.all([
-        fetch('/api/turno/list'),
+        fetch('/api/turno/list?maxRecords=1000'), // Cargar hasta 1000 registros de turnos
         fetch('/api/balance-masa/list?maxRecords=1000'), // Cargar hasta 1000 registros
         fetch('/api/viajes-biomasa/list?maxRecords=1000') // Cargar viajes de biomasa
       ]);
@@ -707,28 +708,28 @@ function DashboardProduccionContent() {
       }}
     >
       {/* Overlay translúcido */}
-      <div className="absolute inset-0 bg-black/30"></div>
+      <div className="absolute inset-0 bg-black/20"></div>
       
       <div className="relative z-10">
         <Navbar />
         
-        <main className="container mx-auto px-6 py-8">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-6xl mx-auto border border-white/30">
-            <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">Dashboard de Producción</h1>
-            <p className="text-center text-white/90 mb-6 drop-shadow text-lg">
+        <main className="container mx-auto px-3 sm:px-6 py-4 sm:py-8">
+          <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto border border-white/30">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-6 text-center drop-shadow-lg">Dashboard de Producción</h1>
+            <p className="text-center text-white/90 mb-4 sm:mb-6 drop-shadow text-base sm:text-lg">
               Monitoreo en tiempo real de las operaciones de producción y métricas clave de rendimiento
             </p>
 
             {/* Métricas Principales */}
-            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Métricas de Producción</h2>
+            <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 drop-shadow-lg">Métricas de Producción</h2>
               
               {/* Primera fila de métricas principales */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-white mb-6">
-                <div className="text-center bg-white/10 p-4 rounded-lg border border-white/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-white mb-6">
+                <div className="text-center bg-black/25 p-4 rounded-lg border border-white/20">
                   <div className="text-3xl font-bold text-white mb-2">
                     {bachesLoading ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-16 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-16 rounded"></span>
                     ) : (
                       metrics.totalBaches
                     )}
@@ -736,10 +737,10 @@ function DashboardProduccionContent() {
                   <div className="text-sm drop-shadow text-white/80">Total Baches</div>
                 </div>
                 
-                <div className="text-center bg-white/10 p-4 rounded-lg border border-white/20">
+                <div className="text-center bg-black/25 p-4 rounded-lg border border-white/20">
                   <div className="text-3xl font-bold text-white mb-2">
                     {bachesLoading ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-20 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
                         {metrics.biocharHumedoTotal.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -750,10 +751,10 @@ function DashboardProduccionContent() {
                   <div className="text-sm drop-shadow text-white/80">Biochar Húmedo Total</div>
                 </div>
                 
-                <div className="text-center bg-white/10 p-4 rounded-lg border border-white/20">
+                <div className="text-center bg-black/25 p-4 rounded-lg border border-white/20">
                   <div className="text-3xl font-bold text-white mb-2">
                     {bachesLoading ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-20 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
                         {metrics.biocharSecoTotal.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -764,10 +765,10 @@ function DashboardProduccionContent() {
                   <div className="text-sm drop-shadow text-white/80">Biochar Seco Actual</div>
                 </div>
                 
-                <div className="text-center bg-white/10 p-4 rounded-lg border border-white/20">
+                <div className="text-center bg-black/25 p-4 rounded-lg border border-white/20">
                   <div className="text-3xl font-bold text-white mb-2">
                     {bachesLoading ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-16 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-16 rounded"></span>
                     ) : (
                       metrics.lonasUsadasTotal
                     )}
@@ -787,14 +788,14 @@ function DashboardProduccionContent() {
             </div>
 
             {/* Métricas de Turnos */}
-            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Estadísticas de Turnos</h2>
+            <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 drop-shadow-lg">Estadísticas de Turnos</h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
                 <div className="text-center bg-gradient-to-br from-blue-500/20 to-blue-600/10 p-4 rounded-lg border border-blue-400/30">
                   <div className="text-3xl font-bold text-blue-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-16 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-16 rounded"></span>
                     ) : (
                       turnoMetrics.totalTurnos
                     )}
@@ -805,7 +806,7 @@ function DashboardProduccionContent() {
                 <div className="text-center bg-gradient-to-br from-purple-500/20 to-purple-600/10 p-4 rounded-lg border border-purple-400/30">
                   <div className="text-3xl font-bold text-purple-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-20 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
                         {turnoMetrics.horasTotales.toFixed(1)}
@@ -819,7 +820,7 @@ function DashboardProduccionContent() {
                 <div className="text-center bg-gradient-to-br from-green-500/20 to-green-600/10 p-4 rounded-lg border border-green-400/30">
                   <div className="text-3xl font-bold text-green-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-20 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
                         {turnoMetrics.promedioHorasPorTurno.toFixed(1)}
@@ -833,7 +834,7 @@ function DashboardProduccionContent() {
                 <div className="text-center bg-gradient-to-br from-orange-500/20 to-orange-600/10 p-4 rounded-lg border border-orange-400/30">
                   <div className="text-3xl font-bold text-orange-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-16 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-16 rounded"></span>
                     ) : (
                       turnoMetrics.operadores.length
                     )}
@@ -844,22 +845,22 @@ function DashboardProduccionContent() {
 
               {/* Consumos Totales */}
               <div className="border-t border-white/20 pt-4">
-                <h3 className="text-lg font-medium text-white mb-4">Consumos Acumulados</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white/10 p-4 rounded-lg border border-white/20">
+                <h3 className="text-base sm:text-lg font-medium text-white mb-4">Consumos Acumulados</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                  <div className="bg-black/25 p-4 rounded-lg border border-white/20">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-white/70">Energía Total</span>
-                      <span className="text-xs bg-yellow-500/30 text-yellow-200 px-2 py-1 rounded">kWh</span>
+                      <span className="text-sm text-white/70">Total Energía</span>
+                      <span className="text-xs bg-yellow-500/30 text-yellow-200 px-2 py-1 rounded">kW</span>
                     </div>
                     <div className="text-2xl font-bold text-yellow-200">
                       {loadingPromedios ? '...' : turnoMetrics.energiaTotal.toLocaleString('es-CO', { maximumFractionDigits: 1 })}
                     </div>
                     <div className="text-xs text-white/60 mt-1">
-                      {loadingPromedios ? '...' : `${turnoMetrics.energiaPorHora.toFixed(1)} kWh/hora`}
+                      {loadingPromedios ? '...' : `${turnoMetrics.energiaPorHora.toFixed(1)} kW/hora`}
                     </div>
                   </div>
                   
-                  <div className="bg-white/10 p-4 rounded-lg border border-white/20">
+                  <div className="bg-black/25 p-4 rounded-lg border border-white/20">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-white/70">Biogas Total</span>
                       <span className="text-xs bg-green-500/30 text-green-200 px-2 py-1 rounded">m³</span>
@@ -872,13 +873,13 @@ function DashboardProduccionContent() {
                     </div>
                   </div>
                   
-                  <div className="bg-white/10 p-4 rounded-lg border border-white/20">
+                  <div className="bg-black/25 p-4 rounded-lg border border-white/20">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-white/70">Biomasa Ingresada</span>
                       <span className="text-xs bg-blue-500/30 text-blue-200 px-2 py-1 rounded">kg</span>
                     </div>
                     <div className="text-2xl font-bold text-blue-200">
-                      {loadingPromedios ? '...' : turnoMetrics.biomasaTotalIngresada.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+                      {loadingPromedios ? '...' : viajesMetrics.pesoTotalFresco.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
                     </div>
                     <div className="text-xs text-white/60 mt-1">
                       Total procesada
@@ -890,12 +891,12 @@ function DashboardProduccionContent() {
 
             {/* Rendimiento por Operador */}
             {turnoMetrics.operadores.length > 0 && (
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-                <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Rendimiento por Operador</h2>
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 drop-shadow-lg">Rendimiento por Operador</h2>
                 
                 <div className="space-y-4">
                   {Object.entries(turnoMetrics.consumoPorOperador).map(([operador, datos]: [string, any]) => (
-                    <div key={operador} className="bg-white/10 p-4 rounded-lg border border-white/20">
+                    <div key={operador} className="bg-black/25 p-4 rounded-lg border border-white/20">
                       <div className="flex justify-between items-center mb-3">
                         <h3 className="text-lg font-semibold text-white">{operador}</h3>
                         <span className="text-sm bg-blue-500/30 text-blue-200 px-3 py-1 rounded-full">
@@ -903,14 +904,14 @@ function DashboardProduccionContent() {
                         </span>
                       </div>
                       
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                         <div>
                           <div className="text-xs text-white/60 mb-1">Horas Trabajadas</div>
                           <div className="text-lg font-bold text-white">{datos.horas.toFixed(1)} h</div>
                         </div>
                         <div>
                           <div className="text-xs text-white/60 mb-1">Energía</div>
-                          <div className="text-lg font-bold text-yellow-200">{datos.energia.toFixed(1)} kWh</div>
+                          <div className="text-lg font-bold text-yellow-200">{datos.energia.toFixed(1)} kW</div>
                         </div>
                         <div>
                           <div className="text-xs text-white/60 mb-1">Biogas</div>
@@ -924,7 +925,7 @@ function DashboardProduccionContent() {
                       
                       {/* Eficiencia promedio */}
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <div className="grid grid-cols-3 gap-4 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 text-xs">
                           <div>
                             <span className="text-white/60">Energía/hora: </span>
                             <span className="text-white font-semibold">{(datos.energia / datos.horas).toFixed(1)} kWh</span>
@@ -947,8 +948,8 @@ function DashboardProduccionContent() {
 
             {/* Turnos Recientes */}
             {turnoMetrics.turnosRecientes.length > 0 && (
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-                <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Turnos Recientes</h2>
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 drop-shadow-lg">Turnos Recientes</h2>
                 
                 <div className="space-y-3">
                   {turnoMetrics.turnosRecientes.map((turno, index) => {
@@ -961,7 +962,7 @@ function DashboardProduccionContent() {
                     const alimentacion = turno.fields?.['🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg)'] || 0;
 
                     return (
-                      <div key={turno.id} className="bg-white/10 p-4 rounded-lg border border-white/20 hover:bg-white/15 transition-all">
+                      <div key={turno.id} className="bg-black/25 p-4 rounded-lg border border-white/20 hover:bg-black/30 transition-all">
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <div className="text-lg font-semibold text-white">{operador}</div>
@@ -982,16 +983,16 @@ function DashboardProduccionContent() {
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="bg-white/5 p-2 rounded">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+                          <div className="bg-black/20 p-2 rounded">
                             <div className="text-xs text-white/60">Energía</div>
                             <div className="text-sm font-bold text-yellow-200">{energia.toFixed(1)} kWh</div>
                           </div>
-                          <div className="bg-white/5 p-2 rounded">
+                          <div className="bg-black/20 p-2 rounded">
                             <div className="text-xs text-white/60">Biogas</div>
                             <div className="text-sm font-bold text-green-200">{biogas} m³</div>
                           </div>
-                          <div className="bg-white/5 p-2 rounded">
+                          <div className="bg-black/20 p-2 rounded">
                             <div className="text-xs text-white/60">Alimentación</div>
                             <div className="text-sm font-bold text-blue-200">{alimentacion} kg/min</div>
                           </div>
@@ -1004,21 +1005,21 @@ function DashboardProduccionContent() {
             )}
 
             {/* Análisis de Eficiencia */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
               {/* Eficiencia Energética */}
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-                <h3 className="text-xl font-bold text-white mb-4 drop-shadow-lg">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30">
+                <h3 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4 drop-shadow-lg">
                   Eficiencia Energética
                 </h3>
                 <div className="space-y-4">
-                  <div className="bg-white/10 p-4 rounded-lg">
+                  <div className="bg-black/25 p-4 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-white/70">Consumo Promedio por Hora</span>
                       <span className="text-lg font-bold text-yellow-200">
                         {loadingPromedios ? '...' : `${turnoMetrics.energiaPorHora.toFixed(2)} kWh`}
                       </span>
                     </div>
-                    <div className="w-full bg-white/20 rounded-full h-2">
+                    <div className="w-full bg-black/35 rounded-full h-2">
                       <div 
                         className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${Math.min((turnoMetrics.energiaPorHora / 10) * 100, 100)}%` }}
@@ -1026,12 +1027,12 @@ function DashboardProduccionContent() {
                     </div>
                   </div>
                   
-                  <div className="bg-white/10 p-4 rounded-lg">
+                  <div className="bg-black/25 p-4 rounded-lg">
                     <div className="text-sm text-white/70 mb-2">Energía vs Biomasa</div>
                     <div className="text-lg font-bold text-white">
                       {loadingPromedios ? '...' : 
-                        turnoMetrics.biomasaTotalIngresada > 0 
-                          ? `${(turnoMetrics.energiaTotal / turnoMetrics.biomasaTotalIngresada * 1000).toFixed(2)} kWh/ton`
+                        viajesMetrics.pesoTotalFresco > 0 
+                          ? `${(turnoMetrics.energiaTotal / viajesMetrics.pesoTotalFresco * 1000).toFixed(2)} kWh/ton`
                           : '0 kWh/ton'
                       }
                     </div>
@@ -1040,19 +1041,19 @@ function DashboardProduccionContent() {
               </div>
 
               {/* Eficiencia de Biogas */}
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-                <h3 className="text-xl font-bold text-white mb-4 drop-shadow-lg">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30">
+                <h3 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4 drop-shadow-lg">
                   Consumo de Biogas
                 </h3>
                 <div className="space-y-4">
-                  <div className="bg-white/10 p-4 rounded-lg">
+                  <div className="bg-black/25 p-4 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-white/70">Consumo Promedio por Hora</span>
                       <span className="text-lg font-bold text-green-200">
                         {loadingPromedios ? '...' : `${turnoMetrics.biogasPorHora.toFixed(2)} m³`}
                       </span>
                     </div>
-                    <div className="w-full bg-white/20 rounded-full h-2">
+                    <div className="w-full bg-black/35 rounded-full h-2">
                       <div 
                         className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${Math.min((turnoMetrics.biogasPorHora / 100) * 100, 100)}%` }}
@@ -1060,12 +1061,12 @@ function DashboardProduccionContent() {
                     </div>
                   </div>
                   
-                  <div className="bg-white/10 p-4 rounded-lg">
+                  <div className="bg-black/25 p-4 rounded-lg">
                     <div className="text-sm text-white/70 mb-2">Biogas vs Biomasa</div>
                     <div className="text-lg font-bold text-white">
                       {loadingPromedios ? '...' : 
-                        turnoMetrics.biomasaTotalIngresada > 0 
-                          ? `${(turnoMetrics.biogasTotal / turnoMetrics.biomasaTotalIngresada * 1000).toFixed(2)} m³/ton`
+                        viajesMetrics.pesoTotalFresco > 0 
+                          ? `${(turnoMetrics.biogasTotal / viajesMetrics.pesoTotalFresco * 1000).toFixed(2)} m³/ton`
                           : '0 m³/ton'
                       }
                     </div>
@@ -1075,14 +1076,14 @@ function DashboardProduccionContent() {
             </div>
 
             {/* Monitoreo de Temperaturas */}
-            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Monitoreo de Temperaturas</h2>
+            <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 drop-shadow-lg">Monitoreo de Temperaturas</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="text-center bg-gradient-to-br from-red-500/20 to-red-600/10 p-4 rounded-lg border border-red-400/30">
                   <div className="text-3xl font-bold text-red-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-16 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-16 rounded"></span>
                     ) : (
                       tempMetrics.totalRegistros
                     )}
@@ -1093,7 +1094,7 @@ function DashboardProduccionContent() {
                 <div className="text-center bg-gradient-to-br from-orange-500/20 to-orange-600/10 p-4 rounded-lg border border-orange-400/30">
                   <div className="text-3xl font-bold text-orange-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-20 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
                         {tempMetrics.promedioGeneral.toFixed(0)}
@@ -1107,7 +1108,7 @@ function DashboardProduccionContent() {
                 <div className="text-center bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 p-4 rounded-lg border border-yellow-400/30">
                   <div className="text-3xl font-bold text-yellow-200 mb-2">
                     {loadingPromedios ? (
-                      <span className="inline-block animate-pulse bg-white/20 h-8 w-20 rounded"></span>
+                      <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
                         {tempMetrics.pesoTotalBiochar.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
@@ -1137,7 +1138,7 @@ function DashboardProduccionContent() {
             {/* Temperaturas por Zona */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
               {/* Reactores */}
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
                 <h3 className="text-xl font-bold text-white mb-4 drop-shadow-lg flex items-center">
                   <span className="mr-2">🔥</span> Reactores
                 </h3>
@@ -1145,12 +1146,12 @@ function DashboardProduccionContent() {
                   {['r1', 'r2', 'r3'].map((reactor, index) => {
                     const data = tempMetrics.temperaturas.reactor[reactor as keyof typeof tempMetrics.temperaturas.reactor];
                     return (
-                      <div key={reactor} className="bg-white/10 p-4 rounded-lg">
+                      <div key={reactor} className="bg-black/25 p-4 rounded-lg">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-sm font-semibold text-white">Reactor R{index + 1}</span>
                           <span className="text-lg font-bold text-red-200">{data.avg.toFixed(0)}°C</span>
                         </div>
-                        <div className="w-full bg-white/20 rounded-full h-2 mb-2">
+                        <div className="w-full bg-black/35 rounded-full h-2 mb-2">
                           <div 
                             className="bg-gradient-to-r from-red-400 to-red-600 h-2 rounded-full transition-all duration-500"
                             style={{ width: `${Math.min((data.avg / 800) * 100, 100)}%` }}
@@ -1167,7 +1168,7 @@ function DashboardProduccionContent() {
               </div>
 
               {/* Hornos */}
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
                 <h3 className="text-xl font-bold text-white mb-4 drop-shadow-lg flex items-center">
                   <span className="mr-2">🌡️</span> Hornos
                 </h3>
@@ -1176,12 +1177,12 @@ function DashboardProduccionContent() {
                     const data = tempMetrics.temperaturas.horno[horno as keyof typeof tempMetrics.temperaturas.horno];
                     const hornoNum = horno === 'h1' ? 1 : horno === 'h3' ? 3 : 4;
                     return (
-                      <div key={horno} className="bg-white/10 p-4 rounded-lg">
+                      <div key={horno} className="bg-black/25 p-4 rounded-lg">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-sm font-semibold text-white">Horno H{hornoNum}</span>
                           <span className="text-lg font-bold text-orange-200">{data.avg.toFixed(0)}°C</span>
                         </div>
-                        <div className="w-full bg-white/20 rounded-full h-2 mb-2">
+                        <div className="w-full bg-black/35 rounded-full h-2 mb-2">
                           <div 
                             className="bg-gradient-to-r from-orange-400 to-orange-600 h-2 rounded-full transition-all duration-500"
                             style={{ width: `${Math.min((data.avg / 800) * 100, 100)}%` }}
@@ -1198,17 +1199,17 @@ function DashboardProduccionContent() {
               </div>
 
               {/* Ducto */}
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
                 <h3 className="text-xl font-bold text-white mb-4 drop-shadow-lg flex items-center">
                   <span className="mr-2">💨</span> Ducto
                 </h3>
                 <div className="space-y-4">
-                  <div className="bg-white/10 p-4 rounded-lg">
+                  <div className="bg-black/25 p-4 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm font-semibold text-white">Ducto G9</span>
                       <span className="text-lg font-bold text-blue-200">{tempMetrics.temperaturas.ducto.g9.avg.toFixed(0)}°C</span>
                     </div>
-                    <div className="w-full bg-white/20 rounded-full h-2 mb-2">
+                    <div className="w-full bg-black/35 rounded-full h-2 mb-2">
                       <div 
                         className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${Math.min((tempMetrics.temperaturas.ducto.g9.avg / 400) * 100, 100)}%` }}
@@ -1221,7 +1222,7 @@ function DashboardProduccionContent() {
                   </div>
                   
                   {/* Información adicional */}
-                  <div className="bg-white/10 p-4 rounded-lg">
+                  <div className="bg-black/25 p-4 rounded-lg">
                     <div className="text-xs text-white/70 mb-2">Rango Óptimo</div>
                     <div className="text-sm text-white font-semibold">200°C - 300°C</div>
                     <div className="mt-2 text-xs text-white/60">
@@ -1236,7 +1237,7 @@ function DashboardProduccionContent() {
 
             {/* Flujo de Temperaturas (Últimos Registros) */}
             {tempMetrics.registrosParaGrafica.length > 0 && (
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
                 <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Flujo de Temperaturas - Últimos {tempMetrics.registrosParaGrafica.length} Registros</h2>
                 
                 {/* Gráfica profesional de líneas múltiples */}
@@ -1448,27 +1449,27 @@ function DashboardProduccionContent() {
                     
                     {/* Leyenda profesional */}
                     <div className="absolute bottom-0 left-16 right-8 flex flex-wrap justify-center gap-4 text-xs pt-4 border-t border-white/10">
-                      <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full">
+                      <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full">
                         <div className="w-8 h-0.5 bg-gradient-to-r from-red-500 to-red-600 rounded-full"></div>
                         <span className="text-white/90 font-medium">Reactor R1</span>
                       </div>
-                      <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full">
+                      <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full">
                         <div className="w-8 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full"></div>
                         <span className="text-white/90 font-medium">Reactor R2</span>
                       </div>
-                      <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full">
+                      <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full">
                         <div className="w-8 h-0.5 bg-gradient-to-r from-amber-500 to-amber-600 rounded-full"></div>
                         <span className="text-white/90 font-medium">Reactor R3</span>
                       </div>
-                      <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full">
+                      <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full">
                         <div className="w-8 h-0.5 bg-gradient-to-r from-green-500 to-green-600 rounded-full"></div>
                         <span className="text-white/90 font-medium">Horno H1</span>
                       </div>
-                      <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full">
+                      <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full">
                         <div className="w-8 h-0.5 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"></div>
                         <span className="text-white/90 font-medium">Horno H3</span>
                       </div>
-                      <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full">
+                      <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full">
                         <div className="w-8 h-0.5 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full"></div>
                         <span className="text-white/90 font-medium">Horno H4</span>
                       </div>
@@ -1496,7 +1497,7 @@ function DashboardProduccionContent() {
                       {tempMetrics.registrosParaGrafica.map((registro, index) => {
                         const fecha = registro.fields?.['Fecha Creacion'] ? new Date(registro.fields['Fecha Creacion']) : null;
                         return (
-                          <tr key={registro.id} className="border-b border-white/10 hover:bg-white/5">
+                          <tr key={registro.id} className="border-b border-white/10 hover:bg-black/20">
                             <td className="py-2 px-2 text-white/90 text-xs">
                               {fecha ? fecha.toLocaleString('es-CO', { 
                                 day: '2-digit', 
@@ -1523,10 +1524,10 @@ function DashboardProduccionContent() {
             )}
 
             {/* Análisis Comparativo de Zonas */}
-            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-              <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Análisis Comparativo por Zonas</h2>
+            <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4 drop-shadow-lg">Análisis Comparativo por Zonas</h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {/* Promedio Reactores */}
                 <div className="bg-gradient-to-br from-red-500/20 to-red-600/10 p-6 rounded-lg border border-red-400/30">
                   <h3 className="text-lg font-bold text-red-200 mb-4">Zona Reactores</h3>
@@ -1592,21 +1593,21 @@ function DashboardProduccionContent() {
             {/* SECCIÓN: VIAJES DE BIOMASA */}
             {/* ═══════════════════════════════════════════════════════════════════ */}
 
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-6 drop-shadow-lg flex items-center gap-3">
-                <span className="text-3xl">🚛</span>
+            <div className="mb-6 sm:mb-8">
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 drop-shadow-lg flex items-center gap-3">
+                <span className="text-2xl sm:text-3xl">🚛</span>
                 Logística de Biomasa - Viajes y Entregas
               </h2>
 
               {/* Indicador de carga o sin datos */}
               {loadingPromedios && viajesBiomasa.length === 0 && (
-                <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-12 border border-white/30 text-center mb-6">
-                  <div className="text-white/70 text-lg">⏳ Cargando datos de viajes...</div>
+                <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-8 sm:p-12 border border-white/30 text-center mb-4 sm:mb-6">
+                  <div className="text-white/70 text-base sm:text-lg">⏳ Cargando datos de viajes...</div>
                 </div>
               )}
 
               {!loadingPromedios && viajesBiomasa.length === 0 && (
-                <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-12 border border-white/30 text-center mb-6">
+                <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-8 sm:p-12 border border-white/30 text-center mb-4 sm:mb-6">
                   <div className="text-white/70 text-lg mb-2">📭 No hay viajes registrados</div>
                   <div className="text-white/50 text-sm">Los datos aparecerán aquí cuando se registren viajes de biomasa</div>
                 </div>
@@ -1615,8 +1616,8 @@ function DashboardProduccionContent() {
               {/* Métricas Principales de Viajes */}
               {viajesBiomasa.length > 0 && (
               <>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 backdrop-blur-md rounded-lg shadow-lg p-6 border border-green-400/30">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-4 sm:mb-6">
+                <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-green-400/30">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-green-200 text-sm font-medium">Total Viajes</p>
@@ -1627,7 +1628,7 @@ function DashboardProduccionContent() {
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 backdrop-blur-md rounded-lg shadow-lg p-6 border border-amber-400/30">
+                <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-amber-400/30">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-amber-200 text-sm font-medium">Biomasa Total</p>
@@ -1640,7 +1641,7 @@ function DashboardProduccionContent() {
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 backdrop-blur-md rounded-lg shadow-lg p-6 border border-blue-400/30">
+                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-blue-400/30">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-blue-200 text-sm font-medium">Peso Promedio</p>
@@ -1653,7 +1654,7 @@ function DashboardProduccionContent() {
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 backdrop-blur-md rounded-lg shadow-lg p-6 border border-cyan-400/30">
+                <div className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-cyan-400/30">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-cyan-200 text-sm font-medium">Humedad Promedio</p>
@@ -1668,22 +1669,22 @@ function DashboardProduccionContent() {
               </div>
 
               {/* Distribución por Tipo de Biomasa y Vehículos */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
                 {/* Por Tipo de Biomasa */}
-                <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
                     <span className="text-xl">🌾</span>
                     Distribución por Tipo de Biomasa
                   </h3>
                   <div className="space-y-3">
                     {Object.entries(viajesMetrics.porTipoBiomasa).map(([tipo, data]: [string, any]) => (
-                      <div key={tipo} className="bg-white/10 rounded-lg p-4">
+                      <div key={tipo} className="bg-black/25 rounded-lg p-4">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-white/90 font-medium text-sm">{tipo}</span>
                           <span className="text-white/70 text-xs">{data.viajes} viajes</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-white/10 rounded-full h-2">
+                          <div className="flex-1 bg-black/25 rounded-full h-2">
                             <div 
                               className="bg-gradient-to-r from-green-400 to-green-500 h-2 rounded-full transition-all duration-500"
                               style={{ width: `${(data.peso / viajesMetrics.pesoTotalFresco) * 100}%` }}
@@ -1699,20 +1700,20 @@ function DashboardProduccionContent() {
                 </div>
 
                 {/* Por Tipo de Vehículo */}
-                <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
                     <span className="text-xl">🚜</span>
                     Distribución por Tipo de Vehículo
                   </h3>
                   <div className="space-y-3">
                     {Object.entries(viajesMetrics.porVehiculo).map(([vehiculo, data]: [string, any]) => (
-                      <div key={vehiculo} className="bg-white/10 rounded-lg p-4">
+                      <div key={vehiculo} className="bg-black/25 rounded-lg p-4">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-white/90 font-medium text-sm">{vehiculo}</span>
                           <span className="text-white/70 text-xs">{data.viajes} viajes</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-white/10 rounded-full h-2">
+                          <div className="flex-1 bg-black/25 rounded-full h-2">
                             <div 
                               className="bg-gradient-to-r from-blue-400 to-blue-500 h-2 rounded-full transition-all duration-500"
                               style={{ width: `${(data.viajes / viajesMetrics.totalViajes) * 100}%` }}
@@ -1729,12 +1730,12 @@ function DashboardProduccionContent() {
               </div>
 
               {/* Rendimiento por Operador */}
-              <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30 mb-4 sm:mb-6">
+                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
                   <span className="text-xl">👷</span>
                   Rendimiento por Operador
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {Object.entries(viajesMetrics.porOperador)
                     .sort(([, a]: [string, any], [, b]: [string, any]) => b.viajes - a.viajes)
                     .slice(0, 6)
@@ -1760,13 +1761,13 @@ function DashboardProduccionContent() {
 
               {/* Viajes Recientes */}
               {viajesMetrics.viajesRecientes.length > 0 && (
-                <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <div className="bg-black/35 backdrop-blur-md rounded-lg shadow-lg p-4 sm:p-6 border border-white/30">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
                     <span className="text-xl">📋</span>
                     Últimos {viajesMetrics.viajesRecientes.length} Viajes Registrados
                   </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full text-xs sm:text-sm min-w-[640px]">
                       <thead>
                         <tr className="border-b border-white/20">
                           <th className="text-left text-white/80 pb-3 px-3">Fecha</th>
@@ -1784,7 +1785,7 @@ function DashboardProduccionContent() {
                           const humedad = viaje.fields?.['Porcentaje Humedad (from Monitoreo Viajes Biomasa)'];
                           
                           return (
-                            <tr key={viaje.id} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                            <tr key={viaje.id} className="border-b border-white/10 hover:bg-black/20 transition-colors">
                               <td className="py-3 px-3 text-white/90 text-xs">
                                 {fecha.toLocaleString('es-MX', { 
                                   day: '2-digit',
