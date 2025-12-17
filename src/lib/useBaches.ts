@@ -5,23 +5,37 @@ import { useState, useEffect } from 'react';
 interface BacheRecord {
   id: string;
   fields: {
-    // Campos reales de Airtable según documentación
-    'ID'?: string;
-    'Auto Number'?: number;
-    'Fecha Creacion'?: string;
-    'Recuento Lonas'?: number;
+    // Campos según documentación completa de Airtable Baches Pirolisis Table
+    'ID'?: string; // Formula
+    'Auto Number'?: number; // Auto Number
+    'Codigo Bache'?: string; // Formula
+    'Fecha Creacion'?: string; // Created time
+    'Recuento Lonas'?: number; // Count
+    'Total Biochar Bache Referencia (KG)'?: number; // Formula
+    'Total Biochar Humedo Bache (KG)'?: number; // Number
+    'Masa Seca (DM kg) (from Monitoreo Baches)'?: number[]; // Lookup
+    'Total Cantidad Actual Biochar Seco'?: number; // Formula
+    'Total Cantidad Biochar Seco Salio (KG)'?: number; // Formula
+    'Cantidad Biochar Seco Salio (KG) (from Salida Baches Pirolisis)'?: number[]; // Lookup
+    'Comprobante Peso Bache'?: any[]; // Attachment
+    'Tipo Vehiculo'?: string; // Text
+    'Referencia Vehiculo'?: string; // Text
+    'Distancia Planta Bodega'?: string; // Text
+    'Tipo Combustible'?: string; // Text
+    'Funcion Vehiculo'?: string; // Text
+    'Distancia Metros'?: number; // Number
+    'Diesel Consumido Transporte'?: number; // Number
+    'Estado Bache'?: string; // Single select
+    'Monitoreado'?: string; // Formula
+    'Balances Masa'?: string[]; // Link to another record
+    'Monitoreo Baches'?: string[]; // Link to another record
+    'Remisiones Baches Pirolisis'?: string[]; // Link to another record
+    'Detalle Cantidades Bache Pirolisis'?: string[]; // Link to another record
+    
+    // Campos alternativos por compatibilidad
     'Total Biochar Bache (WM)(KG)'?: number;
     'Cantidad Biochar Vendido'?: number;
     'Cantidad Biochar Blend'?: number;
-    'Total Biochar Humedo Bache (KG)'?: number;
-    'Total Cantidad Actual Biochar Seco'?: number;
-    'Masa Seca (DM kg) (from Monitoreo Baches)'?: number[];
-    'Codigo Bache'?: string;
-    'Estado Bache'?: string;
-    'Monitoreado'?: string;
-    'Balances Masa'?: string[];
-    'Monitoreo Baches'?: string[];
-    // Campos alternativos por si cambian
     'ID Bache'?: string;
     'Estado'?: string;
     'Total KG'?: number;
@@ -29,7 +43,8 @@ interface BacheRecord {
     'Lonas Usadas'?: number;
     'Fecha'?: string;
     'Creado'?: string;
-    // Campos adicionales que podrían existir
+    
+    // Índice para campos adicionales
     [key: string]: any;
   };
   createdTime: string;

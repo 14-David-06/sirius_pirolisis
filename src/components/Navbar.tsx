@@ -113,37 +113,37 @@ export default function Navbar() {
   const menuCategories = getMenuCategories();
 
   return (
-    <header className="w-full px-6 py-4 relative z-30 bg-transparent backdrop-blur-sm">
-      <nav className="max-w-7xl mx-auto flex justify-between items-center">
-        <div className="px-10">
-          <Link href="/" className="flex items-center space-x-2">
-            <Image
-              src="/logo.png"
-              alt="Sirius Logo"
-              width={180}
-              height={200}
-              priority
-              className="transition-transform duration-300 hover:scale-105 cursor-pointer"
-            />
-          </Link>
-        </div>
+    <>
+      {/* Navbar para Desktop - Oculto en móviles */}
+      <header className="w-full px-6 py-4 relative z-30 bg-transparent backdrop-blur-sm hidden lg:block">
+        <nav className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="px-10">
+            <Link href="/" className="flex items-center space-x-2">
+              <Image
+                src="/logo.png"
+                alt="Sirius Logo"
+                width={180}
+                height={200}
+                priority
+                className="transition-transform duration-300 hover:scale-105 cursor-pointer"
+              />
+            </Link>
+          </div>
         
         {!isLoggedIn ? (
           // Mostrar opciones públicas si no está logueado
           <div className="flex items-center space-x-4">
             {/* Dashboard Producción - Acceso público */}
             <Link href="/dashboard-produccion">
-              <button className="bg-gradient-to-r from-blue-600 to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-blue-600/30 active:scale-95 flex items-center space-x-2">
-                <span>📊</span>
-                <span>Dashboard</span>
+              <button className="bg-slate-600 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:bg-slate-700 border border-slate-500/30">
+                Dashboard
               </button>
             </Link>
             
             {/* Botón de login */}
             <Link href="/login">
-              <button className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white px-8 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-[#5A7836]/30 active:scale-95 flex items-center space-x-2">
-                <span>🔐</span>
-                <span>Acceder</span>
+              <button className="bg-[#5A7836] text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 hover:bg-[#4a6429] border border-[#4a6429]/30">
+                Acceder
               </button>
             </Link>
           </div>
@@ -196,9 +196,8 @@ export default function Navbar() {
               
               {/* Dashboard Producción - Botón independiente */}
               <Link href="/dashboard-produccion">
-                <button className="group relative bg-gradient-to-r from-blue-600 to-purple-700 text-white hover:from-blue-700 hover:to-purple-800 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-md hover:shadow-lg hover:shadow-blue-600/30">
-                  <span className="text-lg">📊</span>
-                  <span>Dashboard Producción</span>
+                <button className="bg-slate-600 text-white hover:bg-slate-700 px-6 py-3 rounded-lg text-sm font-medium transition-all duration-200 border border-slate-500/30">
+                  Dashboard Producción
                 </button>
               </Link>
               
@@ -221,114 +220,161 @@ export default function Navbar() {
               </button>
             </div>
 
-            {/* Menú hamburguesa para pantallas pequeñas */}
-            <div className="lg:hidden relative">
+
+          </div>
+        )}
+        </nav>
+      </header>
+
+      {/* Sistema móvil completamente independiente */}
+      <div className="lg:hidden">
+        {/* Botón flotante para abrir menú - Solo visible si está logueado */}
+        {isLoggedIn && (
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="fixed top-4 right-4 z-40 bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white p-4 rounded-full shadow-2xl hover:from-[#4a6429] hover:to-[#3d5422] transition-all duration-300 hover:scale-110"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        )}
+
+        {/* Logo flotante para móviles */}
+        <div className="fixed top-4 left-4 z-40">
+          <Link href="/" className="block">
+            <Image
+              src="/logo.png"
+              alt="Sirius Logo"
+              width={120}
+              height={40}
+              priority
+              className="transition-transform duration-300 hover:scale-105"
+            />
+          </Link>
+        </div>
+
+        {/* Botón de acceso para usuarios no logueados */}
+        {!isLoggedIn && (
+          <div className="fixed top-4 right-4 z-40 flex space-x-2">
+            <Link href="/dashboard-produccion">
+              <button className="bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:bg-slate-700 text-sm">
+                Dashboard
+              </button>
+            </Link>
+            <Link href="/login">
+              <button className="bg-[#5A7836] text-white px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:bg-[#4a6429] text-sm">
+                Acceder
+              </button>
+            </Link>
+          </div>
+        )}
+
+        {/* Menú de pantalla completa para móviles */}
+        {isMenuOpen && isLoggedIn && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl overflow-y-auto">
+            {/* Header del menú móvil */}
+            <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5">
+              <div className="flex items-center space-x-3">
+                <Image
+                  src="/logo.png"
+                  alt="Sirius Logo"
+                  width={100}
+                  height={35}
+                  priority
+                  className=""
+                />
+              </div>
               <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white p-3 rounded-xl hover:from-[#4a6429] hover:to-[#3d5422] transition-all duration-200 shadow-lg"
+                onClick={() => setIsMenuOpen(false)}
+                className="text-white p-2 hover:bg-white/20 rounded-xl transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
 
-              {/* Menú desplegable móvil */}
-              {isMenuOpen && (
-                <div className="fixed inset-0 z-50 lg:hidden">
-                  {/* Overlay para cerrar el menú */}
-                  <div 
-                    className="fixed inset-0 bg-black/50"
-                    onClick={() => setIsMenuOpen(false)}
-                  ></div>
-                  
-                  {/* Panel del menú */}
-                  <div className="fixed top-0 right-0 h-full w-full max-w-xs bg-white shadow-2xl overflow-y-auto">
-                    
-                    {/* Header del menú */}
-                    <div className="bg-gradient-to-r from-[#5A7836] to-[#4a6429] px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xl">🔧</span>
-                        <h2 className="text-white font-bold text-base">Panel</h2>
-                      </div>
-                      <button
-                        onClick={() => setIsMenuOpen(false)}
-                        className="text-white p-1 hover:bg-white/20 rounded"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    {/* Contenido del menú */}
-                    <div className="p-3 space-y-1">
-                      
-                      {/* Dashboard Producción - Destacado */}
-                      <Link
-                        href="/dashboard-produccion"
-                        className="flex items-center p-3 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-lg mb-3"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        <span className="text-xl mr-3">📊</span>
-                        <div className="flex-1 text-left">
-                          <div className="font-semibold text-sm">Dashboard</div>
-                          <div className="text-xs text-blue-100">Producción</div>
-                        </div>
-                      </Link>
-
-                      {/* Categorías del menú */}
-                      {menuCategories.map((category) => (
-                        <div key={category.title} className="mb-4">
-                          {/* Título de la categoría */}
-                          <div className="flex items-center mb-2 px-1">
-                            <span className="text-sm mr-2">{category.icon}</span>
-                            <h3 className="text-[#5A7836] font-semibold text-xs uppercase">{category.title}</h3>
-                          </div>
-                          
-                          {/* Items de la categoría */}
-                          <div className="space-y-1 ml-2">
-                            {category.items.map((item) => (
-                              <Link
-                                key={item.href}
-                                href={item.href}
-                                className="flex items-center p-2 text-gray-700 hover:bg-[#5A7836] hover:text-white rounded-md transition-all duration-200"
-                                onClick={() => setIsMenuOpen(false)}
-                              >
-                                <span className="text-sm mr-2">{item.icon}</span>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-medium truncate">{item.label.replace(/^.+?\s/, '')}</div>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Footer del menú */}
-                    <div className="border-t border-gray-200 p-3 sticky bottom-0 bg-white">
-                      <button
-                        onClick={handleLogout}
-                        className={`w-full flex items-center justify-center p-3 transition-all duration-200 font-semibold rounded-lg text-sm ${
-                          activeTurno 
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                            : 'bg-red-50 text-red-600 hover:bg-red-100'
-                        }`}
-                        disabled={!!activeTurno}
-                        title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
-                      >
-                        <span className="text-sm mr-2">🚪</span>
-                        <span>Cerrar Sesión</span>
-                        {activeTurno && <span className="ml-2 text-xs">⚠️</span>}
-                      </button>
-                    </div>
+            {/* Contenido del menú móvil */}
+            <div className="px-6 py-8 space-y-8">
+              
+              {/* Dashboard destacado */}
+              <Link
+                href="/dashboard-produccion"
+                className="block bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-all duration-300 transform hover:scale-105 border border-white/10"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="bg-white/10 p-3 rounded-xl border border-white/10">
+                    <span className="text-2xl">📊</span>
+                  </div>
+                  <div className="text-white">
+                    <h3 className="text-xl font-bold">Dashboard de Producción</h3>
+                    <p className="text-white/80 text-sm">Métricas y monitoreo en tiempo real</p>
                   </div>
                 </div>
-              )}
+              </Link>
+
+              {/* Categorías del menú */}
+              {menuCategories.map((category, categoryIndex) => (
+                <div key={category.title} className="space-y-4">
+                  {/* Título de la categoría */}
+                  <div className="flex items-center space-x-3">
+                    <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                      <span className="text-lg">{category.icon}</span>
+                    </div>
+                    <h3 className="text-white font-bold text-lg">{category.title}</h3>
+                  </div>
+                  
+                  {/* Grid de items */}
+                  <div className="grid grid-cols-1 gap-3">
+                    {category.items.map((item, itemIndex) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="block bg-white/5 backdrop-blur-sm rounded-xl p-4 hover:bg-white/15 transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/10"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <span className="text-xl">{item.icon}</span>
+                          <div className="flex-1">
+                            <div className="text-white font-semibold">{item.label.replace(/^.+?\s/, '')}</div>
+                            <div className="text-white/70 text-xs">{item.description}</div>
+                          </div>
+                          <svg className="w-5 h-5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer del menú móvil */}
+            <div className="p-6 border-t border-white/10 mt-8 bg-white/5">
+              <button
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  handleLogout();
+                }}
+                className={`w-full flex items-center justify-center p-4 rounded-xl transition-all duration-300 font-semibold ${
+                  activeTurno 
+                    ? 'bg-white/10 text-white/50 cursor-not-allowed' 
+                    : 'bg-red-500/80 text-white hover:bg-red-500 active:scale-95'
+                }`}
+                disabled={!!activeTurno}
+                title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
+              >
+                <span className="text-xl mr-3">🚪</span>
+                <span>Cerrar Sesión</span>
+                {activeTurno && <span className="ml-2">⚠️</span>}
+              </button>
             </div>
           </div>
         )}
-      </nav>
-    </header>
+      </div>
+    </>
   );
 }
