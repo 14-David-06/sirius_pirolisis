@@ -980,7 +980,7 @@ function SistemaBachesContent() {
                     {calculateProgress(latestBache).progressPercentage.toFixed(1)}% completado
                   </div>
                   <div className="text-center mt-4">
-                    <div className="text-sm drop-shadow">Total Biochar</div>
+                    <div className="text-sm drop-shadow">Total Biochar Referencia</div>
                     <div className="font-bold">{getTotalBiochar(latestBache)} kg</div>
                   </div>
                   <div className="text-xs text-white/70 mt-2 drop-shadow">

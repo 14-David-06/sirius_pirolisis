@@ -148,7 +148,7 @@ export function useBaches() {
   // Función para obtener el total de biochar
   const getTotalBiochar = (bache: BacheRecord) => {
     const value = getNumericValue(bache, [
-      'Total Biochar Bache (WM)(KG)', // Campo calculado principal: 25 * Recuento Lonas
+      'Total Biochar Bache Referencia (KG)', // Campo calculado principal: 25 * Recuento Lonas
       'Total Biochar Humedo Bache (KG)', // Campo alternativo
       'Total KG',
       'Total',
@@ -162,7 +162,7 @@ export function useBaches() {
     if (value === 0) {
       console.log('Campos disponibles para biochar total en bache', getBacheId(bache), ':', Object.keys(bache.fields));
       console.log('Valores de campos relacionados:', {
-        'Total Biochar Bache (WM)(KG)': bache.fields['Total Biochar Bache (WM)(KG)'],
+        'Total Biochar Bache Referencia (KG)': bache.fields['Total Biochar Bache Referencia (KG)'],
         'Total Biochar Humedo Bache (KG)': bache.fields['Total Biochar Humedo Bache (KG)'],
         'Cantidad Biochar Vendido': bache.fields['Cantidad Biochar Vendido']
       });

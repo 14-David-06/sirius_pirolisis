@@ -51,7 +51,7 @@ export default function BachePage() {
   };
 
   const getTotalBiochar = (bache: BacheData) => {
-    return bache.fields['Total Biochar Bache (WM)(KG)'] || 
+    return bache.fields['Total Biochar Bache Referencia (KG)'] || 
            bache.fields['Total Biochar Humedo Bache (KG)'] || 
            bache.fields['Total KG'] || 0;
   };
