@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface MenuItem {
   label: string;
@@ -22,6 +22,7 @@ export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeTurno, setActiveTurno] = useState<any>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Verificar si hay una sesión activa
@@ -61,12 +62,29 @@ export default function Navbar() {
 
   // Función para manejar hover en menús desplegables
   const handleMouseEnter = (category: string) => {
+    // Cancelar cualquier timeout de cierre pendiente
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
     setOpenDropdown(category);
   };
 
   const handleMouseLeave = () => {
-    setOpenDropdown(null);
+    // Agregar un delay de 300ms antes de cerrar el menú
+    closeTimeoutRef.current = setTimeout(() => {
+      setOpenDropdown(null);
+    }, 300);
   };
+
+  // Limpiar el timeout cuando el componente se desmonte
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Determinar qué opciones mostrar basado en el estado del turno
   const getMenuCategories = (): MenuCategory[] => {

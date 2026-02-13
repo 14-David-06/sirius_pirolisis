@@ -113,6 +113,16 @@ function SistemaBachesContent() {
     observaciones: ''
   });
 
+  // State for certificados modal
+  const [showCertificadoModal, setShowCertificadoModal] = useState(false);
+  const [certificadoForm, setCertificadoForm] = useState({
+    tipoCertificado: '',
+    fechaInicio: '',
+    fechaFin: '',
+    documento: null as File | null
+  });
+  const [isSubmittingCertificado, setIsSubmittingCertificado] = useState(false);
+
   // Filtered baches based on search and filters
   const filteredBaches = useMemo(() => {
     if (!data?.records) return [];
@@ -229,6 +239,84 @@ function SistemaBachesContent() {
   const closeDetallesModal = () => {
     setShowDetallesModal(false);
     setSelectedBacheDetalles(null);
+  };
+
+  // Handle certificados modal
+  const openCertificadoModal = () => {
+    setShowCertificadoModal(true);
+  };
+
+  const closeCertificadoModal = () => {
+    setShowCertificadoModal(false);
+    setCertificadoForm({
+      tipoCertificado: '',
+      fechaInicio: '',
+      fechaFin: '',
+      documento: null
+    });
+  };
+
+  const handleCertificadoInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setCertificadoForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleCertificadoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setCertificadoForm(prev => ({
+        ...prev,
+        documento: e.target.files![0]
+      }));
+    }
+  };
+
+  const submitCertificado = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingCertificado(true);
+
+    try {
+      if (!certificadoForm.tipoCertificado || !certificadoForm.fechaInicio || !certificadoForm.fechaFin || !certificadoForm.documento) {
+        alert('❌ Todos los campos son obligatorios');
+        setIsSubmittingCertificado(false);
+        return;
+      }
+
+      // Validar que la fecha de fin sea posterior a la fecha de inicio
+      if (new Date(certificadoForm.fechaFin) <= new Date(certificadoForm.fechaInicio)) {
+        alert('❌ La fecha de fin debe ser posterior a la fecha de inicio');
+        setIsSubmittingCertificado(false);
+        return;
+      }
+
+      // Preparar FormData para enviar el archivo
+      const formData = new FormData();
+      formData.append('tipoCertificado', certificadoForm.tipoCertificado);
+      formData.append('fechaInicio', certificadoForm.fechaInicio);
+      formData.append('fechaFin', certificadoForm.fechaFin);
+      formData.append('documento', certificadoForm.documento);
+
+      const response = await fetch('/api/certificados/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al cargar el certificado');
+      }
+
+      alert('✅ Certificado cargado exitosamente');
+      closeCertificadoModal();
+      
+    } catch (error: any) {
+      console.error('Error al cargar certificado:', error);
+      alert(`❌ Error: ${error.message}`);
+    } finally {
+      setIsSubmittingCertificado(false);
+    }
   };
 
   // Función para calcular masa seca automáticamente
@@ -1072,11 +1160,20 @@ function SistemaBachesContent() {
             {/* Controles de QR y Laboratorios */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                <Link href="/laboratorios">
-                  <button className="bg-[#5A7836]/80 hover:bg-[#5A7836] text-white px-6 py-2 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg">
-                    🧪 Ver Laboratorios
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/laboratorios">
+                    <button className="bg-[#5A7836]/80 hover:bg-[#5A7836] text-white px-6 py-2 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg">
+                      🧪 Ver Laboratorios
+                    </button>
+                  </Link>
+                  
+                  <button 
+                    onClick={() => setShowCertificadoModal(true)}
+                    className="bg-purple-600/80 hover:bg-purple-600 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg"
+                  >
+                    📄 Cargar Certificados
                   </button>
-                </Link>
+                </div>
                 
                 <div className="flex items-center gap-3">
                   <button
@@ -2281,6 +2378,111 @@ function SistemaBachesContent() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Cargar Certificados */}
+        {showCertificadoModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 max-w-md w-full">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">📄 Cargar Certificado</h2>
+                <button
+                  onClick={closeCertificadoModal}
+                  className="text-white/70 hover:text-white text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={submitCertificado} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Tipo de Certificado *
+                  </label>
+                  <select
+                    name="tipoCertificado"
+                    value={certificadoForm.tipoCertificado}
+                    onChange={handleCertificadoInputChange}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                    required
+                  >
+                    <option value="">Seleccionar tipo de certificado</option>
+                    <option value="Ambiental">Ambiental</option>
+                    <option value="Calidad">Calidad</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Fecha de Inicio *
+                  </label>
+                  <input
+                    type="date"
+                    name="fechaInicio"
+                    value={certificadoForm.fechaInicio}
+                    onChange={handleCertificadoInputChange}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Fecha de Fin *
+                  </label>
+                  <input
+                    type="date"
+                    name="fechaFin"
+                    value={certificadoForm.fechaFin}
+                    onChange={handleCertificadoInputChange}
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all duration-200 text-gray-800"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2 drop-shadow">
+                    Documento Adjunto *
+                  </label>
+                  <input
+                    type="file"
+                    onChange={handleCertificadoFileChange}
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    className="w-full px-4 py-3 bg-white/90 border border-white/30 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all duration-200 text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700"
+                    required
+                  />
+                  <p className="text-xs text-white/70 mt-1 drop-shadow">
+                    Formatos permitidos: PDF, JPG, PNG, DOC, DOCX
+                  </p>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeCertificadoModal}
+                    disabled={isSubmittingCertificado}
+                    className="flex-1 bg-white/20 hover:bg-white/30 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingCertificado}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  >
+                    {isSubmittingCertificado ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        Cargando...
+                      </div>
+                    ) : (
+                      '📄 Cargar Certificado'
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
