@@ -14,6 +14,21 @@ interface TurnoFormData {
   consumoGasInicial: string;
 }
 
+interface UltimoTurnoCerrado {
+  id: string;
+  operador: string;
+  fechaInicio: string;
+  fechaFin: string;
+  alimentacionBiomasa: number;
+  herztTolva2: number;
+  consumoAguaInicio: number;
+  consumoEnergiaInicio: number;
+  consumoGasInicial: number;
+  consumoAguaFin: number;
+  consumoEnergiaFin: number;
+  consumoGasFinal: number;
+}
+
 export default function AbrirTurno() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -21,6 +36,7 @@ export default function AbrirTurno() {
   const [hasActiveTurno, setHasActiveTurno] = useState(false);
   const [otherUserTurno, setOtherUserTurno] = useState<any>(null);
   const [isCheckingTurnos, setIsCheckingTurnos] = useState(true);
+  const [ultimoTurnoCerrado, setUltimoTurnoCerrado] = useState<UltimoTurnoCerrado | null>(null);
   const router = useRouter();
 
   const [formData, setFormData] = useState<TurnoFormData>({
@@ -80,6 +96,17 @@ export default function AbrirTurno() {
               operador: userData.user?.Nombre || ''
             }));
             setIsAuthenticated(true);
+            
+            // Cargar el último turno cerrado
+            try {
+              const lastClosedResponse = await fetch('/api/turno/last-closed');
+              const lastClosedResult = await lastClosedResponse.json();
+              if (lastClosedResponse.ok && lastClosedResult.found) {
+                setUltimoTurnoCerrado(lastClosedResult.turno);
+              }
+            } catch (err) {
+              console.error('Error al cargar último turno cerrado:', err);
+            }
           }
         } else {
           console.error('Error al verificar turnos:', result.error);
@@ -332,6 +359,63 @@ export default function AbrirTurno() {
                   : 'bg-red-500/80 text-white border border-red-400/50 shadow-lg'
               }`}>
                 {mensaje}
+              </div>
+            )}
+
+            {/* Datos del Último Turno Cerrado */}
+            {ultimoTurnoCerrado && (
+              <div className="bg-blue-500/20 backdrop-blur-sm p-6 rounded-lg border border-blue-400/30 mb-6">
+                <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
+                  📋 Último Turno Cerrado (Referencia)
+                </h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="bg-white/10 rounded-lg p-3">
+                    <p className="text-white/70 text-sm">Operador</p>
+                    <p className="text-white font-semibold">{ultimoTurnoCerrado.operador}</p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-3">
+                    <p className="text-white/70 text-sm">Fecha de Cierre</p>
+                    <p className="text-white font-semibold">
+                      {new Date(ultimoTurnoCerrado.fechaFin).toLocaleString('es-CO')}
+                    </p>
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-medium text-white mb-3 drop-shadow">
+                  📊 Lecturas de Cierre del Turno Anterior
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+                    <p className="text-white/70 text-sm flex items-center">
+                      💧 Consumo Agua Final
+                    </p>
+                    <p className="text-white font-bold text-lg">
+                      {ultimoTurnoCerrado.consumoAguaFin ?? 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+                    <p className="text-white/70 text-sm flex items-center">
+                      ⚡ Consumo Energía Final
+                    </p>
+                    <p className="text-white font-bold text-lg">
+                      {ultimoTurnoCerrado.consumoEnergiaFin ?? 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+                    <p className="text-white/70 text-sm flex items-center">
+                      🔥 Consumo Gas Final
+                    </p>
+                    <p className="text-white font-bold text-lg">
+                      {ultimoTurnoCerrado.consumoGasFinal ?? 'N/A'}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-white/60 text-sm mt-4 text-center italic">
+                  Usa estos valores como referencia para ingresar los datos iniciales de tu turno
+                </p>
               </div>
             )}
 
