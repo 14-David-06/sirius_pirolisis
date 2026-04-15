@@ -62,14 +62,15 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
     const turnos = await this.fetchAllRecords(
       TURNO_PIROLISIS_TABLE,
       turnoFilter,
-      ['Fecha Inicio Turno', 'Total Energia Consumida', 'Total Biogas Consumido', 'Balances Masa', 'Manejo Residuos']
+      ['Fecha Inicio Turno', 'Total Energia Consumida', 'Total Biogas Consumido', 'Balances Masa', 'Manejo Residuos', 'Cálculo']
     );
 
     const turnos_analizados = turnos.length;
 
-    // 2. Sumar kWh y m³ biogás
+    // 2. Sumar kWh y m³ biogás, y horas (solo de turnos con Balances Masa)
     let kwh_total = 0;
     let m3_biogas_total = 0;
+    let horas_producidas = 0;
     const balanceMasaIds: Set<string> = new Set();
     const manejoResiduosIds: Set<string> = new Set();
 
@@ -77,13 +78,19 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       const fields = turno.fields || {};
       const energia = parseFloat(fields['Total Energia Consumida']) || 0;
       const biogas = parseFloat(fields['Total Biogas Consumido']) || 0;
-      // Only count positive values (negative means fin < inicio, bad data)
-      kwh_total += Math.abs(energia);
-      m3_biogas_total += Math.abs(biogas);
+      // Skip negative values (bad data: fin < inicio)
+      if (energia > 0) kwh_total += energia;
+      if (biogas > 0) m3_biogas_total += biogas;
 
       // Collect linked record IDs
       const balances = fields['Balances Masa'] || [];
       balances.forEach((id: string) => balanceMasaIds.add(id));
+
+      // Only count hours from turnos that have Balances Masa linked
+      if (balances.length > 0) {
+        const horas = parseFloat(fields['Cálculo']) || 0;
+        if (horas > 0) horas_producidas += horas;
+      }
 
       const residuos = fields['Manejo Residuos'] || [];
       residuos.forEach((id: string) => manejoResiduosIds.add(id));
@@ -118,8 +125,11 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       total_big_bags = bacheIds.size;
     }
 
-    // 5. Sum residuos kg from Manejo Residuos
-    let total_residuos_kg = 0;
+    // 5. Sum residuos kg from Manejo Residuos, grouped by Categoría Residuo
+    let residuos_lubricants_kg = 0;
+    let residuos_used_oil_kg = 0;
+    let residuos_paint_cans_kg = 0;
+    let residuos_ppe_kg = 0;
     if (manejoResiduosIds.size > 0) {
       const residuoIdsArray = Array.from(manejoResiduosIds);
 
@@ -131,22 +141,44 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
         const residuoRecords = await this.fetchAllRecords(
           MANEJO_RESIDUOS_TABLE,
           filter,
-          ['Cantidad Residuo KG']
+          ['Cantidad Residuo KG', 'Categor\u00eda Residuo']
         );
 
         for (const rec of residuoRecords) {
-          total_residuos_kg += parseFloat(rec.fields?.['Cantidad Residuo KG']) || 0;
+          const kg = parseFloat(rec.fields?.['Cantidad Residuo KG']) || 0;
+          const categoria = rec.fields?.['Categor\u00eda Residuo'] || '';
+          switch (categoria) {
+            case 'Lubricants for Pyrolisis':
+              residuos_lubricants_kg += kg;
+              break;
+            case 'Waste from Production Facility - Used Oil Waste':
+              residuos_used_oil_kg += kg;
+              break;
+            case 'Emissions from Paint Cans':
+              residuos_paint_cans_kg += kg;
+              break;
+            case 'Protection Equipment Waste (PPE)':
+              residuos_ppe_kg += kg;
+              break;
+            default:
+              // Uncategorized residuos are ignored
+              break;
+          }
         }
       }
     }
 
     return {
       turnos_analizados,
+      horas_producidas,
       kwh_total,
       m3_biogas_total,
       total_big_bags,
       total_lonas,
-      total_residuos_kg,
+      residuos_lubricants_kg,
+      residuos_used_oil_kg,
+      residuos_paint_cans_kg,
+      residuos_ppe_kg,
     };
   }
 
@@ -156,18 +188,32 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       'fecha_fin_periodo': resultado.fecha_fin_periodo,
       'turno_id': resultado.turno_id || '',
       'turnos_analizados': resultado.turnos_analizados,
+      'horas_producidas': resultado.horas_producidas,
       'kwh_total': resultado.kwh_total,
       'm3_biogas_total': resultado.m3_biogas_total,
       'total_big_bags': resultado.total_big_bags,
       'total_lonas': resultado.total_lonas,
-      'total_residuos_kg': resultado.total_residuos_kg,
+      'residuos_lubricants_kg': resultado.residuos_lubricants_kg,
+      'residuos_used_oil_kg': resultado.residuos_used_oil_kg,
+      'residuos_paint_cans_kg': resultado.residuos_paint_cans_kg,
+      'residuos_ppe_kg': resultado.residuos_ppe_kg,
       'emisiones_electricidad_kg': resultado.emisiones_electricidad_kg,
       'emisiones_co2_biogenico_kg': resultado.emisiones_co2_biogenico_kg,
       'emisiones_ch4_kg': resultado.emisiones_ch4_kg,
       'emisiones_n2o_kg': resultado.emisiones_n2o_kg,
       'emisiones_big_bags_kg': resultado.emisiones_big_bags_kg,
       'emisiones_lonas_kg': resultado.emisiones_lonas_kg,
-      'emisiones_residuos_kg': resultado.emisiones_residuos_kg,
+      'emisiones_residuos_lubricants_kg': resultado.emisiones_residuos_lubricants_kg,
+      'emisiones_residuos_used_oil_kg': resultado.emisiones_residuos_used_oil_kg,
+      'emisiones_residuos_paint_cans_kg': resultado.emisiones_residuos_paint_cans_kg,
+      'emisiones_residuos_ppe_kg': resultado.emisiones_residuos_ppe_kg,
+      'emisiones_residuos_total_kg': resultado.emisiones_residuos_total_kg,
+      'emisiones_chimenea_co_kg': resultado.emisiones_chimenea_co_kg,
+      'emisiones_chimenea_co2_kg': resultado.emisiones_chimenea_co2_kg,
+      'emisiones_chimenea_ch4_kg': resultado.emisiones_chimenea_ch4_kg,
+      'emisiones_chimenea_ch4_co2eq_kg': resultado.emisiones_chimenea_ch4_co2eq_kg,
+      'emisiones_chimenea_n2o_kg': resultado.emisiones_chimenea_n2o_kg,
+      'emisiones_chimenea_n2o_co2eq_kg': resultado.emisiones_chimenea_n2o_co2eq_kg,
       'emisiones_total_kg': resultado.emisiones_total_kg,
       'emisiones_total_ton': resultado.emisiones_total_ton,
       'constantes_usadas': JSON.stringify(resultado.constantes_usadas),
@@ -244,7 +290,7 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
         ? JSON.parse(fields['constantes_usadas'])
         : fields['constantes_usadas'] || {};
     } catch {
-      constantes = { fe_electricidad: 0, fe_co2_biogas: 0, fe_ch4_biogas: 0, fe_n2o_biogas: 0, fe_big_bag: 0, fe_lona: 0, fe_residuo_kg: 0 };
+      constantes = { fe_electricidad: 0, fe_co2_biogas: 0, fe_ch4_biogas: 0, fe_n2o_biogas: 0, fe_big_bag: 0, fe_lona: 0, fe_residuo_lubricants: 0, fe_residuo_used_oil: 0, fe_residuo_paint_cans: 0, fe_residuo_ppe: 0, chimenea_co_kg_hr: 0, chimenea_co2_kg_hr: 0, chimenea_ch4_kg_hr: 0, chimenea_n2o_kg_hr: 0, gwp_ch4: 0, gwp_n2o: 0 };
     }
 
     let factores_pendientes: string[];
@@ -262,18 +308,32 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       fecha_fin_periodo: fields['fecha_fin_periodo'] || '',
       turno_id: fields['turno_id'] || null,
       turnos_analizados: fields['turnos_analizados'] || 0,
+      horas_producidas: fields['horas_producidas'] || 0,
       kwh_total: fields['kwh_total'] || 0,
       m3_biogas_total: fields['m3_biogas_total'] || 0,
       total_big_bags: fields['total_big_bags'] || 0,
       total_lonas: fields['total_lonas'] || 0,
-      total_residuos_kg: fields['total_residuos_kg'] || 0,
+      residuos_lubricants_kg: fields['residuos_lubricants_kg'] || 0,
+      residuos_used_oil_kg: fields['residuos_used_oil_kg'] || 0,
+      residuos_paint_cans_kg: fields['residuos_paint_cans_kg'] || 0,
+      residuos_ppe_kg: fields['residuos_ppe_kg'] || 0,
       emisiones_electricidad_kg: fields['emisiones_electricidad_kg'] || 0,
       emisiones_co2_biogenico_kg: fields['emisiones_co2_biogenico_kg'] || 0,
       emisiones_ch4_kg: fields['emisiones_ch4_kg'] || 0,
       emisiones_n2o_kg: fields['emisiones_n2o_kg'] || 0,
       emisiones_big_bags_kg: fields['emisiones_big_bags_kg'] || 0,
       emisiones_lonas_kg: fields['emisiones_lonas_kg'] || 0,
-      emisiones_residuos_kg: fields['emisiones_residuos_kg'] || 0,
+      emisiones_residuos_lubricants_kg: fields['emisiones_residuos_lubricants_kg'] || 0,
+      emisiones_residuos_used_oil_kg: fields['emisiones_residuos_used_oil_kg'] || 0,
+      emisiones_residuos_paint_cans_kg: fields['emisiones_residuos_paint_cans_kg'] || 0,
+      emisiones_residuos_ppe_kg: fields['emisiones_residuos_ppe_kg'] || 0,
+      emisiones_residuos_total_kg: fields['emisiones_residuos_total_kg'] || 0,
+      emisiones_chimenea_co_kg: fields['emisiones_chimenea_co_kg'] || 0,
+      emisiones_chimenea_co2_kg: fields['emisiones_chimenea_co2_kg'] || 0,
+      emisiones_chimenea_ch4_kg: fields['emisiones_chimenea_ch4_kg'] || 0,
+      emisiones_chimenea_ch4_co2eq_kg: fields['emisiones_chimenea_ch4_co2eq_kg'] || 0,
+      emisiones_chimenea_n2o_kg: fields['emisiones_chimenea_n2o_kg'] || 0,
+      emisiones_chimenea_n2o_co2eq_kg: fields['emisiones_chimenea_n2o_co2eq_kg'] || 0,
       emisiones_total_kg: fields['emisiones_total_kg'] || 0,
       emisiones_total_ton: fields['emisiones_total_ton'] || 0,
       constantes_usadas: constantes,

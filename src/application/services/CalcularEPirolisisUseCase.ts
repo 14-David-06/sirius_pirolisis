@@ -37,12 +37,30 @@ export class CalcularEPirolisisUseCase {
     // Componente 6 — Lonas (factor pendiente)
     const emisiones_lonas_kg = datos.total_lonas * constantes.fe_lona;
 
-    // Componente 7 — Residuos (factor pendiente)
-    const emisiones_residuos_kg = datos.total_residuos_kg * constantes.fe_residuo_kg;
+    // Componentes 7-10 — Residuos por categoría (Alcance 3)
+    const emisiones_residuos_lubricants_kg = datos.residuos_lubricants_kg * constantes.fe_residuo_lubricants;
+    const emisiones_residuos_used_oil_kg = datos.residuos_used_oil_kg * constantes.fe_residuo_used_oil;
+    const emisiones_residuos_paint_cans_kg = datos.residuos_paint_cans_kg * constantes.fe_residuo_paint_cans;
+    const emisiones_residuos_ppe_kg = datos.residuos_ppe_kg * constantes.fe_residuo_ppe;
+    const emisiones_residuos_total_kg = emisiones_residuos_lubricants_kg + emisiones_residuos_used_oil_kg
+      + emisiones_residuos_paint_cans_kg + emisiones_residuos_ppe_kg;
+
+    // Componentes 11-14 — Gases de chimenea (flue gases)
+    // CO: informativo, NO suma al total
+    const emisiones_chimenea_co_kg = datos.horas_producidas * constantes.chimenea_co_kg_hr;
+    // CO₂: informativo, NO suma al total (biogénico)
+    const emisiones_chimenea_co2_kg = datos.horas_producidas * constantes.chimenea_co2_kg_hr;
+    // CH₄: SÍ suma al total (masa × GWP)
+    const chimenea_ch4_masa_kg = datos.horas_producidas * constantes.chimenea_ch4_kg_hr;
+    const emisiones_chimenea_ch4_co2eq_kg = chimenea_ch4_masa_kg * constantes.gwp_ch4;
+    // N₂O: SÍ suma al total (masa × GWP)
+    const chimenea_n2o_masa_kg = datos.horas_producidas * constantes.chimenea_n2o_kg_hr;
+    const emisiones_chimenea_n2o_co2eq_kg = chimenea_n2o_masa_kg * constantes.gwp_n2o;
 
     // Total: solo componentes que suman
     const emisiones_total_kg = emisiones_ch4_kg + emisiones_n2o_kg
-      + emisiones_big_bags_kg + emisiones_lonas_kg + emisiones_residuos_kg;
+      + emisiones_big_bags_kg + emisiones_lonas_kg + emisiones_residuos_total_kg
+      + emisiones_chimenea_ch4_co2eq_kg + emisiones_chimenea_n2o_co2eq_kg;
     const emisiones_total_ton = emisiones_total_kg / 1000;
 
     const round = (n: number) => Math.round(n * 1000000) / 1000000;
@@ -52,18 +70,32 @@ export class CalcularEPirolisisUseCase {
       fecha_fin_periodo: input.fecha_fin,
       turno_id: input.turno_id || null,
       turnos_analizados: datos.turnos_analizados,
+      horas_producidas: round(datos.horas_producidas),
       kwh_total: round(datos.kwh_total),
       m3_biogas_total: round(datos.m3_biogas_total),
       total_big_bags: datos.total_big_bags,
       total_lonas: datos.total_lonas,
-      total_residuos_kg: round(datos.total_residuos_kg),
+      residuos_lubricants_kg: round(datos.residuos_lubricants_kg),
+      residuos_used_oil_kg: round(datos.residuos_used_oil_kg),
+      residuos_paint_cans_kg: round(datos.residuos_paint_cans_kg),
+      residuos_ppe_kg: round(datos.residuos_ppe_kg),
       emisiones_electricidad_kg: round(emisiones_electricidad_kg),
       emisiones_co2_biogenico_kg: round(emisiones_co2_biogenico_kg),
       emisiones_ch4_kg: round(emisiones_ch4_kg),
       emisiones_n2o_kg: round(emisiones_n2o_kg),
       emisiones_big_bags_kg: round(emisiones_big_bags_kg),
       emisiones_lonas_kg: round(emisiones_lonas_kg),
-      emisiones_residuos_kg: round(emisiones_residuos_kg),
+      emisiones_residuos_lubricants_kg: round(emisiones_residuos_lubricants_kg),
+      emisiones_residuos_used_oil_kg: round(emisiones_residuos_used_oil_kg),
+      emisiones_residuos_paint_cans_kg: round(emisiones_residuos_paint_cans_kg),
+      emisiones_residuos_ppe_kg: round(emisiones_residuos_ppe_kg),
+      emisiones_residuos_total_kg: round(emisiones_residuos_total_kg),
+      emisiones_chimenea_co_kg: round(emisiones_chimenea_co_kg),
+      emisiones_chimenea_co2_kg: round(emisiones_chimenea_co2_kg),
+      emisiones_chimenea_ch4_kg: round(chimenea_ch4_masa_kg),
+      emisiones_chimenea_ch4_co2eq_kg: round(emisiones_chimenea_ch4_co2eq_kg),
+      emisiones_chimenea_n2o_kg: round(chimenea_n2o_masa_kg),
+      emisiones_chimenea_n2o_co2eq_kg: round(emisiones_chimenea_n2o_co2eq_kg),
       emisiones_total_kg: round(emisiones_total_kg),
       emisiones_total_ton: round(emisiones_total_ton),
       constantes_usadas: constantes,
@@ -76,11 +108,15 @@ export class CalcularEPirolisisUseCase {
     const resultado: EPirolisisCalculoResponse = {
       periodo: { fecha_inicio: input.fecha_inicio, fecha_fin: input.fecha_fin },
       turnos_analizados: datos.turnos_analizados,
+      horas_producidas: round(datos.horas_producidas),
       kwh_total: round(datos.kwh_total),
       m3_biogas_total: round(datos.m3_biogas_total),
       total_big_bags: datos.total_big_bags,
       total_lonas: datos.total_lonas,
-      total_residuos_kg: round(datos.total_residuos_kg),
+      residuos_lubricants_kg: round(datos.residuos_lubricants_kg),
+      residuos_used_oil_kg: round(datos.residuos_used_oil_kg),
+      residuos_paint_cans_kg: round(datos.residuos_paint_cans_kg),
+      residuos_ppe_kg: round(datos.residuos_ppe_kg),
       componentes: {
         electricidad_kg: round(emisiones_electricidad_kg),
         electricidad_suma_al_total: false,
@@ -92,8 +128,18 @@ export class CalcularEPirolisisUseCase {
         big_bags_factor_pendiente: factoresPendientes.includes('fe_big_bag'),
         lonas_kg: round(emisiones_lonas_kg),
         lonas_factor_pendiente: factoresPendientes.includes('fe_lona'),
-        residuos_kg: round(emisiones_residuos_kg),
-        residuos_factor_pendiente: factoresPendientes.includes('fe_residuo_kg'),
+        residuos_lubricants_kg: round(emisiones_residuos_lubricants_kg),
+        residuos_used_oil_kg: round(emisiones_residuos_used_oil_kg),
+        residuos_paint_cans_kg: round(emisiones_residuos_paint_cans_kg),
+        residuos_ppe_kg: round(emisiones_residuos_ppe_kg),
+        chimenea_co_kg: round(emisiones_chimenea_co_kg),
+        chimenea_co_suma_al_total: false,
+        chimenea_co2_kg: round(emisiones_chimenea_co2_kg),
+        chimenea_co2_suma_al_total: false,
+        chimenea_ch4_kg: round(chimenea_ch4_masa_kg),
+        chimenea_ch4_co2eq_kg: round(emisiones_chimenea_ch4_co2eq_kg),
+        chimenea_n2o_kg: round(chimenea_n2o_masa_kg),
+        chimenea_n2o_co2eq_kg: round(emisiones_chimenea_n2o_co2eq_kg),
       },
       emisiones_total_kg: round(emisiones_total_kg),
       emisiones_total_ton: round(emisiones_total_ton),

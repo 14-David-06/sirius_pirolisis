@@ -4,6 +4,7 @@
 import { IUserRepository } from '../domain/repositories/IUserRepository';
 import { IEBiomasRepository } from '../domain/repositories/IEBiomasRepository';
 import { IEPirolisisRepository } from '../domain/repositories/IEPirolisisRepository';
+import { IETransporteRepository } from '../domain/repositories/IETransporteRepository';
 import { AuthService } from '../application/services/AuthService';
 import { CalcularEBiomasUseCase } from '../application/services/CalcularEBiomasUseCase';
 import { GetResultadosEBiomasUseCase } from '../application/services/GetResultadosEBiomasUseCase';
@@ -11,10 +12,14 @@ import { PreviewEBiomasUseCase } from '../application/services/PreviewEBiomasUse
 import { CalcularEPirolisisUseCase } from '../application/services/CalcularEPirolisisUseCase';
 import { GetResultadosEPirolisisUseCase } from '../application/services/GetResultadosEPirolisisUseCase';
 import { PreviewEPirolisisUseCase } from '../application/services/PreviewEPirolisisUseCase';
+import { CalcularETransporteUseCase } from '../application/services/CalcularETransporteUseCase';
+import { GetResultadosETransporteUseCase } from '../application/services/GetResultadosETransporteUseCase';
+import { PreviewETransporteUseCase } from '../application/services/PreviewETransporteUseCase';
 import { AirtableUserRepository } from './repositories/AirtableUserRepository';
 import { PostgresUserRepository } from './repositories/PostgresUserRepository';
 import { EBiomasAirtableRepository } from './repositories/EBiomasAirtableRepository';
 import { EPirolisisAirtableRepository } from './repositories/EPirolisisAirtableRepository';
+import { ETransporteAirtableRepository } from './repositories/ETransporteAirtableRepository';
 
 // Feature flag para elegir implementación
 const USE_POSTGRES = process.env.USE_POSTGRES_REPOSITORY === 'true';
@@ -30,6 +35,10 @@ export class Container {
   private static calcularEPirolisisUseCase: CalcularEPirolisisUseCase | null = null;
   private static getResultadosEPirolisisUseCase: GetResultadosEPirolisisUseCase | null = null;
   private static previewEPirolisisUseCase: PreviewEPirolisisUseCase | null = null;
+  private static eTransporteRepository: IETransporteRepository | null = null;
+  private static calcularETransporteUseCase: CalcularETransporteUseCase | null = null;
+  private static getResultadosETransporteUseCase: GetResultadosETransporteUseCase | null = null;
+  private static previewETransporteUseCase: PreviewETransporteUseCase | null = null;
 
   static getUserRepository(): IUserRepository {
     if (!this.userRepository) {
@@ -104,6 +113,35 @@ export class Container {
     return this.previewEPirolisisUseCase;
   }
 
+  // eTransporte (Etapa 3)
+  static getETransporteRepository(): IETransporteRepository {
+    if (!this.eTransporteRepository) {
+      this.eTransporteRepository = new ETransporteAirtableRepository();
+    }
+    return this.eTransporteRepository;
+  }
+
+  static getCalcularETransporteUseCase(): CalcularETransporteUseCase {
+    if (!this.calcularETransporteUseCase) {
+      this.calcularETransporteUseCase = new CalcularETransporteUseCase(this.getETransporteRepository());
+    }
+    return this.calcularETransporteUseCase;
+  }
+
+  static getGetResultadosETransporteUseCase(): GetResultadosETransporteUseCase {
+    if (!this.getResultadosETransporteUseCase) {
+      this.getResultadosETransporteUseCase = new GetResultadosETransporteUseCase(this.getETransporteRepository());
+    }
+    return this.getResultadosETransporteUseCase;
+  }
+
+  static getPreviewETransporteUseCase(): PreviewETransporteUseCase {
+    if (!this.previewETransporteUseCase) {
+      this.previewETransporteUseCase = new PreviewETransporteUseCase(this.getETransporteRepository());
+    }
+    return this.previewETransporteUseCase;
+  }
+
   // Reset para testing
   static reset(): void {
     this.userRepository = null;
@@ -116,5 +154,9 @@ export class Container {
     this.calcularEPirolisisUseCase = null;
     this.getResultadosEPirolisisUseCase = null;
     this.previewEPirolisisUseCase = null;
+    this.eTransporteRepository = null;
+    this.calcularETransporteUseCase = null;
+    this.getResultadosETransporteUseCase = null;
+    this.previewETransporteUseCase = null;
   }
 }

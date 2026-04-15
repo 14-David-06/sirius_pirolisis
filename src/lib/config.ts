@@ -114,6 +114,8 @@ export const config = {
     carbonEpirolisisBalancesMasaTableId: process.env.CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID,
     carbonEpirolisisManejoResiduosTableId: process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID,
     carbonEpirolisisResultadosTableId: process.env.CARBON_EPIROLISIS_RESULTADOS_TABLE_ID,
+    // eTransporte (Etapa 3)
+    carbonEtransporteResultadosTableId: process.env.CARBON_ETRANSPORTE_RESULTADOS_TABLE_ID,
   },
   // Calculadora de Carbono — Constantes
   carbon: {
@@ -129,7 +131,24 @@ export const config = {
     feN2oBiogas: process.env.CARBON_FE_N2O_BIOGAS,
     feBigBag: process.env.CARBON_FE_BIG_BAG,
     feLona: process.env.CARBON_FE_LONA,
-    feResiduoKg: process.env.CARBON_FE_RESIDUO_KG,
+    // Residuos por categoría (Alcance 3)
+    feResiduoLubricants: process.env.CARBON_FE_RESIDUO_LUBRICANTS,
+    feResiduoUsedOil: process.env.CARBON_FE_RESIDUO_USED_OIL,
+    feResiduoPaintCans: process.env.CARBON_FE_RESIDUO_PAINT_CANS,
+    feResiduoPpe: process.env.CARBON_FE_RESIDUO_PPE,
+    // Gases de chimenea (flue gases)
+    chimeneaCoKgHr: process.env.CARBON_CHIMENEA_CO_KG_HR,
+    chimeneaCo2KgHr: process.env.CARBON_CHIMENEA_CO2_KG_HR,
+    chimeneaCh4KgHr: process.env.CARBON_CHIMENEA_CH4_KG_HR,
+    chimeneaN2oKgHr: process.env.CARBON_CHIMENEA_N2O_KG_HR,
+    gwpCh4: process.env.CARBON_GWP_CH4,
+    gwpN2o: process.env.CARBON_GWP_N2O,
+    // eTransporte (Etapa 3)
+    transporteDistanciaKm: process.env.CARBON_TRANSPORTE_DISTANCIA_KM,
+    transporteConsumoLKm: process.env.CARBON_TRANSPORTE_CONSUMO_L_KM,
+    transporteDensidadDiesel: process.env.CARBON_TRANSPORTE_DENSIDAD_DIESEL,
+    transporteFeCombustion: process.env.CARBON_TRANSPORTE_FE_COMBUSTION,
+    transporteFeUpstream: process.env.CARBON_TRANSPORTE_FE_UPSTREAM,
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {
@@ -210,6 +229,7 @@ export function validateEnvVars() {
     'CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID',
     'CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID',
     'CARBON_EPIROLISIS_RESULTADOS_TABLE_ID',
+    'CARBON_ETRANSPORTE_RESULTADOS_TABLE_ID',
     // Calculadora de Carbono — Constantes
     'CARBON_CONSUMO_DIESEL_POR_VIAJE',
     'CARBON_DENSIDAD_DIESEL',
@@ -221,7 +241,23 @@ export function validateEnvVars() {
     'CARBON_FE_N2O_BIOGAS',
     'CARBON_FE_BIG_BAG',
     'CARBON_FE_LONA',
-    'CARBON_FE_RESIDUO_KG',
+    'CARBON_FE_RESIDUO_LUBRICANTS',
+    'CARBON_FE_RESIDUO_USED_OIL',
+    'CARBON_FE_RESIDUO_PAINT_CANS',
+    'CARBON_FE_RESIDUO_PPE',
+    // Gases de chimenea
+    'CARBON_CHIMENEA_CO_KG_HR',
+    'CARBON_CHIMENEA_CO2_KG_HR',
+    'CARBON_CHIMENEA_CH4_KG_HR',
+    'CARBON_CHIMENEA_N2O_KG_HR',
+    'CARBON_GWP_CH4',
+    'CARBON_GWP_N2O',
+    // eTransporte (Etapa 3)
+    'CARBON_TRANSPORTE_DISTANCIA_KM',
+    'CARBON_TRANSPORTE_CONSUMO_L_KM',
+    'CARBON_TRANSPORTE_DENSIDAD_DIESEL',
+    'CARBON_TRANSPORTE_FE_COMBUSTION',
+    'CARBON_TRANSPORTE_FE_UPSTREAM',
   ];
 
   // Variables opcionales (no causan error si faltan, pero se recomienda configurarlas)

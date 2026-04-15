@@ -38,7 +38,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     if (activeTurno) {
-      alert('⚠️ Debes cerrar el turno activo antes de cerrar sesión');
+      alert('Debes cerrar el turno activo antes de cerrar sesión');
       return;
     }
     
@@ -89,48 +89,48 @@ export default function Navbar() {
   // Determinar qué opciones mostrar basado en el estado del turno
   const getMenuCategories = (): MenuCategory[] => {
     const turnoItem = activeTurno 
-      ? { label: "🛑 Cerrar Turno", href: "/cerrar-turno", icon: "🛑", description: "Finalizar turno activo" }
-      : { label: "🔄 Abrir Turno", href: "/abrir-turno", icon: "🔄", description: "Iniciar nuevo turno" };
+      ? { label: "Cerrar Turno", href: "/cerrar-turno", icon: "", description: "Finalizar turno activo" }
+      : { label: "Abrir Turno", href: "/abrir-turno", icon: "", description: "Iniciar nuevo turno" };
 
     return [
       {
         title: "Turnos",
-        icon: "⏰",
+        icon: "",
         items: [turnoItem]
       },
       {
         title: "Operaciones",
-        icon: "⚙️",
+        icon: "",
         items: [
-          { label: "⚖️ Balance de Masa", href: "/balance-masa", icon: "⚖️", description: "Control de materiales" },
-          { label: "🚛 Viajes de Biomasa", href: "/viajes-biomasa", icon: "🚛", description: "Logística de biomasa" },
-          { label: "📋 Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "📋", description: "Registro de procesos" },
-          { label: "🔧 Mantenimientos", href: "/mantenimientos", icon: "🔧", description: "Registro de mantenimientos" },
+          { label: "Balance de Masa", href: "/balance-masa", icon: "", description: "Control de materiales" },
+          { label: "Viajes de Biomasa", href: "/viajes-biomasa", icon: "", description: "Logística de biomasa" },
+          { label: "Bitácora Pirólisis", href: "/bitacora-pirolisis", icon: "", description: "Registro de procesos" },
+          { label: "Mantenimientos", href: "/mantenimientos", icon: "", description: "Registro de mantenimientos" },
         ]
       },
       {
         title: "Recursos",
-        icon: "🛄",
+        icon: "",
         items: [
-          { label: "📦 Inventario Pirolisis", href: "/inventario-pirolisis", icon: "📦", description: "Gestión de inventario" },
-          { label: "♻️ Manejo Residuos", href: "/manejo-residuos", icon: "♻️", description: "Gestión de residuos" },
-          { label: "🔥 Sistema de Baches", href: "/sistema-baches", icon: "🔥", description: "Control por lotes" },
-          // { label: "🌱 Producción Final", href: "/produccion-final", icon: "🌱", description: "Producción de biochar blend" },
+          { label: "Inventario Pirolisis", href: "/inventario-pirolisis", icon: "", description: "Gestión de inventario" },
+          { label: "Manejo Residuos", href: "/manejo-residuos", icon: "", description: "Gestión de residuos" },
+          { label: "Sistema de Baches", href: "/sistema-baches", icon: "", description: "Control por lotes" },
         ]
       },
       {
         title: "Ventas",
-        icon: "💰",
+        icon: "",
         items: [
-          { label: "📋 Remisiones Clientes", href: "/remisiones-clientes", icon: "📋", description: "Gestión de remisiones de clientes" },
+          { label: "Remisiones Clientes", href: "/remisiones-clientes", icon: "", description: "Gestión de remisiones de clientes" },
         ]
       },
       {
-        title: "Sostenibilidad",
-        icon: "🌿",
+        title: "Remoción de Carbono (CDR)",
+        icon: "",
         items: [
-          { label: "🌿 Calculadora Carbono", href: "/calculadora-carbono", icon: "🌿", description: "eBiomass — Emisiones transporte" },
-          { label: "🔥 Calculadora ePirólisis", href: "/calculadora-epirolisis", icon: "🔥", description: "ePirólisis — Emisiones producción" },
+          { label: "eBiomass Detalles", href: "/calculadora-carbono", icon: "", description: "eBiomass — Emisiones transporte" },
+          { label: "eProduction Detalles", href: "/calculadora-epirolisis", icon: "", description: "eProduction — Emisiones producción" },
+          { label: "eTransporte Detalles", href: "/calculadora-etransporte", icon: "", description: "eTransporte — Emisiones transporte biochar" },
         ]
       }
     ];
@@ -188,7 +188,6 @@ export default function Navbar() {
                   <button
                     className="group relative bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white hover:from-[#4a6429] hover:to-[#3d5422] px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 flex items-center space-x-2 backdrop-blur-sm shadow-md hover:shadow-lg hover:shadow-[#5A7836]/30"
                   >
-                    <span className="text-lg">{category.icon}</span>
                     <span>{category.title}</span>
                     <svg className="w-4 h-4 ml-1 transition-transform duration-200 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -205,9 +204,8 @@ export default function Navbar() {
                           className="flex items-center px-4 py-3 text-[#5A7836] hover:bg-gradient-to-r hover:from-[#5A7836] hover:to-[#4a6429] hover:text-white transition-all duration-200 font-medium group rounded-lg mx-2"
                           title={item.description}
                         >
-                          <span className="text-xl mr-3 group-hover:scale-110 transition-transform duration-200">{item.icon}</span>
                           <div className="flex-1">
-                            <div className="font-semibold">{item.label.replace(/^.+?\s/, '')}</div>
+                            <div className="font-semibold">{item.label}</div>
                             <div className="text-xs text-gray-500 group-hover:text-white/80">{item.description}</div>
                           </div>
                         </Link>
@@ -240,9 +238,7 @@ export default function Navbar() {
                 disabled={!!activeTurno}
                 title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
               >
-                <span>🚪</span>
                 <span>Cerrar Sesión</span>
-                {activeTurno && <span className="text-xs">⚠️</span>}
               </button>
             </div>
 
@@ -331,9 +327,6 @@ export default function Navbar() {
                 onClick={() => setIsMenuOpen(false)}
               >
                 <div className="flex items-center space-x-4">
-                  <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                    <span className="text-2xl">📊</span>
-                  </div>
                   <div className="text-white">
                     <h3 className="text-xl font-bold">Dashboard de Producción</h3>
                     <p className="text-white/80 text-sm">Métricas y monitoreo en tiempo real</p>
@@ -346,9 +339,6 @@ export default function Navbar() {
                 <div key={category.title} className="space-y-4">
                   {/* Título de la categoría */}
                   <div className="flex items-center space-x-3">
-                    <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                      <span className="text-lg">{category.icon}</span>
-                    </div>
                     <h3 className="text-white font-bold text-lg">{category.title}</h3>
                   </div>
                   
@@ -362,9 +352,8 @@ export default function Navbar() {
                         onClick={() => setIsMenuOpen(false)}
                       >
                         <div className="flex items-center space-x-3">
-                          <span className="text-xl">{item.icon}</span>
                           <div className="flex-1">
-                            <div className="text-white font-semibold">{item.label.replace(/^.+?\s/, '')}</div>
+                            <div className="text-white font-semibold">{item.label}</div>
                             <div className="text-white/70 text-xs">{item.description}</div>
                           </div>
                           <svg className="w-5 h-5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -393,9 +382,7 @@ export default function Navbar() {
                 disabled={!!activeTurno}
                 title={activeTurno ? 'Debes cerrar el turno antes de cerrar sesión' : 'Cerrar sesión'}
               >
-                <span className="text-xl mr-3">🚪</span>
                 <span>Cerrar Sesión</span>
-                {activeTurno && <span className="ml-2">⚠️</span>}
               </button>
             </div>
           </div>

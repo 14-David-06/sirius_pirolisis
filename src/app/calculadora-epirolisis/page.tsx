@@ -16,18 +16,33 @@ interface EPirolisisComponentes {
   big_bags_factor_pendiente: boolean;
   lonas_kg: number;
   lonas_factor_pendiente: boolean;
-  residuos_kg: number;
-  residuos_factor_pendiente: boolean;
+  // Residuos por categoría (Alcance 3)
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
+  chimenea_co_kg: number;
+  chimenea_co_suma_al_total: boolean;
+  chimenea_co2_kg: number;
+  chimenea_co2_suma_al_total: boolean;
+  chimenea_ch4_kg: number;
+  chimenea_ch4_co2eq_kg: number;
+  chimenea_n2o_kg: number;
+  chimenea_n2o_co2eq_kg: number;
 }
 
 interface EPirolisisPreview {
   periodo: { fecha_inicio: string; fecha_fin: string };
   turnos_analizados: number;
+  horas_producidas: number;
   kwh_total: number;
   m3_biogas_total: number;
   total_big_bags: number;
   total_lonas: number;
-  total_residuos_kg: number;
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
   componentes: EPirolisisComponentes;
   emisiones_total_kg: number;
   emisiones_total_ton: number;
@@ -43,18 +58,32 @@ interface EPirolisisResultado {
   fecha_fin_periodo: string;
   turno_id: string | null;
   turnos_analizados: number;
+  horas_producidas: number;
   kwh_total: number;
   m3_biogas_total: number;
   total_big_bags: number;
   total_lonas: number;
-  total_residuos_kg: number;
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
   emisiones_electricidad_kg: number;
   emisiones_co2_biogenico_kg: number;
   emisiones_ch4_kg: number;
   emisiones_n2o_kg: number;
   emisiones_big_bags_kg: number;
   emisiones_lonas_kg: number;
-  emisiones_residuos_kg: number;
+  emisiones_residuos_lubricants_kg: number;
+  emisiones_residuos_used_oil_kg: number;
+  emisiones_residuos_paint_cans_kg: number;
+  emisiones_residuos_ppe_kg: number;
+  emisiones_residuos_total_kg: number;
+  emisiones_chimenea_co_kg: number;
+  emisiones_chimenea_co2_kg: number;
+  emisiones_chimenea_ch4_kg: number;
+  emisiones_chimenea_ch4_co2eq_kg: number;
+  emisiones_chimenea_n2o_kg: number;
+  emisiones_chimenea_n2o_co2eq_kg: number;
   emisiones_total_kg: number;
   emisiones_total_ton: number;
   constantes_usadas: Record<string, number>;
@@ -194,18 +223,32 @@ export default function CalculadoraEPirolisisPage() {
       ['Periodo inicio', resultado.fecha_inicio_periodo, '', ''],
       ['Periodo fin', resultado.fecha_fin_periodo, '', ''],
       ['Turnos analizados', String(resultado.turnos_analizados), 'turnos', ''],
+      ['Horas producidas', String(resultado.horas_producidas), 'horas', 'Solo turnos con balances de masa'],
       ['kWh total', String(resultado.kwh_total), 'kWh', ''],
       ['m3 biogas total', String(resultado.m3_biogas_total), 'm3', ''],
       ['Big bags', String(resultado.total_big_bags), 'unidades', ''],
       ['Lonas', String(resultado.total_lonas), 'unidades', ''],
-      ['Residuos', String(resultado.total_residuos_kg), 'kg', ''],
+      ['Residuos lubricants', String(resultado.residuos_lubricants_kg), 'kg', ''],
+      ['Residuos used oil', String(resultado.residuos_used_oil_kg), 'kg', ''],
+      ['Residuos paint cans', String(resultado.residuos_paint_cans_kg), 'kg', ''],
+      ['Residuos PPE', String(resultado.residuos_ppe_kg), 'kg', ''],
       ['Emisiones electricidad', String(resultado.emisiones_electricidad_kg), 'kg CO2', 'Informativo'],
       ['Emisiones CO2 biogenico', String(resultado.emisiones_co2_biogenico_kg), 'kg CO2', 'Informativo'],
       ['Emisiones CH4', String(resultado.emisiones_ch4_kg), 'kg CO2eq', 'Suma al total'],
       ['Emisiones N2O', String(resultado.emisiones_n2o_kg), 'kg CO2eq', 'Suma al total'],
       ['Emisiones big bags', String(resultado.emisiones_big_bags_kg), 'kg CO2eq', 'Factor pendiente'],
       ['Emisiones lonas', String(resultado.emisiones_lonas_kg), 'kg CO2eq', 'Factor pendiente'],
-      ['Emisiones residuos', String(resultado.emisiones_residuos_kg), 'kg CO2eq', 'Factor pendiente'],
+      ['Emisiones residuos lubricants', String(resultado.emisiones_residuos_lubricants_kg), 'kg CO2eq', 'Alcance 3'],
+      ['Emisiones residuos used oil', String(resultado.emisiones_residuos_used_oil_kg), 'kg CO2eq', 'Alcance 3'],
+      ['Emisiones residuos paint cans', String(resultado.emisiones_residuos_paint_cans_kg), 'kg CO2eq', 'Alcance 3'],
+      ['Emisiones residuos PPE', String(resultado.emisiones_residuos_ppe_kg), 'kg CO2eq', 'Alcance 3'],
+      ['Emisiones residuos total', String(resultado.emisiones_residuos_total_kg), 'kg CO2eq', 'Suma al total'],
+      ['Chimenea CO (masa)', String(resultado.emisiones_chimenea_co_kg), 'kg', 'Informativo'],
+      ['Chimenea CO2 (masa)', String(resultado.emisiones_chimenea_co2_kg), 'kg', 'Informativo - biogenico'],
+      ['Chimenea CH4 (masa)', String(resultado.emisiones_chimenea_ch4_kg), 'kg', ''],
+      ['Chimenea CH4 (CO2eq)', String(resultado.emisiones_chimenea_ch4_co2eq_kg), 'kg CO2eq', 'Suma al total'],
+      ['Chimenea N2O (masa)', String(resultado.emisiones_chimenea_n2o_kg), 'kg', ''],
+      ['Chimenea N2O (CO2eq)', String(resultado.emisiones_chimenea_n2o_co2eq_kg), 'kg CO2eq', 'Suma al total'],
       ['Emisiones totales', String(resultado.emisiones_total_kg), 'kg CO2eq', ''],
       ['Emisiones totales', String(resultado.emisiones_total_ton), 'ton CO2eq', ''],
       ['Calculado por', resultado.calculado_por, '', ''],
@@ -235,16 +278,16 @@ export default function CalculadoraEPirolisisPage() {
           <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-5xl mx-auto border border-white/30">
             {/* Partner Logos */}
             <div className="flex items-center justify-center gap-6 mb-4">
-              <Image src="/logo.png" alt="Sirius" width={120} height={48} className="h-12 w-auto drop-shadow-lg" priority />
+              <Image src="/logo.png" alt="Sirius" width={200} height={80} className="h-20 w-auto drop-shadow-lg" priority />
               <span className="text-white/40 text-2xl font-light select-none">&times;</span>
-              <Image src="/logo-puro.png" alt="Puro" width={200} height={80} className="h-20 w-auto drop-shadow-lg" priority />
+              <Image src="/logo-earth-blanco.png" alt="Puro Earth" width={200} height={80} className="h-20 w-auto drop-shadow-lg" priority />
             </div>
 
             <h1 className="text-3xl font-bold text-white mb-2 text-center drop-shadow-lg">
-              Calculadora de Carbono &mdash; ePirolisis
+              Calculadora de Carbono &mdash; eProduction
             </h1>
             <p className="text-center text-white/90 mb-6 drop-shadow">
-              Etapa 2: Emisiones de CO&#x2082;eq del proceso de pirolisis y produccion de biochar
+              Etapa 2: Emisiones de CO&#x2082;eq del proceso de produccion de biochar
             </p>
 
             {/* Tabs */}
@@ -290,7 +333,7 @@ export default function CalculadoraEPirolisisPage() {
                   {/* Formulario */}
                   <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
                     <h2 className="text-xl font-semibold text-white mb-4 drop-shadow">
-                      Periodo de analisis
+                      Periodo
                     </h2>
 
                     <div className="space-y-4">
@@ -317,18 +360,6 @@ export default function CalculadoraEPirolisisPage() {
                             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 font-medium"
                           />
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-white mb-2 drop-shadow">
-                          Turno ID <span className="text-white/60">(opcional)</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={turnoId}
-                          onChange={(e) => { setTurnoId(e.target.value); setPreview(null); }}
-                          placeholder="Dejar vacio para todos los turnos"
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
-                        />
                       </div>
 
                       <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
@@ -365,15 +396,17 @@ export default function CalculadoraEPirolisisPage() {
 
                     {/* Metodología */}
                     <div className="mt-6 p-4 bg-green-500/20 border border-green-400/50 rounded-lg">
-                      <h3 className="text-sm font-bold text-white mb-2 drop-shadow">Metodologia de calculo</h3>
+                      <h3 className="text-sm font-bold text-white mb-2 drop-shadow">Metodología de cálculo</h3>
                       <ol className="text-xs text-white/80 space-y-1 list-decimal list-inside">
-                        <li>Sumar kWh y m&#xB3; biogas de turnos del periodo</li>
+                        <li>Sumar kWh, m&#xB3; biogas y horas de turnos del periodo</li>
                         <li>Electricidad = kWh x FE (informativo, no suma)</li>
                         <li>CO&#x2082; biogenico = m&#xB3; x FE (informativo, no suma)</li>
                         <li>CH&#x2084; = m&#xB3; x FE (suma al total)</li>
                         <li>N&#x2082;O = m&#xB3; x FE (suma al total)</li>
-                        <li>Big Bags, Lonas, Residuos (factores pendientes)</li>
-                        <li>Total = CH&#x2084; + N&#x2082;O + pendientes</li>
+                        <li>Big Bags, Lonas (factores pendientes)</li>
+                        <li>Residuos por categoria (Alcance 3, 4 EF)</li>
+                        <li>Gases chimenea: horas x kg/hr x GWP</li>
+                        <li>Total = CH&#x2084; + N&#x2082;O + pendientes + residuos + chimenea</li>
                       </ol>
                     </div>
                   </div>
@@ -381,7 +414,7 @@ export default function CalculadoraEPirolisisPage() {
                   {/* Preview */}
                   <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
                     <h2 className="text-xl font-semibold text-white mb-4 drop-shadow">
-                      Desglose del calculo
+                      Desglose del cálculo de emisiones
                     </h2>
 
                     {!preview && !loadingPreview && (
@@ -404,11 +437,15 @@ export default function CalculadoraEPirolisisPage() {
                           <span className="text-xs font-bold text-white/80 drop-shadow">Datos del periodo</span>
                           <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
                             <div><span className="text-white/60">Turnos:</span> <span className="text-white font-bold">{preview.turnos_analizados}</span></div>
+                            <div><span className="text-white/60">Horas:</span> <span className="text-white font-bold">{preview.horas_producidas}</span></div>
                             <div><span className="text-white/60">kWh:</span> <span className="text-white font-bold">{preview.kwh_total}</span></div>
                             <div><span className="text-white/60">m&#xB3; biogas:</span> <span className="text-white font-bold">{preview.m3_biogas_total}</span></div>
                             <div><span className="text-white/60">Big Bags:</span> <span className="text-white font-bold">{preview.total_big_bags}</span></div>
                             <div><span className="text-white/60">Lonas:</span> <span className="text-white font-bold">{preview.total_lonas}</span></div>
-                            <div><span className="text-white/60">Residuos:</span> <span className="text-white font-bold">{preview.total_residuos_kg} kg</span></div>
+                            <div><span className="text-white/60">Res. Lubricants:</span> <span className="text-white font-bold">{preview.residuos_lubricants_kg} kg</span></div>
+                            <div><span className="text-white/60">Res. Used Oil:</span> <span className="text-white font-bold">{preview.residuos_used_oil_kg} kg</span></div>
+                            <div><span className="text-white/60">Res. Paint Cans:</span> <span className="text-white font-bold">{preview.residuos_paint_cans_kg} kg</span></div>
+                            <div><span className="text-white/60">Res. PPE:</span> <span className="text-white font-bold">{preview.residuos_ppe_kg} kg</span></div>
                           </div>
                         </div>
 
@@ -472,21 +509,101 @@ export default function CalculadoraEPirolisisPage() {
                           tipo={preview.componentes.lonas_factor_pendiente ? 'pendiente' : 'activo'}
                         />
 
-                        {/* Componente 7 — Residuos (pendiente) */}
+                        {/* Separador — Residuos por categoría (Alcance 3) */}
+                        <div className="border-t border-white/20 pt-2 mt-1">
+                          <span className="text-xs font-bold text-white/60 uppercase tracking-wider drop-shadow">Residuos operacionales (Alcance 3)</span>
+                        </div>
+
+                        {/* Componente 7 — Lubricants */}
                         <ComponentCard
                           numero={7}
-                          titulo="Residuos operacionales"
-                          valor={preview.componentes.residuos_kg}
+                          titulo="Residuos — Lubricants"
+                          valor={preview.componentes.residuos_lubricants_kg}
                           unidad="kg CO&#x2082;eq"
-                          formula={`${preview.total_residuos_kg} kg x ${preview.desglose.factores_usados.fe_residuo_kg}`}
-                          tipo={preview.componentes.residuos_factor_pendiente ? 'pendiente' : 'activo'}
+                          formula={`${preview.residuos_lubricants_kg} kg x ${preview.desglose.factores_usados.fe_residuo_lubricants}`}
+                          tipo="activo"
+                        />
+
+                        {/* Componente 8 — Used Oil */}
+                        <ComponentCard
+                          numero={8}
+                          titulo="Residuos — Used Oil"
+                          valor={preview.componentes.residuos_used_oil_kg}
+                          unidad="kg CO&#x2082;eq"
+                          formula={`${preview.residuos_used_oil_kg} kg x ${preview.desglose.factores_usados.fe_residuo_used_oil}`}
+                          tipo="activo"
+                        />
+
+                        {/* Componente 9 — Paint Cans */}
+                        <ComponentCard
+                          numero={9}
+                          titulo="Residuos — Paint Cans"
+                          valor={preview.componentes.residuos_paint_cans_kg}
+                          unidad="kg CO&#x2082;eq"
+                          formula={`${preview.residuos_paint_cans_kg} kg x ${preview.desglose.factores_usados.fe_residuo_paint_cans}`}
+                          tipo="activo"
+                        />
+
+                        {/* Componente 10 — PPE */}
+                        <ComponentCard
+                          numero={10}
+                          titulo="Residuos — PPE"
+                          valor={preview.componentes.residuos_ppe_kg}
+                          unidad="kg CO&#x2082;eq"
+                          formula={`${preview.residuos_ppe_kg} kg x ${preview.desglose.factores_usados.fe_residuo_ppe}`}
+                          tipo="activo"
+                        />
+
+                        {/* Separador — Gases de chimenea */}
+                        <div className="border-t border-white/20 pt-2 mt-1">
+                          <span className="text-xs font-bold text-white/60 uppercase tracking-wider drop-shadow">Gases de chimenea (Flue Gases)</span>
+                        </div>
+
+                        {/* Componente 11 — Chimenea CO (informativo) */}
+                        <ComponentCard
+                          numero={11}
+                          titulo="CO chimenea"
+                          valor={preview.componentes.chimenea_co_kg}
+                          unidad="kg CO"
+                          formula={`${preview.horas_producidas} hrs x ${preview.desglose.factores_usados.chimenea_co_kg_hr} kg/hr`}
+                          tipo="informativo"
+                        />
+
+                        {/* Componente 12 — Chimenea CO₂ (informativo, biogénico) */}
+                        <ComponentCard
+                          numero={12}
+                          titulo="CO&#x2082; chimenea (biogenico)"
+                          valor={preview.componentes.chimenea_co2_kg}
+                          unidad="kg CO&#x2082;"
+                          formula={`${preview.horas_producidas} hrs x ${preview.desglose.factores_usados.chimenea_co2_kg_hr} kg/hr`}
+                          tipo="informativo"
+                        />
+
+                        {/* Componente 13 — Chimenea CH₄ (activo) */}
+                        <ComponentCard
+                          numero={13}
+                          titulo="CH&#x2084; chimenea"
+                          valor={preview.componentes.chimenea_ch4_co2eq_kg}
+                          unidad="kg CO&#x2082;eq"
+                          formula={`${preview.horas_producidas} hrs x ${preview.desglose.factores_usados.chimenea_ch4_kg_hr} kg/hr x ${preview.desglose.factores_usados.gwp_ch4} GWP = ${preview.componentes.chimenea_ch4_kg} kg x ${preview.desglose.factores_usados.gwp_ch4}`}
+                          tipo="activo"
+                        />
+
+                        {/* Componente 14 — Chimenea N₂O (activo) */}
+                        <ComponentCard
+                          numero={14}
+                          titulo="N&#x2082;O chimenea"
+                          valor={preview.componentes.chimenea_n2o_co2eq_kg}
+                          unidad="kg CO&#x2082;eq"
+                          formula={`${preview.horas_producidas} hrs x ${preview.desglose.factores_usados.chimenea_n2o_kg_hr} kg/hr x ${preview.desglose.factores_usados.gwp_n2o} GWP = ${preview.componentes.chimenea_n2o_kg} kg x ${preview.desglose.factores_usados.gwp_n2o}`}
+                          tipo="activo"
                         />
 
                         {/* Total */}
                         <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-4 shadow-lg">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-bold text-green-300 drop-shadow">Total ePirolisis</span>
-                            <span className="text-xs text-white/60">CH&#x2084; + N&#x2082;O + pendientes</span>
+                            <span className="text-sm font-bold text-green-300 drop-shadow">Total eProduction</span>
+                            <span className="text-xs text-white/60">CH&#x2084; + N&#x2082;O + pendientes + residuos + chimenea</span>
                           </div>
                           <div className="flex items-baseline gap-3 flex-wrap">
                             <span className="text-3xl font-bold text-white drop-shadow-lg">{preview.emisiones_total_kg}</span>

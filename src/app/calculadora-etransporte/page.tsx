@@ -5,33 +5,37 @@ import Image from 'next/image';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 
-interface EBiomasPreview {
+interface ETransportePreview {
   periodo: { fecha_inicio: string; fecha_fin: string };
+  total_baches: number;
   total_viajes: number;
+  distancia_total_km: number;
   litros_diesel: number;
   kg_diesel: number;
-  emisiones_produccion_kg: number;
   emisiones_combustion_kg: number;
+  emisiones_upstream_kg: number;
   emisiones_total_kg: number;
   emisiones_total_ton: number;
   desglose: {
-    factor_produccion_usado: number;
-    factor_combustion_usado: number;
-    consumo_diesel_por_viaje: number;
+    distancia_km_viaje: number;
+    consumo_L_km: number;
     densidad_diesel: number;
+    fe_combustion: number;
+    fe_upstream: number;
   };
 }
 
-interface EBiomasResultado {
+interface ETransporteResultado {
   id: string;
   fecha_inicio_periodo: string;
   fecha_fin_periodo: string;
-  turno_id: string | null;
+  total_baches: number;
   total_viajes: number;
+  distancia_total_km: number;
   litros_diesel: number;
   kg_diesel: number;
-  emisiones_produccion_kg: number;
   emisiones_combustion_kg: number;
+  emisiones_upstream_kg: number;
   emisiones_total_kg: number;
   emisiones_total_ton: number;
   constantes_usadas: Record<string, number>;
@@ -39,14 +43,13 @@ interface EBiomasResultado {
   created_at: string;
 }
 
-export default function CalculadoraCarbonoPage() {
+export default function CalculadoraETransportePage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  const [turnoId, setTurnoId] = useState('');
-  const [preview, setPreview] = useState<EBiomasPreview | null>(null);
+  const [preview, setPreview] = useState<ETransportePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingCalculo, setLoadingCalculo] = useState(false);
-  const [resultados, setResultados] = useState<EBiomasResultado[]>([]);
+  const [resultados, setResultados] = useState<ETransporteResultado[]>([]);
   const [loadingResultados, setLoadingResultados] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [mensaje, setMensaje] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null);
@@ -68,7 +71,7 @@ export default function CalculadoraCarbonoPage() {
   const cargarResultados = useCallback(async (page: number = 1) => {
     setLoadingResultados(true);
     try {
-      const res = await fetch(`/api/carbon/ebiomas/resultados?page=${page}&pageSize=10`);
+      const res = await fetch(`/api/carbon/etransporte/resultados?page=${page}&pageSize=10`);
       const data = await res.json();
       if (data.success) {
         setResultados(data.data || []);
@@ -98,13 +101,12 @@ export default function CalculadoraCarbonoPage() {
     setLoadingPreview(true);
     setMensaje(null);
     try {
-      const res = await fetch('/api/carbon/ebiomas/preview', {
+      const res = await fetch('/api/carbon/etransporte/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fecha_inicio: fechaInicio,
           fecha_fin: fechaFin,
-          turno_id: turnoId || null,
         }),
       });
       const data = await res.json();
@@ -113,7 +115,7 @@ export default function CalculadoraCarbonoPage() {
       } else {
         setMensaje({ tipo: 'error', texto: data.error || 'Error al obtener preview' });
       }
-    } catch (err) {
+    } catch {
       setMensaje({ tipo: 'error', texto: 'Error de conexión al servidor' });
     } finally {
       setLoadingPreview(false);
@@ -129,13 +131,12 @@ export default function CalculadoraCarbonoPage() {
     setLoadingCalculo(true);
     setMensaje(null);
     try {
-      const res = await fetch('/api/carbon/ebiomas/calcular', {
+      const res = await fetch('/api/carbon/etransporte/calcular', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fecha_inicio: fechaInicio,
           fecha_fin: fechaFin,
-          turno_id: turnoId || null,
           calculado_por: userName,
         }),
       });
@@ -147,33 +148,35 @@ export default function CalculadoraCarbonoPage() {
       } else {
         setMensaje({ tipo: 'error', texto: data.error || 'Error al calcular' });
       }
-    } catch (err) {
+    } catch {
       setMensaje({ tipo: 'error', texto: 'Error de conexión al servidor' });
     } finally {
       setLoadingCalculo(false);
     }
   };
 
-  const exportarJSON = (resultado: EBiomasResultado) => {
+  const exportarJSON = (resultado: ETransporteResultado) => {
     const blob = new Blob([JSON.stringify(resultado, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ebiomas_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.json`;
+    a.download = `etransporte_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportarCSV = (resultado: EBiomasResultado) => {
+  const exportarCSV = (resultado: ETransporteResultado) => {
     const rows = [
       ['Campo', 'Valor', 'Unidad'],
       ['Período inicio', resultado.fecha_inicio_periodo, ''],
       ['Período fin', resultado.fecha_fin_periodo, ''],
+      ['Total baches', String(resultado.total_baches), 'baches'],
       ['Total viajes', String(resultado.total_viajes), 'viajes'],
+      ['Distancia total', String(resultado.distancia_total_km), 'km'],
       ['Litros diésel', String(resultado.litros_diesel), 'L'],
       ['Kg diésel', String(resultado.kg_diesel), 'kg'],
-      ['Emisiones producción', String(resultado.emisiones_produccion_kg), 'kg CO₂'],
       ['Emisiones combustión', String(resultado.emisiones_combustion_kg), 'kg CO₂eq'],
+      ['Emisiones upstream', String(resultado.emisiones_upstream_kg), 'kg CO₂eq'],
       ['Emisiones totales', String(resultado.emisiones_total_kg), 'kg CO₂eq'],
       ['Emisiones totales', String(resultado.emisiones_total_ton), 'ton CO₂eq'],
       ['Calculado por', resultado.calculado_por, ''],
@@ -184,7 +187,7 @@ export default function CalculadoraCarbonoPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ebiomas_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.csv`;
+    a.download = `etransporte_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -226,10 +229,10 @@ export default function CalculadoraCarbonoPage() {
             </div>
 
             <h1 className="text-3xl font-bold text-white mb-2 text-center drop-shadow-lg">
-              Calculadora de Carbono — eBiomass
+              Calculadora de Carbono — eTransporte
             </h1>
             <p className="text-center text-white/90 mb-6 drop-shadow">
-              Etapa 1: Emisiones de CO₂eq por transporte de biomasa
+              Etapa 3: Emisiones de CO₂eq por transporte interno de biochar
             </p>
 
             {/* Tabs */}
@@ -340,12 +343,14 @@ export default function CalculadoraCarbonoPage() {
                     <div className="mt-6 p-4 bg-green-500/20 border border-green-400/50 rounded-lg">
                       <h3 className="text-sm font-bold text-white mb-2 drop-shadow">Metodología de cálculo</h3>
                       <ol className="text-xs text-white/80 space-y-1 list-decimal list-inside">
-                        <li>Contar viajes de biomasa en el período</li>
-                        <li>Litros diésel = viajes × 0.183 L/viaje</li>
+                        <li>Contar baches de pirólisis en el período</li>
+                        <li>Viajes = FLOOR(baches / 10)</li>
+                        <li>Distancia total = viajes × 0.5 km/viaje</li>
+                        <li>Litros diésel = distancia × 0.3 L/km</li>
                         <li>Kg diésel = litros × 0.85 kg/L</li>
-                        <li>Emisiones producción = kg × FE producción</li>
                         <li>Emisiones combustión = kg × FE combustión</li>
-                        <li>Total eBiomass = producción + combustión</li>
+                        <li>Emisiones upstream = kg × FE upstream</li>
+                        <li>Total eTransporte = combustión + upstream</li>
                       </ol>
                     </div>
                   </div>
@@ -365,28 +370,32 @@ export default function CalculadoraCarbonoPage() {
                     {loadingPreview && (
                       <div className="text-center py-12 text-white/70">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-                        <p className="drop-shadow">Consultando viajes de biomasa...</p>
+                        <p className="drop-shadow">Consultando baches de pirólisis...</p>
                       </div>
                     )}
 
                     {preview && (
                       <div className="space-y-3">
-                        <StepCard paso={1} titulo="Total viajes en el período" valor={preview.total_viajes} unidad="viajes"
-                          formula={`COUNT(Viajes Biomasa del ${preview.periodo.fecha_inicio} al ${preview.periodo.fecha_fin})`} />
-                        <StepCard paso={2} titulo="Litros de diésel consumidos" valor={preview.litros_diesel} unidad="L"
-                          formula={`${preview.total_viajes} viajes × ${preview.desglose.consumo_diesel_por_viaje} L/viaje`} />
-                        <StepCard paso={3} titulo="Kilogramos de diésel" valor={preview.kg_diesel} unidad="kg"
+                        <StepCard paso={1} titulo="Baches en el período" valor={preview.total_baches} unidad="baches"
+                          formula={`COUNT(Baches Pirolisis del ${preview.periodo.fecha_inicio} al ${preview.periodo.fecha_fin})`} />
+                        <StepCard paso={2} titulo="Viajes de transporte" valor={preview.total_viajes} unidad="viajes"
+                          formula={`FLOOR(${preview.total_baches} / 10) = ${preview.total_viajes} viajes`} />
+                        <StepCard paso={3} titulo="Distancia total recorrida" valor={preview.distancia_total_km} unidad="km"
+                          formula={`${preview.total_viajes} viajes × ${preview.desglose.distancia_km_viaje} km/viaje`} />
+                        <StepCard paso={4} titulo="Litros de diésel consumidos" valor={preview.litros_diesel} unidad="L"
+                          formula={`${preview.distancia_total_km} km × ${preview.desglose.consumo_L_km} L/km`} />
+                        <StepCard paso={5} titulo="Kilogramos de diésel" valor={preview.kg_diesel} unidad="kg"
                           formula={`${preview.litros_diesel} L × ${preview.desglose.densidad_diesel} kg/L`} />
-                        <StepCard paso={4} titulo="Emisiones producción (upstream)" valor={preview.emisiones_produccion_kg} unidad="kg CO₂"
-                          formula={`${preview.kg_diesel} kg × ${preview.desglose.factor_produccion_usado}`} color="yellow" />
-                        <StepCard paso={5} titulo="Emisiones combustión (CO₂+CH₄+N₂O)" valor={preview.emisiones_combustion_kg} unidad="kg CO₂eq"
-                          formula={`${preview.kg_diesel} kg × ${preview.desglose.factor_combustion_usado}`} color="orange" />
+                        <StepCard paso={6} titulo="Emisiones combustión" valor={preview.emisiones_combustion_kg} unidad="kg CO₂eq"
+                          formula={`${preview.kg_diesel} kg × ${preview.desglose.fe_combustion}`} color="orange" />
+                        <StepCard paso={7} titulo="Emisiones upstream (producción diésel)" valor={preview.emisiones_upstream_kg} unidad="kg CO₂eq"
+                          formula={`${preview.kg_diesel} kg × ${preview.desglose.fe_upstream}`} color="yellow" />
                         
-                        {/* Paso 6 — Total */}
+                        {/* Paso 8 — Total */}
                         <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-4 shadow-lg">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-bold text-green-300 drop-shadow">Paso 6 — Total eBiomass</span>
-                            <span className="text-xs text-white/60">producción + combustión</span>
+                            <span className="text-sm font-bold text-green-300 drop-shadow">Paso 8 — Total eTransporte</span>
+                            <span className="text-xs text-white/60">combustión + upstream</span>
                           </div>
                           <div className="flex items-baseline gap-3 flex-wrap">
                             <span className="text-3xl font-bold text-white drop-shadow-lg">{preview.emisiones_total_kg}</span>
@@ -436,6 +445,7 @@ export default function CalculadoraCarbonoPage() {
                         <thead>
                           <tr className="border-b border-white/20">
                             <th className="text-left py-3 px-2 text-white/80 font-medium drop-shadow">Período</th>
+                            <th className="text-right py-3 px-2 text-white/80 font-medium drop-shadow">Baches</th>
                             <th className="text-right py-3 px-2 text-white/80 font-medium drop-shadow">Viajes</th>
                             <th className="text-right py-3 px-2 text-white/80 font-medium drop-shadow">kg CO₂eq</th>
                             <th className="text-right py-3 px-2 text-white/80 font-medium drop-shadow">ton CO₂eq</th>
@@ -452,6 +462,7 @@ export default function CalculadoraCarbonoPage() {
                                 <span className="text-white/50"> → </span>
                                 <span className="text-white drop-shadow">{r.fecha_fin_periodo}</span>
                               </td>
+                              <td className="text-right py-3 px-2 text-white font-mono drop-shadow">{r.total_baches}</td>
                               <td className="text-right py-3 px-2 text-white font-mono drop-shadow">{r.total_viajes}</td>
                               <td className="text-right py-3 px-2 text-white font-mono drop-shadow">{r.emisiones_total_kg}</td>
                               <td className="text-right py-3 px-2 text-green-300 font-mono font-bold drop-shadow">{r.emisiones_total_ton}</td>
@@ -496,7 +507,7 @@ export default function CalculadoraCarbonoPage() {
                             </div>
                             <div className="text-right">
                               <p className="text-green-300 font-bold drop-shadow">{r.emisiones_total_ton} ton</p>
-                              <p className="text-white/60 text-xs">{r.total_viajes} viajes</p>
+                              <p className="text-white/60 text-xs">{r.total_baches} baches / {r.total_viajes} viajes</p>
                             </div>
                           </div>
                           <div className="flex gap-2 mt-3">

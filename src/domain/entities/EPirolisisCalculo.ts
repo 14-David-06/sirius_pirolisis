@@ -8,7 +8,18 @@ export interface EPirolisisConstantes {
   fe_n2o_biogas: number;
   fe_big_bag: number;
   fe_lona: number;
-  fe_residuo_kg: number;
+  // Residuos por categoría (Alcance 3)
+  fe_residuo_lubricants: number;
+  fe_residuo_used_oil: number;
+  fe_residuo_paint_cans: number;
+  fe_residuo_ppe: number;
+  // Gases de chimenea (flue gases)
+  chimenea_co_kg_hr: number;
+  chimenea_co2_kg_hr: number;
+  chimenea_ch4_kg_hr: number;
+  chimenea_n2o_kg_hr: number;
+  gwp_ch4: number;
+  gwp_n2o: number;
 }
 
 export interface EPirolisisComponentes {
@@ -22,8 +33,20 @@ export interface EPirolisisComponentes {
   big_bags_factor_pendiente: boolean;
   lonas_kg: number;
   lonas_factor_pendiente: boolean;
-  residuos_kg: number;
-  residuos_factor_pendiente: boolean;
+  // Residuos por categoría (Alcance 3)
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
+  // Gases de chimenea (flue gases)
+  chimenea_co_kg: number;
+  chimenea_co_suma_al_total: false;
+  chimenea_co2_kg: number;
+  chimenea_co2_suma_al_total: false;
+  chimenea_ch4_kg: number;
+  chimenea_ch4_co2eq_kg: number;
+  chimenea_n2o_kg: number;
+  chimenea_n2o_co2eq_kg: number;
 }
 
 export interface EPirolisisResultado {
@@ -32,18 +55,32 @@ export interface EPirolisisResultado {
   fecha_fin_periodo: string;
   turno_id: string | null;
   turnos_analizados: number;
+  horas_producidas: number;
   kwh_total: number;
   m3_biogas_total: number;
   total_big_bags: number;
   total_lonas: number;
-  total_residuos_kg: number;
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
   emisiones_electricidad_kg: number;
   emisiones_co2_biogenico_kg: number;
   emisiones_ch4_kg: number;
   emisiones_n2o_kg: number;
   emisiones_big_bags_kg: number;
   emisiones_lonas_kg: number;
-  emisiones_residuos_kg: number;
+  emisiones_residuos_lubricants_kg: number;
+  emisiones_residuos_used_oil_kg: number;
+  emisiones_residuos_paint_cans_kg: number;
+  emisiones_residuos_ppe_kg: number;
+  emisiones_residuos_total_kg: number;
+  emisiones_chimenea_co_kg: number;
+  emisiones_chimenea_co2_kg: number;
+  emisiones_chimenea_ch4_kg: number;
+  emisiones_chimenea_ch4_co2eq_kg: number;
+  emisiones_chimenea_n2o_kg: number;
+  emisiones_chimenea_n2o_co2eq_kg: number;
   emisiones_total_kg: number;
   emisiones_total_ton: number;
   constantes_usadas: EPirolisisConstantes;
@@ -61,11 +98,15 @@ export interface EPirolisisCalculoInput {
 
 export interface EPirolisisDatosAgregados {
   turnos_analizados: number;
+  horas_producidas: number;
   kwh_total: number;
   m3_biogas_total: number;
   total_big_bags: number;
   total_lonas: number;
-  total_residuos_kg: number;
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
 }
 
 export interface EPirolisisCalculoResponse {
@@ -74,11 +115,15 @@ export interface EPirolisisCalculoResponse {
     fecha_fin: string;
   };
   turnos_analizados: number;
+  horas_producidas: number;
   kwh_total: number;
   m3_biogas_total: number;
   total_big_bags: number;
   total_lonas: number;
-  total_residuos_kg: number;
+  residuos_lubricants_kg: number;
+  residuos_used_oil_kg: number;
+  residuos_paint_cans_kg: number;
+  residuos_ppe_kg: number;
   componentes: EPirolisisComponentes;
   emisiones_total_kg: number;
   emisiones_total_ton: number;
