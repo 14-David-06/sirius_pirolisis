@@ -2,9 +2,19 @@
 // Container de inyección de dependencias para la aplicación
 
 import { IUserRepository } from '../domain/repositories/IUserRepository';
+import { IEBiomasRepository } from '../domain/repositories/IEBiomasRepository';
+import { IEPirolisisRepository } from '../domain/repositories/IEPirolisisRepository';
 import { AuthService } from '../application/services/AuthService';
+import { CalcularEBiomasUseCase } from '../application/services/CalcularEBiomasUseCase';
+import { GetResultadosEBiomasUseCase } from '../application/services/GetResultadosEBiomasUseCase';
+import { PreviewEBiomasUseCase } from '../application/services/PreviewEBiomasUseCase';
+import { CalcularEPirolisisUseCase } from '../application/services/CalcularEPirolisisUseCase';
+import { GetResultadosEPirolisisUseCase } from '../application/services/GetResultadosEPirolisisUseCase';
+import { PreviewEPirolisisUseCase } from '../application/services/PreviewEPirolisisUseCase';
 import { AirtableUserRepository } from './repositories/AirtableUserRepository';
 import { PostgresUserRepository } from './repositories/PostgresUserRepository';
+import { EBiomasAirtableRepository } from './repositories/EBiomasAirtableRepository';
+import { EPirolisisAirtableRepository } from './repositories/EPirolisisAirtableRepository';
 
 // Feature flag para elegir implementación
 const USE_POSTGRES = process.env.USE_POSTGRES_REPOSITORY === 'true';
@@ -12,6 +22,14 @@ const USE_POSTGRES = process.env.USE_POSTGRES_REPOSITORY === 'true';
 export class Container {
   private static userRepository: IUserRepository | null = null;
   private static authService: AuthService | null = null;
+  private static eBiomasRepository: IEBiomasRepository | null = null;
+  private static calcularEBiomasUseCase: CalcularEBiomasUseCase | null = null;
+  private static getResultadosEBiomasUseCase: GetResultadosEBiomasUseCase | null = null;
+  private static previewEBiomasUseCase: PreviewEBiomasUseCase | null = null;
+  private static ePirolisisRepository: IEPirolisisRepository | null = null;
+  private static calcularEPirolisisUseCase: CalcularEPirolisisUseCase | null = null;
+  private static getResultadosEPirolisisUseCase: GetResultadosEPirolisisUseCase | null = null;
+  private static previewEPirolisisUseCase: PreviewEPirolisisUseCase | null = null;
 
   static getUserRepository(): IUserRepository {
     if (!this.userRepository) {
@@ -29,9 +47,74 @@ export class Container {
     return this.authService;
   }
 
+  static getEBiomasRepository(): IEBiomasRepository {
+    if (!this.eBiomasRepository) {
+      this.eBiomasRepository = new EBiomasAirtableRepository();
+    }
+    return this.eBiomasRepository;
+  }
+
+  static getCalcularEBiomasUseCase(): CalcularEBiomasUseCase {
+    if (!this.calcularEBiomasUseCase) {
+      this.calcularEBiomasUseCase = new CalcularEBiomasUseCase(this.getEBiomasRepository());
+    }
+    return this.calcularEBiomasUseCase;
+  }
+
+  static getGetResultadosEBiomasUseCase(): GetResultadosEBiomasUseCase {
+    if (!this.getResultadosEBiomasUseCase) {
+      this.getResultadosEBiomasUseCase = new GetResultadosEBiomasUseCase(this.getEBiomasRepository());
+    }
+    return this.getResultadosEBiomasUseCase;
+  }
+
+  static getPreviewEBiomasUseCase(): PreviewEBiomasUseCase {
+    if (!this.previewEBiomasUseCase) {
+      this.previewEBiomasUseCase = new PreviewEBiomasUseCase(this.getEBiomasRepository());
+    }
+    return this.previewEBiomasUseCase;
+  }
+
+  // ePirólisis (Etapa 2)
+  static getEPirolisisRepository(): IEPirolisisRepository {
+    if (!this.ePirolisisRepository) {
+      this.ePirolisisRepository = new EPirolisisAirtableRepository();
+    }
+    return this.ePirolisisRepository;
+  }
+
+  static getCalcularEPirolisisUseCase(): CalcularEPirolisisUseCase {
+    if (!this.calcularEPirolisisUseCase) {
+      this.calcularEPirolisisUseCase = new CalcularEPirolisisUseCase(this.getEPirolisisRepository());
+    }
+    return this.calcularEPirolisisUseCase;
+  }
+
+  static getGetResultadosEPirolisisUseCase(): GetResultadosEPirolisisUseCase {
+    if (!this.getResultadosEPirolisisUseCase) {
+      this.getResultadosEPirolisisUseCase = new GetResultadosEPirolisisUseCase(this.getEPirolisisRepository());
+    }
+    return this.getResultadosEPirolisisUseCase;
+  }
+
+  static getPreviewEPirolisisUseCase(): PreviewEPirolisisUseCase {
+    if (!this.previewEPirolisisUseCase) {
+      this.previewEPirolisisUseCase = new PreviewEPirolisisUseCase(this.getEPirolisisRepository());
+    }
+    return this.previewEPirolisisUseCase;
+  }
+
   // Reset para testing
   static reset(): void {
     this.userRepository = null;
     this.authService = null;
+    this.eBiomasRepository = null;
+    this.calcularEBiomasUseCase = null;
+    this.getResultadosEBiomasUseCase = null;
+    this.previewEBiomasUseCase = null;
+    this.ePirolisisRepository = null;
+    this.calcularEPirolisisUseCase = null;
+    this.getResultadosEPirolisisUseCase = null;
+    this.previewEPirolisisUseCase = null;
   }
 }

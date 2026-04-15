@@ -106,7 +106,30 @@ export const config = {
       cantidadEspecificada: process.env.AIRTABLE_DETALLE_CANTIDAD_ESPECIFICADA_FIELD_ID,
       remisionBachePirolisis: process.env.AIRTABLE_DETALLE_REMISION_BACHE_FIELD_ID,
       bachePirolisis: process.env.AIRTABLE_DETALLE_BACHE_PIROLISIS_FIELD_ID
-    }
+    },
+    // Calculadora de Carbono — Table IDs
+    carbonEbiomasViajesBiomasaTableId: process.env.CARBON_EBIOMAS_VIAJES_BIOMASA_TABLE_ID,
+    carbonEbiomasResultadosTableId: process.env.CARBON_EBIOMAS_RESULTADOS_TABLE_ID,
+    carbonEpirolisisTurnoTableId: process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID,
+    carbonEpirolisisBalancesMasaTableId: process.env.CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID,
+    carbonEpirolisisManejoResiduosTableId: process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID,
+    carbonEpirolisisResultadosTableId: process.env.CARBON_EPIROLISIS_RESULTADOS_TABLE_ID,
+  },
+  // Calculadora de Carbono — Constantes
+  carbon: {
+    // eBiomás (Etapa 1)
+    consumoDieselPorViaje: process.env.CARBON_CONSUMO_DIESEL_POR_VIAJE,
+    densidadDiesel: process.env.CARBON_DENSIDAD_DIESEL,
+    feProduccionDiesel: process.env.CARBON_FE_PRODUCCION_DIESEL,
+    feCombustionDiesel: process.env.CARBON_FE_COMBUSTION_DIESEL,
+    // ePirólisis (Etapa 2)
+    feElectricidad: process.env.CARBON_FE_ELECTRICIDAD,
+    feCo2Biogas: process.env.CARBON_FE_CO2_BIOGAS,
+    feCh4Biogas: process.env.CARBON_FE_CH4_BIOGAS,
+    feN2oBiogas: process.env.CARBON_FE_N2O_BIOGAS,
+    feBigBag: process.env.CARBON_FE_BIG_BAG,
+    feLona: process.env.CARBON_FE_LONA,
+    feResiduoKg: process.env.CARBON_FE_RESIDUO_KG,
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {
@@ -179,7 +202,26 @@ export function validateEnvVars() {
     'AIRTABLE_REMISIONES_FIRMA_RECIBE_FIELD_ID',
     // Field IDs de Relaciones
     'AIRTABLE_REMISIONES_BACHE_PIROLISIS_ALTERADO_FIELD_ID',
-    'AIRTABLE_REMISIONES_DETALLE_CANTIDADES_FIELD_ID'
+    'AIRTABLE_REMISIONES_DETALLE_CANTIDADES_FIELD_ID',
+    // Calculadora de Carbono — Table IDs
+    'CARBON_EBIOMAS_VIAJES_BIOMASA_TABLE_ID',
+    'CARBON_EBIOMAS_RESULTADOS_TABLE_ID',
+    'CARBON_EPIROLISIS_TURNO_TABLE_ID',
+    'CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID',
+    'CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID',
+    'CARBON_EPIROLISIS_RESULTADOS_TABLE_ID',
+    // Calculadora de Carbono — Constantes
+    'CARBON_CONSUMO_DIESEL_POR_VIAJE',
+    'CARBON_DENSIDAD_DIESEL',
+    'CARBON_FE_PRODUCCION_DIESEL',
+    'CARBON_FE_COMBUSTION_DIESEL',
+    'CARBON_FE_ELECTRICIDAD',
+    'CARBON_FE_CO2_BIOGAS',
+    'CARBON_FE_CH4_BIOGAS',
+    'CARBON_FE_N2O_BIOGAS',
+    'CARBON_FE_BIG_BAG',
+    'CARBON_FE_LONA',
+    'CARBON_FE_RESIDUO_KG',
   ];
 
   // Variables opcionales (no causan error si faltan, pero se recomienda configurarlas)

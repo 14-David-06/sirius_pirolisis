@@ -124,6 +124,14 @@ export default function Navbar() {
         items: [
           { label: "📋 Remisiones Clientes", href: "/remisiones-clientes", icon: "📋", description: "Gestión de remisiones de clientes" },
         ]
+      },
+      {
+        title: "Sostenibilidad",
+        icon: "🌿",
+        items: [
+          { label: "🌿 Calculadora Carbono", href: "/calculadora-carbono", icon: "🌿", description: "eBiomass — Emisiones transporte" },
+          { label: "🔥 Calculadora ePirólisis", href: "/calculadora-epirolisis", icon: "🔥", description: "ePirólisis — Emisiones producción" },
+        ]
       }
     ];
   };
