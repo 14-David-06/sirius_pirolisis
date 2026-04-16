@@ -7,7 +7,14 @@ export interface EPirolisisConstantes {
   fe_ch4_biogas: number;
   fe_n2o_biogas: number;
   fe_big_bag: number;
+  peso_vacio_big_bag_kg: number;
+  fe_big_bag_pp_no_tejido: number;
+  fe_big_bag_fibra_tejida: number;
+  fe_big_bag_film_ldpe: number;
   fe_lona: number;
+  peso_vacio_lona_kg: number;
+  fe_lona_pp_no_tejido: number;
+  fe_lona_fibra_tejida: number;
   // Residuos por categoría (Alcance 3)
   fe_residuo_lubricants: number;
   fe_residuo_used_oil: number;
@@ -29,10 +36,17 @@ export interface EPirolisisComponentes {
   co2_biogenico_suma_al_total: false;
   ch4_kg: number;
   n2o_kg: number;
-  big_bags_kg: number;
-  big_bags_factor_pendiente: boolean;
-  lonas_kg: number;
-  lonas_factor_pendiente: boolean;
+  big_bags_masa_total_kg: number;
+  big_bags_pp_no_tejido_kg: number;
+  big_bags_fibra_tejida_kg: number;
+  big_bags_film_ldpe_kg: number;
+  big_bags_total_kg: number;
+  big_bags_factor_pendiente: false;
+  lonas_masa_total_kg: number;
+  lonas_pp_no_tejido_kg: number;
+  lonas_fibra_tejida_kg: number;
+  lonas_total_kg: number;
+  lonas_factor_pendiente: false;
   // Residuos por categoría (Alcance 3)
   residuos_lubricants_kg: number;
   residuos_used_oil_kg: number;
@@ -68,8 +82,15 @@ export interface EPirolisisResultado {
   emisiones_co2_biogenico_kg: number;
   emisiones_ch4_kg: number;
   emisiones_n2o_kg: number;
-  emisiones_big_bags_kg: number;
-  emisiones_lonas_kg: number;
+  masa_total_big_bags_kg: number;
+  emisiones_big_bags_pp_no_tejido_kg: number;
+  emisiones_big_bags_fibra_tejida_kg: number;
+  emisiones_big_bags_film_ldpe_kg: number;
+  emisiones_big_bags_total_kg: number;
+  masa_total_lonas_kg: number;
+  emisiones_lonas_pp_no_tejido_kg: number;
+  emisiones_lonas_fibra_tejida_kg: number;
+  emisiones_lonas_total_kg: number;
   emisiones_residuos_lubricants_kg: number;
   emisiones_residuos_used_oil_kg: number;
   emisiones_residuos_paint_cans_kg: number;

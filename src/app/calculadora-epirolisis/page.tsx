@@ -12,9 +12,16 @@ interface EPirolisisComponentes {
   co2_biogenico_suma_al_total: boolean;
   ch4_kg: number;
   n2o_kg: number;
-  big_bags_kg: number;
+  big_bags_masa_total_kg: number;
+  big_bags_pp_no_tejido_kg: number;
+  big_bags_fibra_tejida_kg: number;
+  big_bags_film_ldpe_kg: number;
+  big_bags_total_kg: number;
   big_bags_factor_pendiente: boolean;
-  lonas_kg: number;
+  lonas_masa_total_kg: number;
+  lonas_pp_no_tejido_kg: number;
+  lonas_fibra_tejida_kg: number;
+  lonas_total_kg: number;
   lonas_factor_pendiente: boolean;
   // Residuos por categoría (Alcance 3)
   residuos_lubricants_kg: number;
@@ -71,8 +78,15 @@ interface EPirolisisResultado {
   emisiones_co2_biogenico_kg: number;
   emisiones_ch4_kg: number;
   emisiones_n2o_kg: number;
-  emisiones_big_bags_kg: number;
-  emisiones_lonas_kg: number;
+  masa_total_big_bags_kg: number;
+  emisiones_big_bags_pp_no_tejido_kg: number;
+  emisiones_big_bags_fibra_tejida_kg: number;
+  emisiones_big_bags_film_ldpe_kg: number;
+  emisiones_big_bags_total_kg: number;
+  masa_total_lonas_kg: number;
+  emisiones_lonas_pp_no_tejido_kg: number;
+  emisiones_lonas_fibra_tejida_kg: number;
+  emisiones_lonas_total_kg: number;
   emisiones_residuos_lubricants_kg: number;
   emisiones_residuos_used_oil_kg: number;
   emisiones_residuos_paint_cans_kg: number;
@@ -236,8 +250,13 @@ export default function CalculadoraEPirolisisPage() {
       ['Emisiones CO2 biogenico', String(resultado.emisiones_co2_biogenico_kg), 'kg CO2', 'Informativo'],
       ['Emisiones CH4', String(resultado.emisiones_ch4_kg), 'kg CO2eq', 'Suma al total'],
       ['Emisiones N2O', String(resultado.emisiones_n2o_kg), 'kg CO2eq', 'Suma al total'],
-      ['Emisiones big bags', String(resultado.emisiones_big_bags_kg), 'kg CO2eq', 'Factor pendiente'],
-      ['Emisiones lonas', String(resultado.emisiones_lonas_kg), 'kg CO2eq', 'Factor pendiente'],
+      ['Emisiones big bags (PP no tejido)', String(resultado.emisiones_big_bags_pp_no_tejido_kg), 'kg CO2eq', 'Sub-componente A'],
+      ['Emisiones big bags (fibra tejida)', String(resultado.emisiones_big_bags_fibra_tejida_kg), 'kg CO2eq', 'Sub-componente B'],
+      ['Emisiones big bags (film LDPE)', String(resultado.emisiones_big_bags_film_ldpe_kg), 'kg CO2eq', 'Sub-componente C'],
+      ['Emisiones big bags total', String(resultado.emisiones_big_bags_total_kg), 'kg CO2eq', 'Suma al total'],
+      ['Emisiones lonas (PP no tejido)', String(resultado.emisiones_lonas_pp_no_tejido_kg), 'kg CO2eq', 'Sub-componente A'],
+      ['Emisiones lonas (fibra tejida)', String(resultado.emisiones_lonas_fibra_tejida_kg), 'kg CO2eq', 'Sub-componente B'],
+      ['Emisiones lonas total', String(resultado.emisiones_lonas_total_kg), 'kg CO2eq', 'Suma al total'],
       ['Emisiones residuos lubricants', String(resultado.emisiones_residuos_lubricants_kg), 'kg CO2eq', 'Alcance 3'],
       ['Emisiones residuos used oil', String(resultado.emisiones_residuos_used_oil_kg), 'kg CO2eq', 'Alcance 3'],
       ['Emisiones residuos paint cans', String(resultado.emisiones_residuos_paint_cans_kg), 'kg CO2eq', 'Alcance 3'],
@@ -489,25 +508,60 @@ export default function CalculadoraEPirolisisPage() {
                           tipo="activo"
                         />
 
-                        {/* Componente 5 — Big Bags (pendiente) */}
-                        <ComponentCard
-                          numero={5}
-                          titulo="Big Bags usados"
-                          valor={preview.componentes.big_bags_kg}
-                          unidad="kg CO&#x2082;eq"
-                          formula={`${preview.total_big_bags} unidades x ${preview.desglose.factores_usados.fe_big_bag}`}
-                          tipo={preview.componentes.big_bags_factor_pendiente ? 'pendiente' : 'activo'}
-                        />
+                        {/* Componente 5 — Big Bags (3 sub-componentes LCA) */}
+                        <div className="rounded-lg p-3 border backdrop-blur-sm border-white/20 bg-white/5">
+                          <div className="flex items-center justify-between mb-1 gap-2">
+                            <span className="text-xs font-bold text-white/80 drop-shadow">
+                              5. Big Bags usados ({preview.total_big_bags} ud × {preview.desglose.factores_usados.peso_vacio_big_bag_kg} kg = {preview.componentes.big_bags_masa_total_kg} kg)
+                            </span>
+                          </div>
+                          <div className="flex items-baseline gap-2 mb-2">
+                            <span className="text-xl font-bold text-white drop-shadow-lg">{preview.componentes.big_bags_total_kg}</span>
+                            <span className="text-xs text-white/70">kg CO&#x2082;eq</span>
+                          </div>
+                          <div className="space-y-1 ml-2 border-l-2 border-white/20 pl-3">
+                            <div className="text-xs text-white/70">
+                              <span className="text-white/50">A) PP no tejido:</span>{' '}
+                              <span className="font-mono text-white/90">{preview.componentes.big_bags_pp_no_tejido_kg}</span> kg CO&#x2082;eq
+                              <span className="text-white/40 ml-1">({preview.componentes.big_bags_masa_total_kg} kg × {preview.desglose.factores_usados.fe_big_bag_pp_no_tejido})</span>
+                            </div>
+                            <div className="text-xs text-white/70">
+                              <span className="text-white/50">B) Fibra tejida:</span>{' '}
+                              <span className="font-mono text-white/90">{preview.componentes.big_bags_fibra_tejida_kg}</span> kg CO&#x2082;eq
+                              <span className="text-white/40 ml-1">({preview.componentes.big_bags_masa_total_kg} kg × {preview.desglose.factores_usados.fe_big_bag_fibra_tejida})</span>
+                            </div>
+                            <div className="text-xs text-white/70">
+                              <span className="text-white/50">C) Film LDPE:</span>{' '}
+                              <span className="font-mono text-white/90">{preview.componentes.big_bags_film_ldpe_kg}</span> kg CO&#x2082;eq
+                              <span className="text-white/40 ml-1">({preview.componentes.big_bags_masa_total_kg} kg × {preview.desglose.factores_usados.fe_big_bag_film_ldpe})</span>
+                            </div>
+                          </div>
+                        </div>
 
-                        {/* Componente 6 — Lonas (pendiente) */}
-                        <ComponentCard
-                          numero={6}
-                          titulo="Lonas usadas"
-                          valor={preview.componentes.lonas_kg}
-                          unidad="kg CO&#x2082;eq"
-                          formula={`${preview.total_lonas} unidades x ${preview.desglose.factores_usados.fe_lona}`}
-                          tipo={preview.componentes.lonas_factor_pendiente ? 'pendiente' : 'activo'}
-                        />
+                        {/* Componente 6 — Lonas (2 sub-componentes LCA) */}
+                        <div className="rounded-lg p-3 border backdrop-blur-sm border-white/20 bg-white/5">
+                          <div className="flex items-center justify-between mb-1 gap-2">
+                            <span className="text-xs font-bold text-white/80 drop-shadow">
+                              6. Lonas usadas ({preview.total_lonas} ud × {preview.desglose.factores_usados.peso_vacio_lona_kg} kg = {preview.componentes.lonas_masa_total_kg} kg)
+                            </span>
+                          </div>
+                          <div className="flex items-baseline gap-2 mb-2">
+                            <span className="text-xl font-bold text-white drop-shadow-lg">{preview.componentes.lonas_total_kg}</span>
+                            <span className="text-xs text-white/70">kg CO&#x2082;eq</span>
+                          </div>
+                          <div className="space-y-1 ml-2 border-l-2 border-white/20 pl-3">
+                            <div className="text-xs text-white/70">
+                              <span className="text-white/50">A) PP no tejido:</span>{' '}
+                              <span className="font-mono text-white/90">{preview.componentes.lonas_pp_no_tejido_kg}</span> kg CO&#x2082;eq
+                              <span className="text-white/40 ml-1">({preview.componentes.lonas_masa_total_kg} kg × {preview.desglose.factores_usados.fe_lona_pp_no_tejido})</span>
+                            </div>
+                            <div className="text-xs text-white/70">
+                              <span className="text-white/50">B) Fibra tejida:</span>{' '}
+                              <span className="font-mono text-white/90">{preview.componentes.lonas_fibra_tejida_kg}</span> kg CO&#x2082;eq
+                              <span className="text-white/40 ml-1">({preview.componentes.lonas_masa_total_kg} kg × {preview.desglose.factores_usados.fe_lona_fibra_tejida})</span>
+                            </div>
+                          </div>
+                        </div>
 
                         {/* Separador — Residuos por categoría (Alcance 3) */}
                         <div className="border-t border-white/20 pt-2 mt-1">

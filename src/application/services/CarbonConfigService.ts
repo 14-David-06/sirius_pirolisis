@@ -30,7 +30,14 @@ export class CarbonConfigService {
       fe_ch4_biogas: this.parseEnvFloat('CARBON_FE_CH4_BIOGAS'),
       fe_n2o_biogas: this.parseEnvFloat('CARBON_FE_N2O_BIOGAS'),
       fe_big_bag: this.parseEnvFloat('CARBON_FE_BIG_BAG'),
+      peso_vacio_big_bag_kg: this.parseEnvFloat('CARBON_PESO_VACIO_BIG_BAG_KG'),
+      fe_big_bag_pp_no_tejido: this.parseEnvFloat('CARBON_FE_BIG_BAG_PP_NO_TEJIDO'),
+      fe_big_bag_fibra_tejida: this.parseEnvFloat('CARBON_FE_BIG_BAG_FIBRA_TEJIDA'),
+      fe_big_bag_film_ldpe: this.parseEnvFloat('CARBON_FE_BIG_BAG_FILM_LDPE'),
       fe_lona: this.parseEnvFloat('CARBON_FE_LONA'),
+      peso_vacio_lona_kg: this.parseEnvFloat('CARBON_PESO_VACIO_LONA_KG'),
+      fe_lona_pp_no_tejido: this.parseEnvFloat('CARBON_FE_LONA_PP_NO_TEJIDO'),
+      fe_lona_fibra_tejida: this.parseEnvFloat('CARBON_FE_LONA_FIBRA_TEJIDA'),
       fe_residuo_lubricants: this.parseEnvFloat('CARBON_FE_RESIDUO_LUBRICANTS'),
       fe_residuo_used_oil: this.parseEnvFloat('CARBON_FE_RESIDUO_USED_OIL'),
       fe_residuo_paint_cans: this.parseEnvFloat('CARBON_FE_RESIDUO_PAINT_CANS'),
@@ -46,8 +53,6 @@ export class CarbonConfigService {
 
   static getFactoresPendientes(): string[] {
     const pendientes: string[] = [];
-    if (this.parseEnvFloat('CARBON_FE_BIG_BAG') === 0) pendientes.push('fe_big_bag');
-    if (this.parseEnvFloat('CARBON_FE_LONA') === 0) pendientes.push('fe_lona');
     return pendientes;
   }
 

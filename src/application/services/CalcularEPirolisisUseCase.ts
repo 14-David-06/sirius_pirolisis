@@ -31,11 +31,19 @@ export class CalcularEPirolisisUseCase {
     // Componente 4 — N₂O del biogás (SÍ suma al total)
     const emisiones_n2o_kg = datos.m3_biogas_total * constantes.fe_n2o_biogas;
 
-    // Componente 5 — Big Bags (factor pendiente)
-    const emisiones_big_bags_kg = datos.total_big_bags * constantes.fe_big_bag;
+    // Componente 5 — Big Bags (3 sub-componentes LCA)
+    const masa_total_big_bags_kg = datos.total_big_bags * constantes.peso_vacio_big_bag_kg;
+    const emisiones_big_bags_pp_no_tejido_kg = masa_total_big_bags_kg * constantes.fe_big_bag_pp_no_tejido;
+    const emisiones_big_bags_fibra_tejida_kg = masa_total_big_bags_kg * constantes.fe_big_bag_fibra_tejida;
+    const emisiones_big_bags_film_ldpe_kg = masa_total_big_bags_kg * constantes.fe_big_bag_film_ldpe;
+    const emisiones_big_bags_total_kg = emisiones_big_bags_pp_no_tejido_kg
+      + emisiones_big_bags_fibra_tejida_kg + emisiones_big_bags_film_ldpe_kg;
 
-    // Componente 6 — Lonas (factor pendiente)
-    const emisiones_lonas_kg = datos.total_lonas * constantes.fe_lona;
+    // Componente 6 — Lonas (2 sub-componentes LCA)
+    const masa_total_lonas_kg = datos.total_lonas * constantes.peso_vacio_lona_kg;
+    const emisiones_lonas_pp_no_tejido_kg = masa_total_lonas_kg * constantes.fe_lona_pp_no_tejido;
+    const emisiones_lonas_fibra_tejida_kg = masa_total_lonas_kg * constantes.fe_lona_fibra_tejida;
+    const emisiones_lonas_total_kg = emisiones_lonas_pp_no_tejido_kg + emisiones_lonas_fibra_tejida_kg;
 
     // Componentes 7-10 — Residuos por categoría (Alcance 3)
     const emisiones_residuos_lubricants_kg = datos.residuos_lubricants_kg * constantes.fe_residuo_lubricants;
@@ -59,7 +67,7 @@ export class CalcularEPirolisisUseCase {
 
     // Total: solo componentes que suman
     const emisiones_total_kg = emisiones_ch4_kg + emisiones_n2o_kg
-      + emisiones_big_bags_kg + emisiones_lonas_kg + emisiones_residuos_total_kg
+      + emisiones_big_bags_total_kg + emisiones_lonas_total_kg + emisiones_residuos_total_kg
       + emisiones_chimenea_ch4_co2eq_kg + emisiones_chimenea_n2o_co2eq_kg;
     const emisiones_total_ton = emisiones_total_kg / 1000;
 
@@ -83,8 +91,15 @@ export class CalcularEPirolisisUseCase {
       emisiones_co2_biogenico_kg: round(emisiones_co2_biogenico_kg),
       emisiones_ch4_kg: round(emisiones_ch4_kg),
       emisiones_n2o_kg: round(emisiones_n2o_kg),
-      emisiones_big_bags_kg: round(emisiones_big_bags_kg),
-      emisiones_lonas_kg: round(emisiones_lonas_kg),
+      masa_total_big_bags_kg: round(masa_total_big_bags_kg),
+      emisiones_big_bags_pp_no_tejido_kg: round(emisiones_big_bags_pp_no_tejido_kg),
+      emisiones_big_bags_fibra_tejida_kg: round(emisiones_big_bags_fibra_tejida_kg),
+      emisiones_big_bags_film_ldpe_kg: round(emisiones_big_bags_film_ldpe_kg),
+      emisiones_big_bags_total_kg: round(emisiones_big_bags_total_kg),
+      masa_total_lonas_kg: round(masa_total_lonas_kg),
+      emisiones_lonas_pp_no_tejido_kg: round(emisiones_lonas_pp_no_tejido_kg),
+      emisiones_lonas_fibra_tejida_kg: round(emisiones_lonas_fibra_tejida_kg),
+      emisiones_lonas_total_kg: round(emisiones_lonas_total_kg),
       emisiones_residuos_lubricants_kg: round(emisiones_residuos_lubricants_kg),
       emisiones_residuos_used_oil_kg: round(emisiones_residuos_used_oil_kg),
       emisiones_residuos_paint_cans_kg: round(emisiones_residuos_paint_cans_kg),
@@ -124,10 +139,17 @@ export class CalcularEPirolisisUseCase {
         co2_biogenico_suma_al_total: false,
         ch4_kg: round(emisiones_ch4_kg),
         n2o_kg: round(emisiones_n2o_kg),
-        big_bags_kg: round(emisiones_big_bags_kg),
-        big_bags_factor_pendiente: factoresPendientes.includes('fe_big_bag'),
-        lonas_kg: round(emisiones_lonas_kg),
-        lonas_factor_pendiente: factoresPendientes.includes('fe_lona'),
+        big_bags_masa_total_kg: round(masa_total_big_bags_kg),
+        big_bags_pp_no_tejido_kg: round(emisiones_big_bags_pp_no_tejido_kg),
+        big_bags_fibra_tejida_kg: round(emisiones_big_bags_fibra_tejida_kg),
+        big_bags_film_ldpe_kg: round(emisiones_big_bags_film_ldpe_kg),
+        big_bags_total_kg: round(emisiones_big_bags_total_kg),
+        big_bags_factor_pendiente: false,
+        lonas_masa_total_kg: round(masa_total_lonas_kg),
+        lonas_pp_no_tejido_kg: round(emisiones_lonas_pp_no_tejido_kg),
+        lonas_fibra_tejida_kg: round(emisiones_lonas_fibra_tejida_kg),
+        lonas_total_kg: round(emisiones_lonas_total_kg),
+        lonas_factor_pendiente: false,
         residuos_lubricants_kg: round(emisiones_residuos_lubricants_kg),
         residuos_used_oil_kg: round(emisiones_residuos_used_oil_kg),
         residuos_paint_cans_kg: round(emisiones_residuos_paint_cans_kg),
