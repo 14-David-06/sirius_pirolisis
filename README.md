@@ -24,7 +24,7 @@ sirius_pirolisis/
 ├── tailwind.config.ts      # Configuración de Tailwind CSS
 └── README.md               # Este archivo
 ```
-
+         
 ## 🛠️ Instalación y Desarrollo
 
 ### Prerrequisitos
