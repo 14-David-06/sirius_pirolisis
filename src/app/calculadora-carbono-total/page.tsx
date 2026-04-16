@@ -35,6 +35,7 @@ interface EPirolisisComponentes {
   big_bags_pp_no_tejido_kg: number;
   big_bags_fibra_tejida_kg: number;
   big_bags_film_ldpe_kg: number;
+  big_bags_descarte_pp_kg: number;
   big_bags_total_kg: number;
   big_bags_factor_pendiente: boolean;
   lonas_masa_total_kg: number;
@@ -365,13 +366,15 @@ export default function CalculadoraCarbonoTotalPage() {
                       <DetailRow label="N₂O biogás" value={previews.epirolisis.componentes.n2o_kg} unit="kg CO₂eq"
                         formula={`${fmt(previews.epirolisis.m3_biogas_total)} m³ biogás × FE N₂O`} />
                       <DetailRow label="Big Bags (total)" value={previews.epirolisis.componentes.big_bags_total_kg} unit="kg CO₂eq"
-                        formula={`${previews.epirolisis.total_big_bags} big bags × 0.08 kg × (3.361 + 0.490 + 3.304)`} />
+                        formula={`${previews.epirolisis.total_big_bags} big bags × 0.08 kg × (3.361 + 0.490 + 3.304 + 0.101)`} />
                       <DetailRow label="  └ PP no tejido" value={previews.epirolisis.componentes.big_bags_pp_no_tejido_kg} unit="kg CO₂eq"
                         formula={`${fmt(previews.epirolisis.componentes.big_bags_masa_total_kg)} kg × 3.361`} color="blue" badge="Sub-comp A" />
                       <DetailRow label="  └ Fibra tejida" value={previews.epirolisis.componentes.big_bags_fibra_tejida_kg} unit="kg CO₂eq"
                         formula={`${fmt(previews.epirolisis.componentes.big_bags_masa_total_kg)} kg × 0.490`} color="blue" badge="Sub-comp B" />
                       <DetailRow label="  └ Film LDPE" value={previews.epirolisis.componentes.big_bags_film_ldpe_kg} unit="kg CO₂eq"
                         formula={`${fmt(previews.epirolisis.componentes.big_bags_masa_total_kg)} kg × 3.304`} color="blue" badge="Sub-comp C" />
+                      <DetailRow label="  └ Descarte PP" value={previews.epirolisis.componentes.big_bags_descarte_pp_kg} unit="kg CO₂eq"
+                        formula={`${fmt(previews.epirolisis.componentes.big_bags_masa_total_kg)} kg × 0.101`} color="blue" badge="Sub-comp D" />
                       <DetailRow label="Lonas (total)" value={previews.epirolisis.componentes.lonas_total_kg} unit="kg CO₂eq"
                         formula={`${previews.epirolisis.total_lonas} lonas × 0.0501 kg × (3.361 + 0.490)`} />
                       <DetailRow label="  └ PP no tejido" value={previews.epirolisis.componentes.lonas_pp_no_tejido_kg} unit="kg CO₂eq"

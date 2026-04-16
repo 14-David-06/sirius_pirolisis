@@ -24,8 +24,9 @@ export class PreviewEPirolisisUseCase {
     const emisiones_big_bags_pp_no_tejido_kg = masa_total_big_bags_kg * constantes.fe_big_bag_pp_no_tejido;
     const emisiones_big_bags_fibra_tejida_kg = masa_total_big_bags_kg * constantes.fe_big_bag_fibra_tejida;
     const emisiones_big_bags_film_ldpe_kg = masa_total_big_bags_kg * constantes.fe_big_bag_film_ldpe;
+    const emisiones_big_bags_descarte_pp_kg = masa_total_big_bags_kg * constantes.fe_big_bag_descarte_pp;
     const emisiones_big_bags_total_kg = emisiones_big_bags_pp_no_tejido_kg
-      + emisiones_big_bags_fibra_tejida_kg + emisiones_big_bags_film_ldpe_kg;
+      + emisiones_big_bags_fibra_tejida_kg + emisiones_big_bags_film_ldpe_kg + emisiones_big_bags_descarte_pp_kg;
 
     // Componente 6 — Lonas (2 sub-componentes LCA)
     const masa_total_lonas_kg = datos.total_lonas * constantes.peso_vacio_lona_kg;
@@ -79,6 +80,7 @@ export class PreviewEPirolisisUseCase {
         big_bags_pp_no_tejido_kg: round(emisiones_big_bags_pp_no_tejido_kg),
         big_bags_fibra_tejida_kg: round(emisiones_big_bags_fibra_tejida_kg),
         big_bags_film_ldpe_kg: round(emisiones_big_bags_film_ldpe_kg),
+        big_bags_descarte_pp_kg: round(emisiones_big_bags_descarte_pp_kg),
         big_bags_total_kg: round(emisiones_big_bags_total_kg),
         big_bags_factor_pendiente: false,
         lonas_masa_total_kg: round(masa_total_lonas_kg),

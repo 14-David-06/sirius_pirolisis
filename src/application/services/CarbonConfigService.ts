@@ -34,6 +34,7 @@ export class CarbonConfigService {
       fe_big_bag_pp_no_tejido: this.parseEnvFloat('CARBON_FE_BIG_BAG_PP_NO_TEJIDO'),
       fe_big_bag_fibra_tejida: this.parseEnvFloat('CARBON_FE_BIG_BAG_FIBRA_TEJIDA'),
       fe_big_bag_film_ldpe: this.parseEnvFloat('CARBON_FE_BIG_BAG_FILM_LDPE'),
+      fe_big_bag_descarte_pp: this.parseEnvFloat('CARBON_FE_BIG_BAG_DESCARTE_PP'),
       fe_lona: this.parseEnvFloat('CARBON_FE_LONA'),
       peso_vacio_lona_kg: this.parseEnvFloat('CARBON_PESO_VACIO_LONA_KG'),
       fe_lona_pp_no_tejido: this.parseEnvFloat('CARBON_FE_LONA_PP_NO_TEJIDO'),

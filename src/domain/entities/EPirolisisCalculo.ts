@@ -11,6 +11,7 @@ export interface EPirolisisConstantes {
   fe_big_bag_pp_no_tejido: number;
   fe_big_bag_fibra_tejida: number;
   fe_big_bag_film_ldpe: number;
+  fe_big_bag_descarte_pp: number;
   fe_lona: number;
   peso_vacio_lona_kg: number;
   fe_lona_pp_no_tejido: number;
@@ -40,6 +41,7 @@ export interface EPirolisisComponentes {
   big_bags_pp_no_tejido_kg: number;
   big_bags_fibra_tejida_kg: number;
   big_bags_film_ldpe_kg: number;
+  big_bags_descarte_pp_kg: number;
   big_bags_total_kg: number;
   big_bags_factor_pendiente: false;
   lonas_masa_total_kg: number;
@@ -86,6 +88,7 @@ export interface EPirolisisResultado {
   emisiones_big_bags_pp_no_tejido_kg: number;
   emisiones_big_bags_fibra_tejida_kg: number;
   emisiones_big_bags_film_ldpe_kg: number;
+  emisiones_big_bags_descarte_pp_kg: number;
   emisiones_big_bags_total_kg: number;
   masa_total_lonas_kg: number;
   emisiones_lonas_pp_no_tejido_kg: number;

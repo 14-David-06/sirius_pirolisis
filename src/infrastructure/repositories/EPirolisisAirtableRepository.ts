@@ -205,6 +205,7 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       'emisiones_big_bags_pp_no_tejido_kg': resultado.emisiones_big_bags_pp_no_tejido_kg,
       'emisiones_big_bags_fibra_tejida_kg': resultado.emisiones_big_bags_fibra_tejida_kg,
       'emisiones_big_bags_film_ldpe_kg': resultado.emisiones_big_bags_film_ldpe_kg,
+      'emisiones_big_bags_descarte_pp_kg': resultado.emisiones_big_bags_descarte_pp_kg,
       'emisiones_big_bags_total_kg': resultado.emisiones_big_bags_total_kg,
       'masa_total_lonas_kg': resultado.masa_total_lonas_kg,
       'emisiones_lonas_pp_no_tejido_kg': resultado.emisiones_lonas_pp_no_tejido_kg,
@@ -297,7 +298,7 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
         ? JSON.parse(fields['constantes_usadas'])
         : fields['constantes_usadas'] || {};
     } catch {
-      constantes = { fe_electricidad: 0, fe_co2_biogas: 0, fe_ch4_biogas: 0, fe_n2o_biogas: 0, fe_big_bag: 0, peso_vacio_big_bag_kg: 0, fe_big_bag_pp_no_tejido: 0, fe_big_bag_fibra_tejida: 0, fe_big_bag_film_ldpe: 0, fe_lona: 0, peso_vacio_lona_kg: 0, fe_lona_pp_no_tejido: 0, fe_lona_fibra_tejida: 0, fe_residuo_lubricants: 0, fe_residuo_used_oil: 0, fe_residuo_paint_cans: 0, fe_residuo_ppe: 0, chimenea_co_kg_hr: 0, chimenea_co2_kg_hr: 0, chimenea_ch4_kg_hr: 0, chimenea_n2o_kg_hr: 0, gwp_ch4: 0, gwp_n2o: 0 };
+      constantes = { fe_electricidad: 0, fe_co2_biogas: 0, fe_ch4_biogas: 0, fe_n2o_biogas: 0, fe_big_bag: 0, peso_vacio_big_bag_kg: 0, fe_big_bag_pp_no_tejido: 0, fe_big_bag_fibra_tejida: 0, fe_big_bag_film_ldpe: 0, fe_big_bag_descarte_pp: 0, fe_lona: 0, peso_vacio_lona_kg: 0, fe_lona_pp_no_tejido: 0, fe_lona_fibra_tejida: 0, fe_residuo_lubricants: 0, fe_residuo_used_oil: 0, fe_residuo_paint_cans: 0, fe_residuo_ppe: 0, chimenea_co_kg_hr: 0, chimenea_co2_kg_hr: 0, chimenea_ch4_kg_hr: 0, chimenea_n2o_kg_hr: 0, gwp_ch4: 0, gwp_n2o: 0 };
     }
 
     let factores_pendientes: string[];
@@ -332,6 +333,7 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       emisiones_big_bags_pp_no_tejido_kg: fields['emisiones_big_bags_pp_no_tejido_kg'] || 0,
       emisiones_big_bags_fibra_tejida_kg: fields['emisiones_big_bags_fibra_tejida_kg'] || 0,
       emisiones_big_bags_film_ldpe_kg: fields['emisiones_big_bags_film_ldpe_kg'] || 0,
+      emisiones_big_bags_descarte_pp_kg: fields['emisiones_big_bags_descarte_pp_kg'] || 0,
       emisiones_big_bags_total_kg: fields['emisiones_big_bags_total_kg'] || fields['emisiones_big_bags_kg'] || 0,
       masa_total_lonas_kg: fields['masa_total_lonas_kg'] || 0,
       emisiones_lonas_pp_no_tejido_kg: fields['emisiones_lonas_pp_no_tejido_kg'] || 0,

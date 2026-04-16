@@ -16,6 +16,7 @@ interface EPirolisisComponentes {
   big_bags_pp_no_tejido_kg: number;
   big_bags_fibra_tejida_kg: number;
   big_bags_film_ldpe_kg: number;
+  big_bags_descarte_pp_kg: number;
   big_bags_total_kg: number;
   big_bags_factor_pendiente: boolean;
   lonas_masa_total_kg: number;
@@ -82,6 +83,7 @@ interface EPirolisisResultado {
   emisiones_big_bags_pp_no_tejido_kg: number;
   emisiones_big_bags_fibra_tejida_kg: number;
   emisiones_big_bags_film_ldpe_kg: number;
+  emisiones_big_bags_descarte_pp_kg: number;
   emisiones_big_bags_total_kg: number;
   masa_total_lonas_kg: number;
   emisiones_lonas_pp_no_tejido_kg: number;
@@ -253,6 +255,7 @@ export default function CalculadoraEPirolisisPage() {
       ['Emisiones big bags (PP no tejido)', String(resultado.emisiones_big_bags_pp_no_tejido_kg), 'kg CO2eq', 'Sub-componente A'],
       ['Emisiones big bags (fibra tejida)', String(resultado.emisiones_big_bags_fibra_tejida_kg), 'kg CO2eq', 'Sub-componente B'],
       ['Emisiones big bags (film LDPE)', String(resultado.emisiones_big_bags_film_ldpe_kg), 'kg CO2eq', 'Sub-componente C'],
+      ['Emisiones big bags (descarte PP)', String(resultado.emisiones_big_bags_descarte_pp_kg), 'kg CO2eq', 'Sub-componente D'],
       ['Emisiones big bags total', String(resultado.emisiones_big_bags_total_kg), 'kg CO2eq', 'Suma al total'],
       ['Emisiones lonas (PP no tejido)', String(resultado.emisiones_lonas_pp_no_tejido_kg), 'kg CO2eq', 'Sub-componente A'],
       ['Emisiones lonas (fibra tejida)', String(resultado.emisiones_lonas_fibra_tejida_kg), 'kg CO2eq', 'Sub-componente B'],
@@ -534,6 +537,11 @@ export default function CalculadoraEPirolisisPage() {
                               <span className="text-white/50">C) Film LDPE:</span>{' '}
                               <span className="font-mono text-white/90">{preview.componentes.big_bags_film_ldpe_kg}</span> kg CO&#x2082;eq
                               <span className="text-white/40 ml-1">({preview.componentes.big_bags_masa_total_kg} kg × {preview.desglose.factores_usados.fe_big_bag_film_ldpe})</span>
+                            </div>
+                            <div className="text-xs text-white/70">
+                              <span className="text-white/50">D) Descarte PP:</span>{' '}
+                              <span className="font-mono text-white/90">{preview.componentes.big_bags_descarte_pp_kg}</span> kg CO&#x2082;eq
+                              <span className="text-white/40 ml-1">({preview.componentes.big_bags_masa_total_kg} kg × {preview.desglose.factores_usados.fe_big_bag_descarte_pp})</span>
                             </div>
                           </div>
                         </div>
