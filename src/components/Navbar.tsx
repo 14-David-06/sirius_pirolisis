@@ -128,6 +128,7 @@ export default function Navbar() {
         title: "Remoción de Carbono (CDR)",
         icon: "",
         items: [
+          { label: "Calculadora Total", href: "/calculadora-carbono-total", icon: "", description: "Cálculo consolidado 3 etapas" },
           { label: "eBiomass Detalles", href: "/calculadora-carbono", icon: "", description: "eBiomass — Emisiones transporte" },
           { label: "eProduction Detalles", href: "/calculadora-epirolisis", icon: "", description: "eProduction — Emisiones producción" },
           { label: "eTransporte Detalles", href: "/calculadora-etransporte", icon: "", description: "eTransporte — Emisiones transporte biochar" },
