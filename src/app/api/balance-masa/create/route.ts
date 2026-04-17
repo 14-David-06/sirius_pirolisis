@@ -167,6 +167,8 @@ export async function POST(request: NextRequest) {
     // 1.5. Gestionar agrupación en baches (no crítico - no fallar si hay error)
     console.log('📦 Gestionando agrupación en baches...');
     
+    const warnings: Record<string, boolean> = {};
+    
     try {
       const lastBache = await findLastBache();
       
@@ -189,7 +191,7 @@ export async function POST(request: NextRequest) {
           });
           console.log(`✅ Bache completado: ${lastBache.id}`);
 
-          // Auto-deducción de Big Bag al completar bache
+          // Auto-deducción de Big Bag al completar bache (nunca bloquea)
           const bigBagInsumoId = process.env.AIRTABLE_BIG_BAG_INSUMO_ID;
           if (bigBagInsumoId) {
             try {
@@ -207,12 +209,14 @@ export async function POST(request: NextRequest) {
                 }),
               });
               if (!deductRes.ok) {
+                warnings.big_bag_sin_stock = true;
                 const errData = await deductRes.json().catch(() => ({}));
                 console.warn('⚠️ Big Bag auto-deducción falló (no crítico):', errData);
               } else {
                 console.log('✅ Big Bag auto-deducido por bache completo');
               }
             } catch (deductError) {
+              warnings.big_bag_sin_stock = true;
               console.warn('⚠️ Big Bag auto-deducción error (no crítico):', deductError);
             }
           }
@@ -273,6 +277,9 @@ export async function POST(request: NextRequest) {
           } else {
             console.warn('⚠️ Error vinculando paquete de lonas:', await linkRes.text());
           }
+        } else {
+          warnings.lonas_sin_paquete_activo = true;
+          console.warn('⚠️ No hay paquete de lonas activo para vincular al balance');
         }
       } catch (lonaErr) {
         console.warn('⚠️ Error en vinculación de paquete de lonas (no crítico):', lonaErr);
@@ -283,11 +290,17 @@ export async function POST(request: NextRequest) {
     console.log('✅ Balance de masa registrado exitosamente:', balanceId);
 
     // Respuesta final
-    return NextResponse.json({
+    const responsePayload: Record<string, unknown> = {
       success: true,
       balanceId: balanceId,
-      message: 'Balance creado exitosamente'
-    });
+      message: 'Balance creado exitosamente',
+    };
+
+    if (Object.keys(warnings).length > 0) {
+      responsePayload.warnings = warnings;
+    }
+
+    return NextResponse.json(responsePayload);
 
 
 

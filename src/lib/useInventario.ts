@@ -20,47 +20,53 @@ interface InventarioData {
   records: InventarioRecord[];
 }
 
-export function useInventario() {
+export function useInventario(filters?: { categoria?: string; estado?: string }) {
   const [data, setData] = useState<InventarioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchInventario = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchInventario = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const response = await fetch('/api/inventario/list');
-        const result = await response.json();
+      const params = new URLSearchParams();
+      if (filters?.categoria) params.set('categoria', filters.categoria);
+      if (filters?.estado) params.set('estado', filters.estado);
+      const qs = params.toString();
+      const url = `/api/inventario/list${qs ? `?${qs}` : ''}`;
 
-        if (!response.ok) {
-          // Si es un error de configuración, mostrar mensaje específico
-          if (response.status === 400 && result.error?.includes('AIRTABLE_INVENTARIO_TABLE_ID')) {
-            throw new Error('Tabla de inventario no configurada. Configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local');
-          }
-          if (response.status === 403 && result.error?.type === 'INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND') {
-            throw new Error('Tabla de inventario no encontrada. Verifica que la tabla existe en Airtable y que el ID es correcto');
-          }
-          throw new Error(result.error || 'Error al obtener datos del inventario');
+      const response = await fetch(url);
+      const result = await response.json();
+
+      if (!response.ok) {
+        // Si es un error de configuración, mostrar mensaje específico
+        if (response.status === 400 && result.error?.includes('AIRTABLE_INVENTARIO_TABLE_ID')) {
+          throw new Error('Tabla de inventario no configurada. Configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local');
         }
-
-        setData(result);
-
-        // Si la tabla existe pero está vacía, mostrar mensaje informativo
-        if (result.records && result.records.length === 0) {
-          console.info('📦 Tabla de inventario encontrada pero está vacía');
+        if (response.status === 403 && result.error?.type === 'INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND') {
+          throw new Error('Tabla de inventario no encontrada. Verifica que la tabla existe en Airtable y que el ID es correcto');
         }
-      } catch (err: any) {
-        console.error('❌ Error al cargar inventario:', err);
-        setError(err.message || 'Error desconocido al cargar inventario');
-      } finally {
-        setLoading(false);
+        throw new Error(result.error || 'Error al obtener datos del inventario');
       }
-    };
 
+      setData(result);
+
+      // Si la tabla existe pero está vacía, mostrar mensaje informativo
+      if (result.records && result.records.length === 0) {
+        console.info('📦 Tabla de inventario encontrada pero está vacía');
+      }
+    } catch (err: any) {
+      console.error('❌ Error al cargar inventario:', err);
+      setError(err.message || 'Error desconocido al cargar inventario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchInventario();
-  }, []);
+  }, [filters?.categoria, filters?.estado]);
 
   // Función helper para obtener el nombre del item
   const getItemName = (record: InventarioRecord): string => {
@@ -204,32 +210,7 @@ export function useInventario() {
   };
 
   // Función para refrescar los datos
-  const refreshInventario = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch('/api/inventario/list');
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 400 && result.error?.includes('AIRTABLE_INVENTARIO_TABLE_ID')) {
-          throw new Error('Tabla de inventario no configurada. Configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local');
-        }
-        if (response.status === 403 && result.error?.type === 'INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND') {
-          throw new Error('Tabla de inventario no encontrada. Verifica que la tabla existe en Airtable y que el ID es correcto');
-        }
-        throw new Error(result.error || 'Error al obtener datos del inventario');
-      }
-
-      setData(result);
-    } catch (err: any) {
-      console.error('❌ Error al refrescar inventario:', err);
-      setError(err.message || 'Error desconocido al refrescar inventario');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const refreshInventario = () => fetchInventario();
 
   // --- Nuevos getters para trazabilidad productiva ---
 

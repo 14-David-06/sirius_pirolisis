@@ -143,7 +143,18 @@ function BalanceMasaContent() {
       const result = await response.json();
 
       if (result.success) {
-        if (result.warning) {
+        // Construir mensajes de warnings
+        const warningMessages: string[] = [];
+        if (result.warnings?.big_bag_sin_stock) {
+          warningMessages.push('No hay Big Bags disponibles en inventario.');
+        }
+        if (result.warnings?.lonas_sin_paquete_activo) {
+          warningMessages.push('No hay un paquete de lonas activo. Registra una salida de lonas en el inventario para activar el seguimiento.');
+        }
+
+        if (warningMessages.length > 0) {
+          setMensaje(`⚠️ Balance registrado. ${warningMessages.join(' ')}`);
+        } else if (result.warning) {
           setMensaje(`⚠️ ${result.warning}`);
         } else {
           setMensaje(`✅ ${result.message}`);
@@ -233,6 +244,8 @@ function BalanceMasaContent() {
               <div className={`mb-6 p-4 rounded-lg text-center font-semibold backdrop-blur-sm ${
                 mensaje.includes('✅') 
                   ? 'bg-green-500/80 text-white border border-green-400/50 shadow-lg' 
+                  : mensaje.includes('⚠️')
+                  ? 'bg-yellow-500/80 text-white border border-yellow-400/50 shadow-lg'
                   : 'bg-red-500/80 text-white border border-red-400/50 shadow-lg'
               }`}>
                 {mensaje}

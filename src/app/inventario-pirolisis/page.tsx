@@ -147,7 +147,13 @@ export default function InventarioPirolisis() {
 }
 
 function InventarioPirolisisContent() {
-  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription, getItemEntradas, getItemSalidas, getItemPresentacion, getItemCantidadPresentacion, getItemCategory, getItemQuantity, getItemUnit, getItemStockTotal, getItemCategoriaInsumo, getItemEstado, getItemFechaVencimiento, getItemsByCategoriaInsumo, getVencimientosProximos } = useInventario();
+  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
+
+  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription, getItemEntradas, getItemSalidas, getItemPresentacion, getItemCantidadPresentacion, getItemCategory, getItemQuantity, getItemUnit, getItemStockTotal, getItemCategoriaInsumo, getItemEstado, getItemFechaVencimiento, getItemsByCategoriaInsumo, getVencimientosProximos } = useInventario({
+    categoria: filtroCategoria || undefined,
+    estado: filtroEstado || undefined,
+  });
 
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'ingresar' | 'registrar' | 'salida'>('ingresar');
@@ -568,6 +574,50 @@ function InventarioPirolisisContent() {
             {/* Inventario por Categorías */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
               <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Inventario por Categorías</h2>
+
+              {/* Filtros de categoría y estado */}
+              <div className="flex flex-wrap gap-4 mb-6">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-sm font-medium text-white/80 mb-1 drop-shadow">Categoría</label>
+                  <select
+                    value={filtroCategoria}
+                    onChange={(e) => setFiltroCategoria(e.target.value)}
+                    className="w-full p-2 bg-white/10 border border-white/20 rounded-lg text-white backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="" className="bg-gray-800">Todas las categorías</option>
+                    <option value="lona" className="bg-gray-800">Lona</option>
+                    <option value="big_bag" className="bg-gray-800">Big Bag</option>
+                    <option value="quimico" className="bg-gray-800">Químico</option>
+                    <option value="herramienta" className="bg-gray-800">Herramienta</option>
+                    <option value="consumible" className="bg-gray-800">Consumible</option>
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-sm font-medium text-white/80 mb-1 drop-shadow">Estado</label>
+                  <select
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    className="w-full p-2 bg-white/10 border border-white/20 rounded-lg text-white backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="" className="bg-gray-800">Todos los estados</option>
+                    <option value="disponible" className="bg-gray-800">Disponible</option>
+                    <option value="agotado" className="bg-gray-800">Agotado</option>
+                    <option value="por_agotarse" className="bg-gray-800">Por agotarse</option>
+                    <option value="vencido" className="bg-gray-800">Vencido</option>
+                  </select>
+                </div>
+                {(filtroCategoria || filtroEstado) && (
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => { setFiltroCategoria(''); setFiltroEstado(''); }}
+                      className="p-2 px-4 bg-white/10 border border-white/20 rounded-lg text-white/80 hover:bg-white/20 transition-colors text-sm"
+                    >
+                      ✕ Limpiar filtros
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-4">
                 {Object.entries(categories).map(([categoria, items]) => {
                   const itemsArray = items as any[];
