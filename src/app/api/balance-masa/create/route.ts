@@ -188,6 +188,34 @@ export async function POST(request: NextRequest) {
             'Estado Bache': 'Bache Completo Planta'
           });
           console.log(`✅ Bache completado: ${lastBache.id}`);
+
+          // Auto-deducción de Big Bag al completar bache
+          const bigBagInsumoId = process.env.AIRTABLE_BIG_BAG_INSUMO_ID;
+          if (bigBagInsumoId) {
+            try {
+              const turnoId = data.turnoPirolisis?.[0] || '';
+              const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+              const deductRes = await fetch(`${baseUrl}/api/inventario/remove-quantity`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  insumo_id: bigBagInsumoId,
+                  cantidad: 1,
+                  tipo_uso: 'balance_de_masa',
+                  turno_id: turnoId,
+                  observaciones: `Auto-deducción por bache completo: ${lastBache.id}`
+                }),
+              });
+              if (!deductRes.ok) {
+                const errData = await deductRes.json().catch(() => ({}));
+                console.warn('⚠️ Big Bag auto-deducción falló (no crítico):', errData);
+              } else {
+                console.log('✅ Big Bag auto-deducido por bache completo');
+              }
+            } catch (deductError) {
+              console.warn('⚠️ Big Bag auto-deducción error (no crítico):', deductError);
+            }
+          }
           
           const newBache = await createNewBache(balanceId);
           console.log(`✅ Nuevo bache creado: ${newBache?.id}`);
@@ -204,6 +232,51 @@ export async function POST(request: NextRequest) {
     } catch (bacheError) {
       console.error('❌ Error en gestión de baches (no crítico):', bacheError);
       // Continuar con la generación de PDF/QR aunque falle la gestión de baches
+    }
+
+    // --- Vincular paquete de lonas activo al balance ---
+    const PAQUETES_TABLE_ID = process.env.AIRTABLE_PAQUETES_LONAS_TABLE_ID;
+    const PAQUETE_ACTIVO_FIELD = process.env.AIRTABLE_FIELD_PAQUETE_LONAS_ACTIVO;
+
+    if (PAQUETES_TABLE_ID && PAQUETE_ACTIVO_FIELD && balanceId) {
+      try {
+        // Buscar paquete activo
+        const paqUrl = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${PAQUETES_TABLE_ID}`);
+        paqUrl.searchParams.set('filterByFormula', `{Estado} = 'activo'`);
+        paqUrl.searchParams.set('maxRecords', '1');
+
+        const paqRes = await fetch(paqUrl.toString(), {
+          headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` },
+        });
+        const paqData = await paqRes.json();
+        const paqueteActivo = paqData.records?.[0];
+
+        if (paqueteActivo) {
+          // Vincular paquete al balance via Paquete Lonas Activo field
+          const linkRes = await fetch(
+            `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_BALANCE_MASA_TABLE}/${balanceId}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fields: {
+                  [PAQUETE_ACTIVO_FIELD]: [paqueteActivo.id],
+                },
+              }),
+            }
+          );
+          if (linkRes.ok) {
+            console.log(`✅ Paquete de lonas ${paqueteActivo.id} vinculado al balance ${balanceId}`);
+          } else {
+            console.warn('⚠️ Error vinculando paquete de lonas:', await linkRes.text());
+          }
+        }
+      } catch (lonaErr) {
+        console.warn('⚠️ Error en vinculación de paquete de lonas (no crítico):', lonaErr);
+      }
     }
 
     // ✅ Balance creado exitosamente en la base de datos

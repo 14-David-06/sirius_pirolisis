@@ -1,10 +1,127 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+
+// --- MetricasSection: muestra eficiencia de uso de insumos ---
+function MetricasSection() {
+  const [metricas, setMetricas] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/inventario/metricas')
+      .then(r => r.json())
+      .then(d => { if (d.success) setMetricas(d.data); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-white/60 text-center py-4">Cargando métricas...</div>;
+  if (!metricas) return null;
+
+  return (
+    <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
+      <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">📊 Métricas de Eficiencia</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white/10 rounded-lg p-4 text-center border border-white/20">
+          <div className="text-2xl font-bold text-white">{metricas.total_salidas}</div>
+          <div className="text-xs text-white/70">Total Salidas</div>
+        </div>
+        <div className="bg-green-500/20 rounded-lg p-4 text-center border border-green-500/20">
+          <div className="text-2xl font-bold text-green-300">{metricas.total_productivas}</div>
+          <div className="text-xs text-green-200">Productivas</div>
+        </div>
+        <div className="bg-orange-500/20 rounded-lg p-4 text-center border border-orange-500/20">
+          <div className="text-2xl font-bold text-orange-300">{metricas.total_operativas}</div>
+          <div className="text-xs text-orange-200">Operativas</div>
+        </div>
+        <div className="bg-blue-500/20 rounded-lg p-4 text-center border border-blue-500/20">
+          <div className="text-2xl font-bold text-blue-300">{metricas.eficiencia_pct}%</div>
+          <div className="text-xs text-blue-200">Eficiencia</div>
+        </div>
+      </div>
+      {metricas.desglose_por_tipo && Object.keys(metricas.desglose_por_tipo).length > 0 && (
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
+          {Object.entries(metricas.desglose_por_tipo).map(([tipo, count]) => (
+            <div key={tipo} className="bg-white/5 rounded p-2 text-sm text-white/80 border border-white/10">
+              <span className="font-medium">{tipo}:</span> {count as number}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+// --- Fin MetricasSection ---
+
+// --- PaqueteLonasCard: estado del paquete de lonas activo ---
+function PaqueteLonasCard() {
+  const [paquete, setPaquete] = useState<{
+    paquete_id: string;
+    fecha_activacion: string;
+    cantidad_lonas: number;
+    dias_en_uso: number;
+    fecha_vencimiento_estimada: string;
+    alerta: 'ok' | 'advertencia' | 'vencido';
+    total_balances_vinculados: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/inventario/lonas/paquete-activo')
+      .then(res => res.ok ? res.json() : null)
+      .then(json => setPaquete(json?.data || null))
+      .catch(() => setPaquete(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+  if (!paquete) return null;
+
+  const alertColors = {
+    ok: 'border-green-500/30 bg-green-500/10',
+    advertencia: 'border-yellow-500/30 bg-yellow-500/10',
+    vencido: 'border-orange-500/30 bg-orange-500/10',
+  };
+  const alertIcons = { ok: '✅', advertencia: '⚠️', vencido: '🔴' };
+
+  return (
+    <div className={`bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border ${alertColors[paquete.alerta]}`}>
+      <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">
+        {alertIcons[paquete.alerta]} Paquete de Lonas Activo
+      </h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="text-center">
+          <p className="text-2xl font-bold text-white drop-shadow">{paquete.dias_en_uso}</p>
+          <p className="text-white/70 text-sm">Días en uso</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-white drop-shadow">{paquete.cantidad_lonas}</p>
+          <p className="text-white/70 text-sm">Lonas</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-white drop-shadow">{paquete.total_balances_vinculados}</p>
+          <p className="text-white/70 text-sm">Balances vinculados</p>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-medium text-white drop-shadow">{paquete.fecha_vencimiento_estimada}</p>
+          <p className="text-white/70 text-sm">Vence estimado</p>
+        </div>
+      </div>
+      {paquete.alerta === 'advertencia' && (
+        <p className="mt-3 text-yellow-200 text-sm text-center">El paquete se acerca al límite de vida útil.</p>
+      )}
+      {paquete.alerta === 'vencido' && (
+        <p className="mt-3 text-orange-200 text-sm text-center font-semibold">El paquete superó los 90 días. Se recomienda cambio inmediato.</p>
+      )}
+    </div>
+  );
+}
+// --- Fin PaqueteLonasCard ---
+
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import VoiceToText from '@/components/VoiceToText';
+import SalidaInsumoForm from '@/components/SalidaInsumoForm';
 import { useInventario } from '@/lib/useInventario';
 
 // Función helper para obtener el nombre del usuario actual
@@ -30,7 +147,7 @@ export default function InventarioPirolisis() {
 }
 
 function InventarioPirolisisContent() {
-  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription, getItemEntradas, getItemSalidas, getItemPresentacion, getItemCantidadPresentacion, getItemCategory, getItemQuantity, getItemUnit, getItemStockTotal } = useInventario();
+  const { data, loading, error, refreshInventario, getTotalItems, getItemsByCategory, getLowStockItems, getItemName, getItemDescription, getItemEntradas, getItemSalidas, getItemPresentacion, getItemCantidadPresentacion, getItemCategory, getItemQuantity, getItemUnit, getItemStockTotal, getItemCategoriaInsumo, getItemEstado, getItemFechaVencimiento, getItemsByCategoriaInsumo, getVencimientosProximos } = useInventario();
 
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'ingresar' | 'registrar' | 'salida'>('ingresar');
@@ -51,14 +168,7 @@ function InventarioPirolisisContent() {
     cantidad: '',
     notas: ''
   });
-  const [removeQuantityData, setRemoveQuantityData] = useState({
-    selectedItemId: '',
-    cantidad: '',
-    tipoSalida: 'Consumo en Proceso',
-    observaciones: '',
-    documentoSoporte: null as File | null
-  });
-  const [removeQuantityError, setRemoveQuantityError] = useState('');
+
 
   // Limpiar campo personalizado cuando se cambia la presentación
   useEffect(() => {
@@ -153,7 +263,7 @@ function InventarioPirolisisContent() {
       await refreshInventario();
       alert(`${modalMode === 'ingresar' ? 'Elemento ingresado' : 'Insumo registrado'} exitosamente`);
     } catch (err: any) {
-      alert(`Error al ${modalMode === 'ingresar' ? 'ingresar' : 'registrar'} el elemento: ' + err.message`);
+      alert(`Error al ${modalMode === 'ingresar' ? 'ingresar' : 'registrar'} el elemento: ${err.message}`);
     } finally {
       setCreating(false);
     }
@@ -206,110 +316,6 @@ function InventarioPirolisisContent() {
     } finally {
       setCreating(false);
     }
-  };
-
-  // Función para remover cantidades de items existentes (salida de insumos)
-  const handleRemoveQuantity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!removeQuantityData.selectedItemId || !removeQuantityData.cantidad) {
-      alert('Por favor selecciona un insumo y especifica la cantidad a remover');
-      return;
-    }
-
-    // Validar que la cantidad no sea mayor al stock disponible
-    const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
-    if (selectedItem) {
-      const stockDisponible = getItemStockTotal(selectedItem);
-      const cantidadARemover = parseFloat(removeQuantityData.cantidad);
-      
-      if (cantidadARemover > stockDisponible) {
-        setRemoveQuantityError(`No puedes remover ${cantidadARemover} unidades. Solo hay ${stockDisponible} unidades disponibles en stock.`);
-        return;
-      }
-    }
-
-    // Limpiar error si la validación pasa
-    setRemoveQuantityError('');
-
-    // Validar tipo de salida
-    const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Mantenimiento', 'Otro'];
-    if (!tiposValidos.includes(removeQuantityData.tipoSalida)) {
-      alert('Tipo de salida inválido. Por favor selecciona un tipo válido.');
-      return;
-    }
-
-    setCreating(true);
-    try {
-      let documentoSoporteUrl = '';
-
-      // Subir documento si existe
-      if (removeQuantityData.documentoSoporte) {
-        const formData = new FormData();
-        formData.append('file', removeQuantityData.documentoSoporte);
-        formData.append('folder', 'inventario-salidas');
-
-        const uploadResponse = await fetch('/api/s3/upload', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error('Error al subir el documento de soporte');
-        }
-
-        const uploadData = await uploadResponse.json();
-        documentoSoporteUrl = uploadData.fileUrl;
-      }
-
-      const quantityData = {
-        itemId: removeQuantityData.selectedItemId,
-        cantidad: parseFloat(removeQuantityData.cantidad),
-        tipoSalida: removeQuantityData.tipoSalida,
-        observaciones: removeQuantityData.observaciones,
-        documentoSoporteUrl,
-        'Realiza Registro': getCurrentUserName()
-      };
-
-      const response = await fetch('/api/inventario/remove-quantity', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(quantityData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error al registrar salida de insumo');
-      }
-
-      // Limpiar formulario y cerrar modal
-      setRemoveQuantityData({
-        selectedItemId: '',
-        cantidad: '',
-        tipoSalida: 'Consumo en Proceso',
-        observaciones: '',
-        documentoSoporte: null
-      });
-      setRemoveQuantityError('');
-      setShowModal(false);
-
-      // Refrescar los datos
-      await refreshInventario();
-      alert('Salida de insumo registrada exitosamente');
-    } catch (err: any) {
-      alert(`Error al registrar salida: ${err.message}`);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // Función para manejar el texto extraído del audio en observaciones
-  const handleObservacionesVoiceText = (text: string) => {
-    setRemoveQuantityData(prev => ({
-      ...prev,
-      observaciones: prev.observaciones ? `${prev.observaciones} ${text}` : text
-    }));
   };
 
   if (loading) {
@@ -437,14 +443,6 @@ function InventarioPirolisisContent() {
                 <button
                   onClick={() => {
                     setModalMode('salida');
-                    setRemoveQuantityData({
-                      selectedItemId: '',
-                      cantidad: '',
-                      tipoSalida: 'Consumo en Proceso',
-                      observaciones: '',
-                      documentoSoporte: null
-                    });
-                    setRemoveQuantityError('');
                     setShowModal(true);
                   }}
                   className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200 flex items-center space-x-2"
@@ -538,6 +536,35 @@ function InventarioPirolisisContent() {
               </div>
             )}
 
+            {/* Vencimientos Próximos (30 días) */}
+            {getVencimientosProximos(30).length > 0 && (
+              <div className="bg-orange-500/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-orange-500/30 mb-6">
+                <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">📅 Vencimientos Próximos (30 días)</h2>
+                <div className="space-y-3">
+                  {getVencimientosProximos(30).map((item: any, index: number) => (
+                    <div key={index} className="flex justify-between items-center bg-white/10 p-4 rounded-lg border border-orange-500/20">
+                      <div className="flex-1">
+                        <span className="text-white font-semibold">{getItemName(item)}</span>
+                        <div className="text-sm text-white/70">{getItemCategoriaInsumo(item) || getItemCategory(item)}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-orange-300 font-bold">
+                          {getItemFechaVencimiento(item) ? new Date(getItemFechaVencimiento(item)!).toLocaleDateString('es-CO') : 'N/A'}
+                        </span>
+                        <div className="text-xs text-orange-200 mt-1">Fecha vencimiento</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Métricas de Eficiencia */}
+            <MetricasSection />
+
+            {/* Estado del Paquete de Lonas */}
+            <PaqueteLonasCard />
+
             {/* Inventario por Categorías */}
             <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30">
               <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">Inventario por Categorías</h2>
@@ -556,6 +583,16 @@ function InventarioPirolisisContent() {
                               <div className="flex-1">
                                 <div className="font-semibold text-white text-lg">{getItemName(item)}</div>
                                 <div className="text-sm text-white/70">Categoría: {getItemCategory(item)}</div>
+                                {getItemCategoriaInsumo(item) && (
+                                  <span className="inline-block mt-1 mr-1 px-2 py-0.5 text-xs rounded-full bg-blue-500/30 text-blue-200 border border-blue-500/20">
+                                    {getItemCategoriaInsumo(item)}
+                                  </span>
+                                )}
+                                {getItemEstado(item) && getItemEstado(item) !== 'disponible' && (
+                                  <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-yellow-500/30 text-yellow-200 border border-yellow-500/20">
+                                    {getItemEstado(item)}
+                                  </span>
+                                )}
                                 {getItemPresentacion(item) && (
                                   <div className="text-sm text-white/70">
                                     Presentación: {getItemCantidadPresentacion(item)} {getItemPresentacion(item)}
@@ -604,19 +641,38 @@ function InventarioPirolisisContent() {
           <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl w-full max-w-2xl mx-auto border border-white/20 max-h-[90vh] overflow-y-auto">
             <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 p-6 rounded-t-xl border-b border-white/10">
               <h2 className="text-2xl font-bold text-white drop-shadow-lg text-center">
-                {modalMode === 'ingresar' ? '📦 Ingresar Cantidades al Inventario' : modalMode === 'salida' ? '📤 Salida de Insumos' : '📝 Registrar Nuevo Insumo'}
+                {modalMode === 'ingresar' ? '📦 Ingresar Cantidades al Inventario' : modalMode === 'salida' ? '📤 Salida de Insumos — Trazabilidad' : '📝 Registrar Nuevo Insumo'}
               </h2>
               <p className="text-center text-white/80 mt-2 drop-shadow text-sm">
                 {modalMode === 'ingresar'
                   ? 'Selecciona un insumo existente y agrega cantidades al inventario.'
                   : modalMode === 'salida'
-                  ? 'Registra la salida de insumos del inventario con soporte para documentos.'
+                  ? 'Registra la salida con tipo de uso y vinculación productiva.'
                   : 'Registra un nuevo insumo en el sistema de inventario de pirolisis.'
                 }
               </p>
             </div>
 
-            <form onSubmit={modalMode === 'ingresar' ? handleAddQuantity : modalMode === 'salida' ? handleRemoveQuantity : handleCreateItem} className="p-6">
+            {/* Formulario de Salida — Componente refactorizado */}
+            {modalMode === 'salida' ? (
+              <SalidaInsumoForm
+                records={data?.records || []}
+                getItemName={getItemName}
+                getItemCategory={getItemCategory}
+                getItemQuantity={getItemQuantity}
+                getItemPresentacion={getItemPresentacion}
+                getItemStockTotal={getItemStockTotal}
+                getCurrentUserName={getCurrentUserName}
+                onSuccess={async () => {
+                  setShowModal(false);
+                  await refreshInventario();
+                  alert('Salida de insumo registrada exitosamente');
+                }}
+                onCancel={() => setShowModal(false)}
+              />
+            ) : (
+
+            <form onSubmit={modalMode === 'ingresar' ? handleAddQuantity : handleCreateItem} className="p-6">
               {modalMode === 'ingresar' ? (
                 <div className="space-y-6">
                   <div className="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -642,6 +698,7 @@ function InventarioPirolisisContent() {
                       type="number"
                       value={addQuantityData.cantidad}
                       onChange={(e) => setAddQuantityData({...addQuantityData, cantidad: e.target.value})}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
                       placeholder="Ej: 25"
                       min="0"
@@ -652,122 +709,6 @@ function InventarioPirolisisContent() {
 
                   <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-lg p-4 border border-green-500/20">
                     <label className="block text-sm font-semibold mb-2 text-green-200 drop-shadow">Registrado por:</label>
-                    <p className="text-white font-medium drop-shadow">{getCurrentUserName()}</p>
-                  </div>
-                </div>
-              ) : modalMode === 'salida' ? (
-                <div className="space-y-6">
-                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Seleccionar Insumo *</label>
-                    <select
-                      value={removeQuantityData.selectedItemId}
-                      onChange={(e) => {
-                        setRemoveQuantityData({...removeQuantityData, selectedItemId: e.target.value});
-                        setRemoveQuantityError('');
-                      }}
-                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm"
-                      required
-                    >
-                      <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
-                      {data?.records.map((item: any) => (
-                        <option key={item.id} value={item.id} className="bg-gray-800">
-                          {getItemName(item)} - {getItemCategory(item)} - Presentación: {getItemQuantity(item)} {getItemPresentacion(item)}
-                        </option>
-                      ))}
-                    </select>
-                    {removeQuantityData.selectedItemId && (
-                      <p className="text-sm text-blue-200 mt-2 drop-shadow">
-                        📊 Stock disponible: <span className="font-semibold">
-                          {(() => {
-                            const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
-                            return selectedItem ? getItemStockTotal(selectedItem) : 0;
-                          })()} {(() => {
-                            const selectedItem = data?.records.find(item => item.id === removeQuantityData.selectedItemId);
-                            return selectedItem ? getItemPresentacion(selectedItem) || 'unidades' : 'unidades';
-                          })()}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Cantidad a Remover *</label>
-                    <input
-                      type="number"
-                      value={removeQuantityData.cantidad}
-                      onChange={(e) => {
-                        setRemoveQuantityData({...removeQuantityData, cantidad: e.target.value});
-                        setRemoveQuantityError('');
-                      }}
-                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm"
-                      placeholder="Ej: 5"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                    {removeQuantityError && (
-                      <div className="mt-2 p-2 bg-red-500/20 border border-red-500/30 rounded-lg">
-                        <p className="text-red-200 text-sm drop-shadow">⚠️ {removeQuantityError}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Tipo de Salida *</label>
-                    <select
-                      value={removeQuantityData.tipoSalida}
-                      onChange={(e) => setRemoveQuantityData({...removeQuantityData, tipoSalida: e.target.value})}
-                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm"
-                      required
-                    >
-                      <option value="Consumo en Proceso" className="bg-gray-800">🔄 Consumo en Proceso</option>
-                      <option value="Devolución a Proveedor" className="bg-gray-800">↩️ Devolución a Proveedor</option>
-                      <option value="Ajuste" className="bg-gray-800">⚖️ Ajuste</option>
-                      <option value="Traslado a Otro Almacén" className="bg-gray-800">🚛 Traslado a Otro Almacén</option>
-                      <option value="Mantenimiento" className="bg-gray-800">🔧 Mantenimiento</option>
-                      <option value="Otro" className="bg-gray-800">📝 Otro</option>
-                    </select>
-                  </div>
-
-                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Observaciones</label>
-                    <div className="relative">
-                      <textarea
-                        value={removeQuantityData.observaciones}
-                        onChange={(e) => setRemoveQuantityData({...removeQuantityData, observaciones: e.target.value})}
-                        className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent backdrop-blur-sm resize-none pr-12"
-                        placeholder="Detalles adicionales sobre la salida..."
-                        rows={3}
-                      />
-                      <VoiceToText
-                        onTextExtracted={handleObservacionesVoiceText}
-                        isLoading={creating}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">📎 Documento de Soporte (Opcional)</label>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={(e) => setRemoveQuantityData({...removeQuantityData, documentoSoporte: e.target.files?.[0] || null})}
-                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
-                    />
-                    <p className="text-xs text-white/60 mt-2 drop-shadow">
-                      PDF, JPG, PNG (máximo 10MB)
-                    </p>
-                    {removeQuantityData.documentoSoporte && (
-                      <div className="mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded-lg">
-                        <p className="text-green-200 text-sm drop-shadow">
-                          ✅ Archivo seleccionado: {removeQuantityData.documentoSoporte.name}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-lg p-4 border border-red-500/20">
-                    <label className="block text-sm font-semibold mb-2 text-red-200 drop-shadow">Registrado por:</label>
                     <p className="text-white font-medium drop-shadow">{getCurrentUserName()}</p>
                   </div>
                 </div>
@@ -866,6 +807,7 @@ function InventarioPirolisisContent() {
                         type="number"
                         value={newItem['Cantidad Presentacion Insumo']}
                         onChange={(e) => setNewItem({...newItem, 'Cantidad Presentacion Insumo': e.target.value})}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
                         placeholder="Ej: 25"
                         min="0"
@@ -895,20 +837,19 @@ function InventarioPirolisisContent() {
                   className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 backdrop-blur-sm ${
                     modalMode === 'ingresar'
                       ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/25'
-                      : modalMode === 'salida'
-                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/25'
                       : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-purple-500/25'
                   } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {uploadingSafetySheet
                     ? '⏳ Subiendo ficha de seguridad...'
                     : creating
-                    ? (modalMode === 'ingresar' ? '📦 Ingresando...' : modalMode === 'salida' ? '📤 Registrando Salida...' : '📝 Registrando...')
-                    : (modalMode === 'ingresar' ? '✅ Ingresar Cantidad' : modalMode === 'salida' ? '📤 Registrar Salida' : '📝 Registrar Insumo')
+                    ? (modalMode === 'ingresar' ? '📦 Ingresando...' : '📝 Registrando...')
+                    : (modalMode === 'ingresar' ? '✅ Ingresar Cantidad' : '📝 Registrar Insumo')
                   }
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

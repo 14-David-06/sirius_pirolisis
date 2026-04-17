@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
+import {
+  removeQuantitySchema,
+  TIPO_USO_PRODUCTIVO,
+  TIPO_USO_VALUES,
+  type TipoUso,
+} from '../../../../domain/entities/Inventario';
 
 // Usar el ID de la tabla de Salidas de Insumos desde variables de entorno
 // Si no está configurado, usar el nombre de la tabla
@@ -10,49 +16,47 @@ export async function POST(request: Request) {
   if (!config.airtable.inventarioTableId) {
     console.warn('⚠️ AIRTABLE_INVENTARIO_TABLE_ID no está configurado en .env.local');
     return NextResponse.json({
+      success: false,
       error: 'AIRTABLE_INVENTARIO_TABLE_ID no está configurado. Revisa tu archivo .env.local',
-      details: 'Para activar el módulo de inventario, configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local'
     }, { status: 400 });
   }
 
   try {
     if (!config.airtable.token || !config.airtable.baseId) {
       return NextResponse.json({
+        success: false,
         error: 'Configuración de Airtable incompleta',
-        details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID'
       }, { status: 500 });
     }
 
     const body = await request.json();
     console.log('📥 Datos recibidos en API remove-quantity:', body);
-    const { itemId, cantidad, tipoSalida, observaciones, documentoSoporteUrl, 'Realiza Registro': realizaRegistro } = body;
 
-    // Validar campos requeridos
-    if (!itemId || !cantidad || !tipoSalida) {
+    // Normalizar: aceptar tanto el formato nuevo (tipo_uso) como el legacy (tipoSalida)
+    const normalizedBody = {
+      itemId: body.itemId || body.insumo_id,
+      cantidad: typeof body.cantidad === 'string' ? parseFloat(body.cantidad) : body.cantidad,
+      tipo_uso: body.tipo_uso || mapLegacyTipoSalida(body.tipoSalida),
+      balance_masa_id: body.balance_masa_id || null,
+      observaciones: body.observaciones,
+      documentoSoporteUrl: body.documentoSoporteUrl,
+      'Realiza Registro': body['Realiza Registro'],
+    };
+
+    // Validar con Zod
+    const validation = removeQuantitySchema.safeParse(normalizedBody);
+    if (!validation.success) {
       return NextResponse.json({
-        error: 'Campos requeridos faltantes',
-        details: 'Se requieren: itemId, cantidad y tipoSalida'
+        success: false,
+        error: 'Datos inválidos',
+        details: validation.error.issues,
       }, { status: 400 });
     }
 
-    const cantidadNumerica = parseFloat(cantidad);
-    if (isNaN(cantidadNumerica) || cantidadNumerica <= 0) {
-      return NextResponse.json({
-        error: 'Cantidad inválida',
-        details: 'La cantidad debe ser un número positivo'
-      }, { status: 400 });
-    }
+    const validData = validation.data;
+    const esProductivo = TIPO_USO_PRODUCTIVO[validData.tipo_uso];
 
-    // Validar tipo de salida
-    const tiposValidos = ['Consumo en Proceso', 'Devolución a Proveedor', 'Ajuste', 'Traslado a Otro Almacén', 'Mantenimiento', 'Otro'];
-    if (!tiposValidos.includes(tipoSalida)) {
-      return NextResponse.json({
-        error: 'Tipo de salida inválido',
-        details: `El tipo de salida debe ser uno de: ${tiposValidos.join(', ')}`
-      }, { status: 400 });
-    }
-
-    // Obtener el turno actual abierto
+    // Obtener el turno actual abierto (sin filtrar por usuario específico)
     console.log('🔍 Obteniendo turno actual abierto...');
     const turnoResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/turno/check?userId=any`, {
       method: 'GET',
@@ -71,9 +75,9 @@ export async function POST(request: Request) {
       console.log('⚠️ No se pudo obtener información del turno');
     }
 
-    // Obtener información del item para la presentación
+    // Obtener información del item para la presentación y validación de stock
     console.log('🔍 Obteniendo información del item...');
-    const itemResponse = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.inventarioTableId}/${itemId}`, {
+    const itemResponse = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.inventarioTableId}/${validData.itemId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${config.airtable.token}`,
@@ -94,47 +98,69 @@ export async function POST(request: Request) {
     }
 
     // Validar que la cantidad a remover no sea mayor al stock disponible
-    if (cantidadNumerica > stockDisponible) {
+    if (validData.cantidad > stockDisponible) {
       return NextResponse.json({
+        success: false,
         error: 'Cantidad insuficiente en stock',
-        details: `No puedes remover ${cantidadNumerica} unidades. Solo hay ${stockDisponible} unidades disponibles en stock.`
+        details: `No puedes remover ${validData.cantidad} unidades. Solo hay ${stockDisponible} unidades disponibles en stock.`,
       }, { status: 400 });
     }
 
     // Preparar los campos para crear el registro de salida
-    const fields: any = {};
-    fields[config.airtable.salidasFields.cantidadSale || 'Cantidad Sale'] = cantidadNumerica;
+    const fields: Record<string, unknown> = {};
+    fields[config.airtable.salidasFields.cantidadSale || 'Cantidad Sale'] = validData.cantidad;
     fields[config.airtable.salidasFields.presentacionInsumo || 'Presentacion Insumo'] = presentacionInsumo;
-    fields[config.airtable.salidasFields.tipoSalida || 'Tipo de Salida'] = tipoSalida;
 
-    if (realizaRegistro) {
-      fields[config.airtable.salidasFields.realizaRegistro || 'Realiza Registro'] = realizaRegistro;
+    // Tipo de uso (nuevo campo singleSelect)
+    if (config.airtable.salidasFields.tipoUso) {
+      fields[config.airtable.salidasFields.tipoUso] = validData.tipo_uso;
+    }
+    // Mantener compatibilidad con el campo Tipo de Salida existente
+    fields[config.airtable.salidasFields.tipoSalida || 'Tipo de Salida'] = validData.tipo_uso;
+
+    // Es Productivo (calculado automáticamente)
+    if (config.airtable.salidasFields.esProductivo) {
+      fields[config.airtable.salidasFields.esProductivo] = esProductivo;
     }
 
-    if (observaciones && observaciones.trim()) {
-      fields[config.airtable.salidasFields.observaciones || 'Observaciones'] = observaciones.trim();
+    if (validData['Realiza Registro']) {
+      fields[config.airtable.salidasFields.realizaRegistro || 'Realiza Registro'] = validData['Realiza Registro'];
+    }
+
+    if (validData.observaciones && validData.observaciones.trim()) {
+      fields[config.airtable.salidasFields.observaciones || 'Observaciones'] = validData.observaciones.trim();
     }
 
     // Link al item del inventario
-    fields[config.airtable.salidasFields.inventarioInsumos || 'Inventario Insumos Pirolisis'] = [itemId];
+    fields[config.airtable.salidasFields.inventarioInsumos || 'Inventario Insumos Pirolisis'] = [validData.itemId];
 
     // Link al turno actual si existe
     if (turnoActual) {
       fields[config.airtable.salidasFields.turnoPirolisis || 'Turno Pirolisis'] = [turnoActual.id];
     }
 
+    // Link al balance de masa si se proporcionó y tipo_uso es balance_de_masa
+    if (validData.balance_masa_id && validData.tipo_uso === 'balance_de_masa') {
+      if (config.airtable.salidasFields.balanceMasaId) {
+        fields[config.airtable.salidasFields.balanceMasaId] = [validData.balance_masa_id];
+      } else {
+        fields['Balance Masa'] = [validData.balance_masa_id];
+      }
+    }
+
     // Documento soporte si se proporciona
-    if (documentoSoporteUrl) {
+    if (validData.documentoSoporteUrl) {
       fields[config.airtable.salidasFields.documentoSoporte || 'Documento Soporte'] = [
         {
-          url: documentoSoporteUrl,
-          filename: `documento-soporte-salida-${itemId}-${Date.now()}.pdf`
-        }
+          url: validData.documentoSoporteUrl,
+          filename: `documento-soporte-salida-${validData.itemId}-${Date.now()}.pdf`,
+        },
       ];
     }
 
     console.log('📤 Campos a crear en tabla de salidas:', fields);
     console.log('🔗 Tabla de salidas:', SALIDAS_TABLE_ID);
+    console.log('📊 Es productivo:', esProductivo);
 
     // Crear el registro de salida en Airtable
     const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${SALIDAS_TABLE_ID}`, {
@@ -145,8 +171,8 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         records: [{
-          fields
-        }]
+          fields,
+        }],
       }),
     });
 
@@ -154,17 +180,122 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       console.error('❌ Error de Airtable al crear salida:', data);
-      return NextResponse.json({ error: data?.error || 'Airtable error', details: data }, { status: response.status });
+      return NextResponse.json({
+        success: false,
+        error: data?.error?.message || 'Error de Airtable',
+        details: data,
+      }, { status: response.status });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Salida registrada exitosamente. Cantidad: ${cantidadNumerica} ${presentacionInsumo}, Tipo: ${tipoSalida}`,
-      data: data
-    }, { status: 201 });
+    const salidaRecordId = data.records?.[0]?.id || '';
 
-  } catch (err: any) {
-    console.error('❌ Error en API remove-quantity:', err);
-    return NextResponse.json({ error: String(err.message || err) }, { status: 500 });
+    // --- Lógica de Paquete de Lonas ---
+    let lonaAlerta: 'advertencia' | 'vencido' | null = null;
+    let diasEnUso = 0;
+    const LONAS_INSUMO_ID = process.env.AIRTABLE_LONA_INSUMO_ID;
+    const PAQUETES_TABLE_ID = config.airtable.paquetesLonasTableId;
+    const ALERTA_DIAS = config.airtable.lonasAlertaDias;
+    const VIDA_DIAS = config.airtable.lonasVidaEstimadaDias;
+
+    if (
+      LONAS_INSUMO_ID &&
+      PAQUETES_TABLE_ID &&
+      validData.itemId === LONAS_INSUMO_ID &&
+      validData.tipo_uso === 'balance_de_masa'
+    ) {
+      try {
+        // Buscar paquete activo
+        const paqUrl = new URL(`https://api.airtable.com/v0/${config.airtable.baseId}/${PAQUETES_TABLE_ID}`);
+        paqUrl.searchParams.set('filterByFormula', `{Estado} = 'activo'`);
+        paqUrl.searchParams.set('maxRecords', '1');
+
+        const paqRes = await fetch(paqUrl.toString(), {
+          headers: { 'Authorization': `Bearer ${config.airtable.token}` },
+        });
+        const paqData = await paqRes.json();
+        const paqueteActivo = paqData.records?.[0];
+
+        if (paqueteActivo) {
+          // Reutilizar paquete existente
+          console.log(`✅ Paquete de lonas activo reutilizado: ${paqueteActivo.id}`);
+          const fechaActivacion = new Date(paqueteActivo.fields['Fecha Activacion']);
+          diasEnUso = Math.floor((Date.now() - fechaActivacion.getTime()) / (1000 * 60 * 60 * 24));
+        } else {
+          // Crear nuevo paquete
+          const hoy = new Date().toISOString().split('T')[0];
+          const nuevoRes = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${PAQUETES_TABLE_ID}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${config.airtable.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              records: [{
+                fields: {
+                  'Fecha Activacion': hoy,
+                  'Cantidad Lonas': validData.cantidad,
+                  'Estado': 'activo',
+                  'ID Salida Origen': salidaRecordId,
+                  'Realiza Registro': validData['Realiza Registro'] || '',
+                },
+              }],
+            }),
+          });
+          if (nuevoRes.ok) {
+            console.log('✅ Nuevo paquete de lonas creado');
+          } else {
+            console.warn('⚠️ Error creando paquete de lonas (no crítico):', await nuevoRes.text());
+          }
+          diasEnUso = 0;
+        }
+
+        // Calcular alerta
+        if (diasEnUso >= VIDA_DIAS) {
+          lonaAlerta = 'vencido';
+        } else if (diasEnUso >= ALERTA_DIAS) {
+          lonaAlerta = 'advertencia';
+        }
+      } catch (lonaErr) {
+        console.warn('⚠️ Error en lógica de paquete de lonas (no crítico):', lonaErr);
+      }
+    }
+
+    const responsePayload: Record<string, unknown> = {
+      success: true,
+      data: data,
+      message: `Salida registrada exitosamente. Cantidad: ${validData.cantidad} ${presentacionInsumo}, Tipo: ${validData.tipo_uso}, Productivo: ${esProductivo}`,
+    };
+
+    if (lonaAlerta) {
+      responsePayload.lona_alerta = lonaAlerta;
+      responsePayload.dias_en_uso = diasEnUso;
+    }
+
+    return NextResponse.json(responsePayload, { status: 201 });
+
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('❌ Error en API remove-quantity:', message);
+    return NextResponse.json({
+      success: false,
+      error: message,
+    }, { status: 500 });
   }
+}
+
+/**
+ * Mapea los valores legacy de Tipo de Salida al nuevo ENUM tipo_uso.
+ * Permite retrocompatibilidad con llamadas existentes.
+ */
+function mapLegacyTipoSalida(legacyValue?: string): TipoUso | undefined {
+  if (!legacyValue) return undefined;
+  const mapping: Record<string, TipoUso> = {
+    'Consumo en Proceso': 'balance_de_masa',
+    'Devolución a Proveedor': 'ajuste_inventario',
+    'Ajuste': 'ajuste_inventario',
+    'Traslado a Otro Almacén': 'ajuste_inventario',
+    'Mantenimiento': 'limpieza_mantenimiento',
+    'Otro': 'otro',
+  };
+  return mapping[legacyValue] || 'otro';
 }

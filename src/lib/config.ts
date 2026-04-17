@@ -53,7 +53,11 @@ export const config = {
       cantidadPresentacionInsumo: process.env.AIRTABLE_INVENTARIO_CANTIDAD_PRESENTACION_INSUMO_FIELD_ID,
       realizaRegistro: process.env.AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID,
       fichaSeguridad: process.env.AIRTABLE_INVENTARIO_FICHA_SEGURIDAD_FIELD_ID,
-      totalCantidadStock: process.env.AIRTABLE_INVENTARIO_TOTAL_CANTIDAD_STOCK_FIELD_ID
+      totalCantidadStock: process.env.AIRTABLE_INVENTARIO_TOTAL_CANTIDAD_STOCK_FIELD_ID,
+      // Campos nuevos — trazabilidad productiva
+      categoriaInsumo: process.env.AIRTABLE_FIELD_INVENTARIO_CATEGORIA,
+      estado: process.env.AIRTABLE_FIELD_INVENTARIO_ESTADO,
+      fechaVencimiento: process.env.AIRTABLE_FIELD_INVENTARIO_FECHA_VENCIMIENTO,
     },
     entradasFields: {
       cantidadIngresa: process.env.AIRTABLE_ENTRADAS_CANTIDAD_INGRESA_FIELD_ID,
@@ -70,8 +74,18 @@ export const config = {
       realizaRegistro: process.env.AIRTABLE_SALIDAS_REALIZA_REGISTRO_FIELD_ID,
       inventarioInsumos: process.env.AIRTABLE_SALIDAS_INVENTARIO_INSUMOS_FIELD_ID,
       turnoPirolisis: process.env.AIRTABLE_SALIDAS_TURNO_PIROLISIS_FIELD_ID,
-      mantenimiento: process.env.AIRTABLE_SALIDAS_MANTENIMIENTO_FIELD_ID || 'Mantenimientos'
+      mantenimiento: process.env.AIRTABLE_SALIDAS_MANTENIMIENTO_FIELD_ID || 'Mantenimientos',
+      // Campos nuevos — trazabilidad productiva
+      tipoUso: process.env.AIRTABLE_FIELD_SALIDA_TIPO_USO,
+      esProductivo: process.env.AIRTABLE_FIELD_SALIDA_ES_PRODUCTIVO,
+      balanceMasaId: process.env.AIRTABLE_FIELD_SALIDA_BALANCE_MASA_ID,
     },
+    // Paquetes de Lonas
+    paquetesLonasTableId: process.env.AIRTABLE_PAQUETES_LONAS_TABLE_ID,
+    lonaInsumoId: process.env.AIRTABLE_LONA_INSUMO_ID,
+    paqueteLonasActivoFieldId: process.env.AIRTABLE_FIELD_PAQUETE_LONAS_ACTIVO,
+    lonasVidaEstimadaDias: parseInt(process.env.LONAS_VIDA_ESTIMADA_DIAS || '90', 10),
+    lonasAlertaDias: parseInt(process.env.LONAS_ALERTA_DIAS || '75', 10),
     // Field IDs para Remisiones Baches Pirolisis
     remisionesBachesFields: {
       id: process.env.AIRTABLE_REMISIONES_ID_FIELD_ID,

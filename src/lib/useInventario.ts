@@ -83,11 +83,11 @@ export function useInventario() {
 
   // Función helper para obtener la cantidad/stock del item
   const getItemQuantity = (record: InventarioRecord): number => {
-    return record.fields['Cantidad Presentacion Insumo'] ||
-           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ||
-           record.fields['Cantidad Actual'] ||
-           record.fields['Cantidad'] ||
-           record.fields['Stock'] ||
+    return record.fields['Cantidad Presentacion Insumo'] ??
+           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ??
+           record.fields['Cantidad Actual'] ??
+           record.fields['Cantidad'] ??
+           record.fields['Stock'] ??
            0;
   };
 
@@ -127,15 +127,15 @@ export function useInventario() {
 
   // Función helper para obtener la cantidad de presentación del item
   const getItemCantidadPresentacion = (record: InventarioRecord): number => {
-    return record.fields['Cantidad Presentacion Insumo'] ||
-           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ||
+    return record.fields['Cantidad Presentacion Insumo'] ??
+           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ??
            0;
   };
 
   // Función helper para obtener el stock total del item
   const getItemStockTotal = (record: InventarioRecord): number => {
-    return record.fields['Total Cantidad Stock'] ||
-           (FIELD_IDS.totalCantidadStock ? record.fields[FIELD_IDS.totalCantidadStock] : undefined) ||
+    return record.fields['Total Cantidad Stock'] ??
+           (FIELD_IDS.totalCantidadStock ? record.fields[FIELD_IDS.totalCantidadStock] : undefined) ??
            0;
   };
 
@@ -231,6 +231,52 @@ export function useInventario() {
     }
   };
 
+  // --- Nuevos getters para trazabilidad productiva ---
+
+  // Función helper para obtener la categoría de insumo (campo nuevo)
+  const getItemCategoriaInsumo = (record: InventarioRecord): string => {
+    return record.fields['Categoria Insumo'] ||
+           (FIELD_IDS.categoriaInsumo ? record.fields[FIELD_IDS.categoriaInsumo] : undefined) ||
+           '';
+  };
+
+  // Función helper para obtener el estado del item (campo nuevo)
+  const getItemEstado = (record: InventarioRecord): string => {
+    return record.fields['Estado'] ||
+           (FIELD_IDS.estado ? record.fields[FIELD_IDS.estado] : undefined) ||
+           'disponible';
+  };
+
+  // Función helper para obtener la fecha de vencimiento
+  const getItemFechaVencimiento = (record: InventarioRecord): string | null => {
+    return record.fields['Fecha Vencimiento'] ||
+           (FIELD_IDS.fechaVencimiento ? record.fields[FIELD_IDS.fechaVencimiento] : undefined) ||
+           null;
+  };
+
+  // Función para filtrar items por Categoria Insumo (campo nuevo)
+  const getItemsByCategoriaInsumo = (categoria: string): InventarioRecord[] => {
+    if (!data?.records) return [];
+    return data.records.filter(record => {
+      const cat = getItemCategoriaInsumo(record);
+      return cat.toLowerCase() === categoria.toLowerCase();
+    });
+  };
+
+  // Función para obtener items con fecha de vencimiento próxima
+  const getVencimientosProximos = (dias: number): InventarioRecord[] => {
+    if (!data?.records) return [];
+    const hoy = new Date();
+    const limite = new Date(hoy.getTime() + dias * 24 * 60 * 60 * 1000);
+
+    return data.records.filter(record => {
+      const fechaStr = getItemFechaVencimiento(record);
+      if (!fechaStr) return false;
+      const fecha = new Date(fechaStr);
+      return fecha >= hoy && fecha <= limite;
+    });
+  };
+
   return {
     data,
     loading,
@@ -251,6 +297,23 @@ export function useInventario() {
     getItemPresentacion,
     getItemCantidadPresentacion,
     getItemStockTotal,
-    getMinStock
+    getMinStock,
+    // Nuevos getters — trazabilidad productiva
+    getItemCategoriaInsumo,
+    getItemEstado,
+    getItemFechaVencimiento,
+    getItemsByCategoriaInsumo,
+    getVencimientosProximos,
+    // Paquete de lonas activo
+    getPaqueteLonasActivo: async () => {
+      try {
+        const res = await fetch('/api/inventario/lonas/paquete-activo');
+        if (!res.ok) return null;
+        const json = await res.json();
+        return json.data || null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
