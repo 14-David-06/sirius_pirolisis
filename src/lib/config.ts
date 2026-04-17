@@ -80,6 +80,8 @@ export const config = {
       esProductivo: process.env.AIRTABLE_FIELD_SALIDA_ES_PRODUCTIVO,
       balanceMasaId: process.env.AIRTABLE_FIELD_SALIDA_BALANCE_MASA_ID,
     },
+    // Aforos por Turno
+    aforosTurnoTableId: process.env.AIRTABLE_TABLE_AFOROS_TURNO,
     // Paquetes de Lonas
     paquetesLonasTableId: process.env.AIRTABLE_PAQUETES_LONAS_TABLE_ID,
     lonaInsumoId: process.env.AIRTABLE_LONA_INSUMO_ID,

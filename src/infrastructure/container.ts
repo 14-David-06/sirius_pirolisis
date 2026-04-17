@@ -5,6 +5,7 @@ import { IUserRepository } from '../domain/repositories/IUserRepository';
 import { IEBiomasRepository } from '../domain/repositories/IEBiomasRepository';
 import { IEPirolisisRepository } from '../domain/repositories/IEPirolisisRepository';
 import { IETransporteRepository } from '../domain/repositories/IETransporteRepository';
+import { IAforoRepository } from '../domain/repositories/IAforoRepository';
 import { AuthService } from '../application/services/AuthService';
 import { CalcularEBiomasUseCase } from '../application/services/CalcularEBiomasUseCase';
 import { GetResultadosEBiomasUseCase } from '../application/services/GetResultadosEBiomasUseCase';
@@ -15,11 +16,16 @@ import { PreviewEPirolisisUseCase } from '../application/services/PreviewEPiroli
 import { CalcularETransporteUseCase } from '../application/services/CalcularETransporteUseCase';
 import { GetResultadosETransporteUseCase } from '../application/services/GetResultadosETransporteUseCase';
 import { PreviewETransporteUseCase } from '../application/services/PreviewETransporteUseCase';
+import { CreateAforoUseCase } from '../application/services/CreateAforoUseCase';
+import { GetAforosByTurnoUseCase } from '../application/services/GetAforosByTurnoUseCase';
+import { DeleteAforoUseCase } from '../application/services/DeleteAforoUseCase';
+import { InferirTipoAperturaUseCase } from '../application/services/InferirTipoAperturaUseCase';
 import { AirtableUserRepository } from './repositories/AirtableUserRepository';
 import { PostgresUserRepository } from './repositories/PostgresUserRepository';
 import { EBiomasAirtableRepository } from './repositories/EBiomasAirtableRepository';
 import { EPirolisisAirtableRepository } from './repositories/EPirolisisAirtableRepository';
 import { ETransporteAirtableRepository } from './repositories/ETransporteAirtableRepository';
+import { AforoAirtableRepository } from './repositories/AforoAirtableRepository';
 
 // Feature flag para elegir implementación
 const USE_POSTGRES = process.env.USE_POSTGRES_REPOSITORY === 'true';
@@ -39,6 +45,11 @@ export class Container {
   private static calcularETransporteUseCase: CalcularETransporteUseCase | null = null;
   private static getResultadosETransporteUseCase: GetResultadosETransporteUseCase | null = null;
   private static previewETransporteUseCase: PreviewETransporteUseCase | null = null;
+  private static aforoRepository: IAforoRepository | null = null;
+  private static createAforoUseCase: CreateAforoUseCase | null = null;
+  private static getAforosByTurnoUseCase: GetAforosByTurnoUseCase | null = null;
+  private static deleteAforoUseCase: DeleteAforoUseCase | null = null;
+  private static inferirTipoAperturaUseCase: InferirTipoAperturaUseCase | null = null;
 
   static getUserRepository(): IUserRepository {
     if (!this.userRepository) {
@@ -142,6 +153,42 @@ export class Container {
     return this.previewETransporteUseCase;
   }
 
+  // Aforos por Turno
+  static getAforoRepository(): IAforoRepository {
+    if (!this.aforoRepository) {
+      this.aforoRepository = new AforoAirtableRepository();
+    }
+    return this.aforoRepository;
+  }
+
+  static getCreateAforoUseCase(): CreateAforoUseCase {
+    if (!this.createAforoUseCase) {
+      this.createAforoUseCase = new CreateAforoUseCase(this.getAforoRepository());
+    }
+    return this.createAforoUseCase;
+  }
+
+  static getGetAforosByTurnoUseCase(): GetAforosByTurnoUseCase {
+    if (!this.getAforosByTurnoUseCase) {
+      this.getAforosByTurnoUseCase = new GetAforosByTurnoUseCase(this.getAforoRepository());
+    }
+    return this.getAforosByTurnoUseCase;
+  }
+
+  static getDeleteAforoUseCase(): DeleteAforoUseCase {
+    if (!this.deleteAforoUseCase) {
+      this.deleteAforoUseCase = new DeleteAforoUseCase(this.getAforoRepository());
+    }
+    return this.deleteAforoUseCase;
+  }
+
+  static getInferirTipoAperturaUseCase(): InferirTipoAperturaUseCase {
+    if (!this.inferirTipoAperturaUseCase) {
+      this.inferirTipoAperturaUseCase = new InferirTipoAperturaUseCase(this.getAforoRepository());
+    }
+    return this.inferirTipoAperturaUseCase;
+  }
+
   // Reset para testing
   static reset(): void {
     this.userRepository = null;
@@ -158,5 +205,10 @@ export class Container {
     this.calcularETransporteUseCase = null;
     this.getResultadosETransporteUseCase = null;
     this.previewETransporteUseCase = null;
+    this.aforoRepository = null;
+    this.createAforoUseCase = null;
+    this.getAforosByTurnoUseCase = null;
+    this.deleteAforoUseCase = null;
+    this.inferirTipoAperturaUseCase = null;
   }
 }

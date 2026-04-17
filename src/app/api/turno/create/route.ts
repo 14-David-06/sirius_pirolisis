@@ -14,6 +14,7 @@ interface TurnoData {
   consumoGasInicial: number;
   realizaRegistro: string;
   usuarioId: string;
+  tipoApertura?: 'arranque' | 'continuidad' | 'mantenimiento';
 }
 
 interface AirtableFieldsData {
@@ -26,6 +27,7 @@ interface AirtableFieldsData {
   'Consumo Gas Inicial': number;
   'Realiza Registro': string;
   'Usuarios Pirolisis': string[];
+  'Tipo Apertura'?: 'arranque' | 'continuidad' | 'mantenimiento';
 }
 
 export async function POST(request: NextRequest) {
@@ -67,6 +69,11 @@ export async function POST(request: NextRequest) {
       'Realiza Registro': turnoData.realizaRegistro,
       'Usuarios Pirolisis': [turnoData.usuarioId]
     };
+
+    // Agregar Tipo Apertura si fue proporcionado
+    if (turnoData.tipoApertura) {
+      fieldsData['Tipo Apertura'] = turnoData.tipoApertura;
+    }
 
     console.log('🔍 Verificando datos antes de enviar:');
     console.log('  - Operador:', fieldsData['Operador']);

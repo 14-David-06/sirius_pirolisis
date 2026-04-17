@@ -29,6 +29,8 @@ interface UltimoTurnoCerrado {
   consumoGasFinal: number;
 }
 
+type TipoApertura = 'arranque' | 'continuidad' | 'mantenimiento';
+
 export default function AbrirTurno() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,6 +39,9 @@ export default function AbrirTurno() {
   const [otherUserTurno, setOtherUserTurno] = useState<any>(null);
   const [isCheckingTurnos, setIsCheckingTurnos] = useState(true);
   const [ultimoTurnoCerrado, setUltimoTurnoCerrado] = useState<UltimoTurnoCerrado | null>(null);
+  const [tipoApertura, setTipoApertura] = useState<TipoApertura>('continuidad');
+  const [showArranqueConfirm, setShowArranqueConfirm] = useState(false);
+  const [tipoAperturaConfirmado, setTipoAperturaConfirmado] = useState(false);
   const router = useRouter();
 
   const [formData, setFormData] = useState<TurnoFormData>({
@@ -107,6 +112,29 @@ export default function AbrirTurno() {
             } catch (err) {
               console.error('Error al cargar último turno cerrado:', err);
             }
+
+            // Inferir tipo de apertura
+            try {
+              const tipoResponse = await fetch('/api/turnos/tipo-apertura');
+              const tipoResult = await tipoResponse.json();
+              if (tipoResponse.ok && tipoResult.success) {
+                const sugerido = tipoResult.data.tipoSugerido as TipoApertura;
+                setTipoApertura(sugerido);
+                if (sugerido === 'arranque') {
+                  setShowArranqueConfirm(true);
+                } else {
+                  setTipoAperturaConfirmado(true);
+                }
+              } else {
+                // Fallback: asumir continuidad
+                setTipoApertura('continuidad');
+                setTipoAperturaConfirmado(true);
+              }
+            } catch (err) {
+              console.error('Error al inferir tipo de apertura:', err);
+              setTipoApertura('continuidad');
+              setTipoAperturaConfirmado(true);
+            }
           }
         } else {
           console.error('Error al verificar turnos:', result.error);
@@ -150,13 +178,14 @@ export default function AbrirTurno() {
       
       const dataToSend = {
         operador: userData.Nombre || 'Usuario no identificado',
-        alimentacionBiomasa: parseFloat(formData.alimentacionBiomasa) || 0,
-        herztTolva2: parseInt(formData.herztTolva2) || 0,
+        alimentacionBiomasa: tipoApertura === 'continuidad' ? (parseFloat(formData.alimentacionBiomasa) || 0) : 0,
+        herztTolva2: tipoApertura === 'continuidad' ? (parseInt(formData.herztTolva2) || 0) : 0,
         consumoAguaInicio: parseFloat(formData.consumoAguaInicio) || 0,
         consumoEnergiaInicio: parseFloat(formData.consumoEnergiaInicio) || 0,
         consumoGasInicial: parseInt(formData.consumoGasInicial) || 0,
         realizaRegistro: userData.Nombre || 'Usuario no identificado',
-        usuarioId: userData.id || ''
+        usuarioId: userData.id || '',
+        tipoApertura: tipoApertura,
       };
 
       const response = await fetch('/api/turno/create', {
@@ -177,7 +206,8 @@ export default function AbrirTurno() {
           id: result.data?.records?.[0]?.id || 'temp-id',
           operador: userData.Nombre,
           fechaInicio: new Date().toISOString(),
-          status: 'activo'
+          status: 'activo',
+          tipoApertura: tipoApertura,
         };
         localStorage.setItem('turnoActivo', JSON.stringify(turnoActivo));
         
@@ -362,6 +392,77 @@ export default function AbrirTurno() {
               </div>
             )}
 
+            {/* Modal de confirmación de arranque */}
+            {showArranqueConfirm && (
+              <div className="mb-6 bg-yellow-500/20 backdrop-blur-sm border border-yellow-400/50 rounded-lg p-6">
+                <div className="text-center">
+                  <div className="text-4xl mb-3">⚠️</div>
+                  <h3 className="text-xl font-bold text-white mb-2">Parece que es un arranque de producción</h3>
+                  <p className="text-white/80 mb-6">
+                    No se encontró un turno anterior cerrado. ¿Confirmas que el reactor está arrancando?
+                  </p>
+                  <div className="flex justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoApertura('arranque');
+                        setShowArranqueConfirm(false);
+                        setTipoAperturaConfirmado(true);
+                      }}
+                      className="px-6 py-3 bg-yellow-500 text-white rounded-lg font-semibold hover:bg-yellow-600 transition-colors"
+                    >
+                      Sí, es un arranque
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoApertura('continuidad');
+                        setShowArranqueConfirm(false);
+                        setTipoAperturaConfirmado(true);
+                      }}
+                      className="px-6 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors"
+                    >
+                      No, es continuidad
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Selector de Tipo de Apertura */}
+            {tipoAperturaConfirmado && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-white mb-2 drop-shadow">Tipo de Apertura</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {(['arranque', 'continuidad', 'mantenimiento'] as TipoApertura[]).map((tipo) => (
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => setTipoApertura(tipo)}
+                      className={`px-4 py-3 rounded-lg font-semibold text-sm transition-all duration-200 border ${
+                        tipoApertura === tipo
+                          ? tipo === 'arranque'
+                            ? 'bg-yellow-500 text-white border-yellow-400'
+                            : tipo === 'mantenimiento'
+                              ? 'bg-orange-500 text-white border-orange-400'
+                              : 'bg-blue-500 text-white border-blue-400'
+                          : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+                      }`}
+                    >
+                      {tipo === 'arranque' && '🔥 Arranque'}
+                      {tipo === 'continuidad' && '🔄 Continuidad'}
+                      {tipo === 'mantenimiento' && '🔧 Mantenimiento'}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-white/60 text-xs mt-2">
+                  {tipoApertura === 'arranque' && 'Reactor arrancando desde cero — Hz y biomasa/min no se solicitan al abrir'}
+                  {tipoApertura === 'continuidad' && 'Reactor en marcha, entrega de turno — Hz y biomasa/min opcionales'}
+                  {tipoApertura === 'mantenimiento' && 'Turno dedicado a mantenimiento — Hz y biomasa/min no se solicitan'}
+                </p>
+              </div>
+            )}
+
             {/* Datos del Último Turno Cerrado */}
             {ultimoTurnoCerrado && (
               <div className="bg-blue-500/20 backdrop-blur-sm p-6 rounded-lg border border-blue-400/30 mb-6">
@@ -420,16 +521,17 @@ export default function AbrirTurno() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Parámetros de Operación */}
+              {/* Parámetros de Operación — Solo en modo Continuidad */}
+              {tipoAperturaConfirmado && tipoApertura === 'continuidad' && (
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
                 <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
-                  ⚙️ Parámetros de Operación
+                  ⚙️ Parámetros de Operación <span className="text-sm font-normal text-white/60 ml-2">(opcional — referencia del estado al recibir turno)</span>
                 </h2>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label htmlFor="alimentacionBiomasa" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg) *
+                      🎙️ Alimentación Biomasa Húmeda Por Minuto (Kg)
                     </label>
                     <input
                       type="number"
@@ -438,7 +540,6 @@ export default function AbrirTurno() {
                       name="alimentacionBiomasa"
                       value={formData.alimentacionBiomasa}
                       onChange={handleInputChange}
-                      required
                       min="0"
                       placeholder="Ej: 1.70"
                       className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
@@ -447,7 +548,7 @@ export default function AbrirTurno() {
 
                   <div>
                     <label htmlFor="herztTolva2" className="block text-sm font-medium text-white mb-2 drop-shadow">
-                      🎙️ Herzt Tolva 2 *
+                      🎙️ Herzt Tolva 2
                     </label>
                     <input
                       type="number"
@@ -455,7 +556,6 @@ export default function AbrirTurno() {
                       name="herztTolva2"
                       value={formData.herztTolva2}
                       onChange={handleInputChange}
-                      required
                       min="0"
                       placeholder="Ej: 20"
                       className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 placeholder-gray-500 font-medium"
@@ -463,6 +563,7 @@ export default function AbrirTurno() {
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Consumos Iniciales */}
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
@@ -538,7 +639,7 @@ export default function AbrirTurno() {
                 </button>
                 <button 
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !tipoAperturaConfirmado}
                   className="px-8 py-3 bg-gradient-to-r from-[#5A7836] to-[#4a6429] text-white rounded-lg hover:from-[#4a6429] hover:to-[#3d5422] transition-all duration-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   {isLoading ? (
