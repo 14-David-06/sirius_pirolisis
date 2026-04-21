@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import TurnoProtection from '@/components/TurnoProtection';
@@ -25,6 +24,36 @@ interface AforoFormData {
   produccionBiocharMinuto: string;
 }
 
+interface ApiResult {
+  success?: boolean;
+  error?: string;
+  details?: string;
+  hint?: string;
+  data?: any;
+  resumen?: {
+    rendimientoPromedio?: number;
+  };
+}
+
+async function parseApiResponse(response: Response): Promise<ApiResult> {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  const rawText = await response.text();
+  const compact = rawText.replace(/\s+/g, ' ').trim();
+  const preview = compact.slice(0, 180);
+
+  return {
+    success: false,
+    error: `Respuesta no JSON del servidor (status ${response.status})`,
+    details: preview || 'Respuesta vacía',
+    hint: 'La API devolvió HTML u otro formato inesperado. Revisa logs de producción para /api/aforos.',
+  };
+}
+
 export default function AforosTurno() {
   return (
     <TurnoProtection requiresTurno={true}>
@@ -43,8 +72,6 @@ function AforosTurnoContent() {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
   const [rendimientoPromedio, setRendimientoPromedio] = useState(0);
-  const router = useRouter();
-
   const [formData, setFormData] = useState<AforoFormData>({
     hertzTolva: '',
     alimentacionBiomasaMinuto: '',
@@ -64,13 +91,20 @@ function AforosTurnoContent() {
   const loadAforos = useCallback(async (id: string) => {
     try {
       const response = await fetch(`/api/aforos?turno_id=${id}`);
-      const result = await response.json();
+      const result = await parseApiResponse(response);
+
       if (response.ok && result.success) {
-        setAforos(result.data);
+        setAforos(Array.isArray(result.data) ? result.data : []);
         setRendimientoPromedio(result.resumen?.rendimientoPromedio || 0);
+        return;
       }
+
+      const details = result.details ? `\n${result.details}` : '';
+      setMensaje(`❌ ${result.error || 'No se pudieron cargar los aforos'}${details}`);
     } catch (err) {
       console.error('Error al cargar aforos:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
+      setMensaje(`❌ Error al cargar aforos: ${errorMsg}`);
     }
   }, []);
 
@@ -99,7 +133,7 @@ function AforosTurnoContent() {
 
         // Verificar si el turno está cerrado
         const checkResponse = await fetch(`/api/turno/check?userId=${JSON.parse(userSession || '{}').user?.id || ''}`);
-        const checkResult = await checkResponse.json();
+        const checkResult = await parseApiResponse(checkResponse);
         if (!checkResult.hasTurnoAbierto) {
           setTurnoCerrado(true);
         }
@@ -141,7 +175,7 @@ function AforosTurnoContent() {
         }),
       });
 
-      const result = await response.json();
+      const result = await parseApiResponse(response);
 
       if (response.ok && result.success) {
         setMensaje('✅ Aforo registrado exitosamente');
@@ -170,7 +204,7 @@ function AforosTurnoContent() {
         body: JSON.stringify({ eliminadoPor: userName }),
       });
 
-      const result = await response.json();
+      const result = await parseApiResponse(response);
       if (response.ok && result.success) {
         setMensaje('✅ Aforo eliminado');
         if (turnoId) await loadAforos(turnoId);
