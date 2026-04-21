@@ -10,21 +10,9 @@ interface TurnoProtectionProps {
   allowBitacoraUsers?: boolean;
 }
 
-// Usuarios autorizados para acceder a todas las funciones sin turno
-// David y Santiago tienen acceso completo a todas las funcionalidades
-const SUPER_AUTHORIZED_USERS = [
-  'Santiago Amaya',
-  'Santiago',
-  'David Hernandez', 
-  'David',
-  'Don Martin', 
-  'Pablo Acebedo'
-];
-
 export default function TurnoProtection({ 
   children, 
-  requiresTurno = true, 
-  allowBitacoraUsers = false 
+  requiresTurno = true
 }: TurnoProtectionProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasActiveTurno, setHasActiveTurno] = useState(false);
@@ -36,24 +24,6 @@ export default function TurnoProtection({
     turnoAbierto: any;
   } | null>(null);
   const router = useRouter();
-
-  // Función para verificar si el usuario está autorizado para acceder sin turno
-  const isUserAuthorizedForBitacora = (userName: string): boolean => {
-    if (!userName) return false;
-    
-    // Normalizar el nombre para comparación (convertir a minúsculas y remover espacios extra)
-    const normalizedUserName = userName.toLowerCase().trim();
-    
-    return SUPER_AUTHORIZED_USERS.some(authorizedUser => {
-      const normalizedAuthorizedUser = authorizedUser.toLowerCase().trim();
-      // Verificar coincidencia exacta o si el nombre del usuario está contenido en el autorizado
-      return normalizedAuthorizedUser === normalizedUserName || 
-             normalizedUserName.includes('david') || 
-             normalizedUserName.includes('santiago') ||
-             normalizedUserName.includes('martin') ||
-             normalizedUserName.includes('pablo');
-    });
-  };
 
   useEffect(() => {
     const checkAuthAndTurno = async () => {
@@ -69,11 +39,6 @@ export default function TurnoProtection({
       try {
         const sessionData = JSON.parse(userSession);
         userId = sessionData.user?.id;
-        userName = sessionData.user?.Nombre || sessionData.user?.name;
-        
-        // Debug log para verificar el nombre del usuario
-        console.log('🔍 [TurnoProtection] Usuario detectado:', userName);
-        console.log('🔍 [TurnoProtection] ¿Es usuario autorizado?', isUserAuthorizedForBitacora(userName));
       } catch (error) {
         console.error('Error parsing user session:', error);
         router.push('/login');
@@ -83,8 +48,7 @@ export default function TurnoProtection({
       setIsAuthenticated(true);
 
       // Verificar turno activo si es requerido
-      // Si allowBitacoraUsers es true y el usuario está autorizado, no requerir turno
-      const shouldRequireTurno = requiresTurno && !(allowBitacoraUsers && isUserAuthorizedForBitacora(userName));
+      const shouldRequireTurno = requiresTurno;
       
       if (shouldRequireTurno && userId) {
         await validateAndSyncTurno(userId);
@@ -108,10 +72,7 @@ export default function TurnoProtection({
         try {
           const sessionData = JSON.parse(userSession);
           const userId = sessionData.user?.id;
-          const userName = sessionData.user?.Nombre || sessionData.user?.name;
-          
-          // Solo hacer polling si se requiere turno y el usuario no está autorizado para bitácora
-          const shouldRequireTurno = requiresTurno && !(allowBitacoraUsers && isUserAuthorizedForBitacora(userName));
+          const shouldRequireTurno = requiresTurno;
           
           if (shouldRequireTurno && userId) {
             validateAndSyncTurno(userId);
@@ -253,19 +214,7 @@ export default function TurnoProtection({
   }
 
   // Si requiere turno pero no hay turno activo
-  // Excepción: usuarios autorizados para bitácora pueden acceder sin turno
-  const userSession = localStorage.getItem('userSession');
-  let userName = null;
-  if (userSession) {
-    try {
-      const sessionData = JSON.parse(userSession);
-      userName = sessionData.user?.Nombre || sessionData.user?.name;
-    } catch (error) {
-      // Ignorar error de parsing
-    }
-  }
-  
-  const shouldRequireTurno = requiresTurno && !(allowBitacoraUsers && isUserAuthorizedForBitacora(userName));
+  const shouldRequireTurno = requiresTurno;
   
   if (shouldRequireTurno && !hasActiveTurno) {
     return (

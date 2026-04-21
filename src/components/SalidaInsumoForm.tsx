@@ -71,7 +71,10 @@ export default function SalidaInsumoForm({
       const response = await fetch('/api/balance-masa/list?maxRecords=20');
       if (response.ok) {
         const data = await response.json();
-        setBalancesActivos(data.records || []);
+        setBalancesActivos(data.data || []);
+      } else {
+        const errorText = await response.text();
+        console.error('Error cargando balances (status):', response.status, errorText);
       }
     } catch (err) {
       console.error('Error cargando balances:', err);

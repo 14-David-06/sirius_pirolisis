@@ -58,21 +58,31 @@ export async function POST(request: Request) {
 
     // Obtener el turno actual abierto (sin filtrar por usuario específico)
     console.log('🔍 Obteniendo turno actual abierto...');
-    const turnoResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/turno/check?userId=any`, {
-      method: 'GET',
-    });
+    const requestOrigin = new URL(request.url).origin;
+    const turnoCheckUrl = new URL('/api/turno/check', requestOrigin);
+    turnoCheckUrl.searchParams.set('userId', 'any');
 
     let turnoActual = null;
-    if (turnoResponse.ok) {
-      const turnoData = await turnoResponse.json();
-      if (turnoData.hasTurnoAbierto && turnoData.turnoAbierto) {
-        turnoActual = turnoData.turnoAbierto;
-        console.log('⚠️ Turno abierto encontrado:', turnoActual.id);
+    try {
+      const turnoResponse = await fetch(turnoCheckUrl.toString(), {
+        method: 'GET',
+      });
+
+      if (turnoResponse.ok) {
+        const turnoData = await turnoResponse.json();
+        if (turnoData.hasTurnoAbierto && turnoData.turnoAbierto) {
+          turnoActual = turnoData.turnoAbierto;
+          console.log('⚠️ Turno abierto encontrado:', turnoActual.id);
+        } else {
+          console.log('ℹ️ No hay turno abierto actualmente');
+        }
       } else {
-        console.log('ℹ️ No hay turno abierto actualmente');
+        const turnoErr = await turnoResponse.text();
+        console.log('⚠️ No se pudo obtener información del turno:', turnoErr);
       }
-    } else {
-      console.log('⚠️ No se pudo obtener información del turno');
+    } catch (turnoFetchError) {
+      // No bloquear salidas por un fallo en la consulta de turno.
+      console.warn('⚠️ Error consultando turno actual (continuando sin turno):', turnoFetchError);
     }
 
     // Obtener información del item para la presentación y validación de stock
