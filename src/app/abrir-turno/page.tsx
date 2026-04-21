@@ -175,6 +175,13 @@ export default function AbrirTurno() {
         setMensaje('❌ Error: No se pudo obtener la información del usuario. Por favor, vuelve a iniciar sesión.');
         return;
       }
+
+        // Validar que el usuario ID tenga formato de Airtable
+        if (!userData.id.startsWith('rec')) {
+          console.warn('⚠️ Usuario ID no tiene formato de Airtable:', userData.id);
+          setMensaje(`❌ Error: ID de usuario inválido (${userData.id}). Por favor, vuelve a iniciar sesión.`);
+          return;
+        }
       
       const dataToSend = {
         operador: userData.Nombre || 'Usuario no identificado',

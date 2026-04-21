@@ -148,10 +148,13 @@ function AforosTurnoContent() {
         setFormData({ hertzTolva: '', alimentacionBiomasaMinuto: '', produccionBiocharMinuto: '' });
         await loadAforos(turnoId);
       } else {
-        setMensaje(`❌ ${result.error || 'Error al registrar aforo'}`);
+        const hint = result.hint ? `\n💡 ${result.hint}` : '';
+        const details = result.details ? `\n${result.details}` : '';
+        setMensaje(`❌ ${result.error || 'Error al registrar aforo'}${details}${hint}`);
       }
     } catch (err) {
-      setMensaje('❌ Error de conexión al registrar aforo');
+      const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
+      setMensaje(`❌ Error de conexión: ${errorMsg}`);
     } finally {
       setSaving(false);
     }

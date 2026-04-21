@@ -28,6 +28,16 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    const turnoId = validation.data.turnoId;
+    if (!turnoId.startsWith('rec')) {
+      return NextResponse.json({
+        success: false,
+        error: 'ID de turno inválido',
+        details: `El turno ID debe ser un record ID de Airtable (ej: recXXXXXX), recibió: "${turnoId}"`,
+        hint: 'Por favor, cierra sesión y vuelve a abrir un turno desde el menú principal',
+      }, { status: 400 });
+    }
+
     const useCase = Container.getCreateAforoUseCase();
     const aforo = await useCase.ejecutar(validation.data, realizaRegistro);
 
@@ -37,9 +47,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     LoggerService.error('Error al crear aforo', error instanceof Error ? error : new Error(String(error)));
+
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    if (errorMessage.includes('INVALID_RECORD_ID') || errorMessage.includes('not a valid record ID')) {
+      return NextResponse.json({
+        success: false,
+        error: 'ID de turno inválido en la base de datos',
+        details: 'El ID del turno no existe o es inválido. Por favor, abre un nuevo turno.',
+        hint: 'Cierra sesión, vuelve a iniciar y abre un nuevo turno desde el menú principal',
+        rawError: errorMessage,
+      }, { status: 422 });
+    }
+
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Error interno del servidor',
+      error: errorMessage,
+      hint: 'Si el problema persiste, verifica tu sesión y turno activo',
     }, { status: 500 });
   }
 }
@@ -53,6 +76,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'El parámetro turno_id es requerido',
+      }, { status: 400 });
+    }
+
+    if (!turnoId.startsWith('rec')) {
+      return NextResponse.json({
+        success: false,
+        error: 'ID de turno inválido',
+        details: `El turno ID debe ser un record ID de Airtable (ej: recXXXXXX), recibió: "${turnoId}"`,
       }, { status: 400 });
     }
 
@@ -74,9 +105,19 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     LoggerService.error('Error al obtener aforos', error instanceof Error ? error : new Error(String(error)));
+
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    if (errorMessage.includes('INVALID_RECORD_ID') || errorMessage.includes('not a valid record ID')) {
+      return NextResponse.json({
+        success: false,
+        error: 'ID de turno inválido en la base de datos',
+        details: 'El ID del turno no existe o es inválido. Por favor, abre un nuevo turno.',
+      }, { status: 422 });
+    }
+
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Error interno del servidor',
+      error: errorMessage,
     }, { status: 500 });
   }
 }

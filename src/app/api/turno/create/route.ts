@@ -52,10 +52,30 @@ export async function POST(request: NextRequest) {
     if (!turnoData.operador || !turnoData.realizaRegistro || !turnoData.usuarioId) {
       console.log('❌ Faltan datos esenciales del usuario');
       return NextResponse.json(
-        { error: 'Faltan datos del usuario. Operador, Realiza Registro y Usuario ID son requeridos.' },
+          { 
+            error: 'Faltan datos del usuario',
+            details: 'Operador, Realiza Registro y Usuario ID (record ID de Airtable) son requeridos.',
+            received: {
+              operador: turnoData.operador ? '✅' : '❌',
+              realizaRegistro: turnoData.realizaRegistro ? '✅' : '❌',
+              usuarioId: turnoData.usuarioId ? `Valor: ${turnoData.usuarioId}` : '❌ Vacío/undefined'
+            }
+          },
         { status: 400 }
       );
     }
+
+      // Validar que usuarioId tenga formato de Airtable (empieza con 'rec')
+      if (!turnoData.usuarioId.startsWith('rec')) {
+        console.log(`⚠️ ID de usuario inválido para Airtable: ${turnoData.usuarioId}`);
+        return NextResponse.json(
+          {
+            error: 'ID de usuario inválido para Airtable',
+            details: `El ID debe ser un record ID de Airtable (ej: recXXXXXXXX), recibió: "${turnoData.usuarioId}"`
+          },
+          { status: 400 }
+        );
+      }
 
     // Preparar los datos para Airtable usando los nombres de campos exactos de la documentación
     const fieldsData: AirtableFieldsData = {
