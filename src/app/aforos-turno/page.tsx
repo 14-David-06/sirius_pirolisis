@@ -29,6 +29,7 @@ interface ApiResult {
   error?: string;
   details?: string;
   hint?: string;
+  hasTurnoAbierto?: boolean;
   data?: any;
   resumen?: {
     rendimientoPromedio?: number;
