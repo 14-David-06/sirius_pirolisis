@@ -11,7 +11,31 @@ const AIRTABLE_BASE_ID = config.airtable.baseId;
 const AFOROS_TABLE = config.airtable.aforosTurnoTableId || 'aforos_turno';
 const TURNOS_TABLE = config.airtable.turnosTableId || 'Turno Pirolisis';
 
+const AFOROS_FIELDS = {
+  fechaHoraRegistro: 'Fecha Hora Registro',
+  turnoId: 'ID_Turno',
+  hertzTolva: 'Hertz Tolva',
+  alimentacionBiomasaMinuto: 'Alimentacion Biomasa Por Minuto (Kg)',
+  produccionBiocharMinuto: 'Produccion Biochar Por Minuto (Kg)',
+  realizaRegistro: 'Realiza Registro',
+  alimentacionBiomasaHora: 'Alimentacion Biomasa Por Hora (Kg/h)',
+  produccionBiocharHora: 'Produccion Biochar Por Hora (Kg/h)',
+  rendimientoInstantaneo: 'Rendimiento Instantaneo (%)',
+} as const;
+
 export class AforoAirtableRepository implements IAforoRepository {
+  private ensureConfig(): void {
+    const missingVars: string[] = [];
+
+    if (!AIRTABLE_TOKEN) missingVars.push('AIRTABLE_TOKEN');
+    if (!AIRTABLE_BASE_ID) missingVars.push('AIRTABLE_BASE_ID');
+    if (!AFOROS_TABLE) missingVars.push('AIRTABLE_TABLE_AFOROS_TURNO');
+
+    if (missingVars.length > 0) {
+      throw new Error(`Configuración incompleta de Airtable para aforos: ${missingVars.join(', ')}`);
+    }
+  }
+
   private get headers() {
     return {
       'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
@@ -24,6 +48,8 @@ export class AforoAirtableRepository implements IAforoRepository {
   }
 
   async create(input: CreateAforoInput, realizaRegistro: string): Promise<Aforo> {
+    this.ensureConfig();
+
     // Calcular campos derivados antes de persistir
     const alimentacionPorHora = Math.round(input.alimentacionBiomasaMinuto * 60 * 100) / 100;
     const produccionPorHora = Math.round(input.produccionBiocharMinuto * 60 * 100) / 100;
@@ -32,15 +58,15 @@ export class AforoAirtableRepository implements IAforoRepository {
       : 0;
 
     const fields: Record<string, unknown> = {
-      'fldw2Sk5naTbVYYh3': new Date().toISOString(),
-      'fldHXsnSj1TsQi3MM': [input.turnoId],
-      'fldtBder1osm75Mn5': input.hertzTolva,
-      'fldcJyD9TS6g1a5yP': input.alimentacionBiomasaMinuto,
-      'fldAiDI9CTWizclGr': input.produccionBiocharMinuto,
-      'fldzlwIq2WOS8tl7q': realizaRegistro,
-      'fldtHvx4SywxoSkfv': alimentacionPorHora,
-      'fldsfmQoAXAjYnNml': produccionPorHora,
-      'fldl3QJO4n35xC9ns': rendimientoInstantaneo,
+      [AFOROS_FIELDS.fechaHoraRegistro]: new Date().toISOString(),
+      [AFOROS_FIELDS.turnoId]: [input.turnoId],
+      [AFOROS_FIELDS.hertzTolva]: input.hertzTolva,
+      [AFOROS_FIELDS.alimentacionBiomasaMinuto]: input.alimentacionBiomasaMinuto,
+      [AFOROS_FIELDS.produccionBiocharMinuto]: input.produccionBiocharMinuto,
+      [AFOROS_FIELDS.realizaRegistro]: realizaRegistro,
+      [AFOROS_FIELDS.alimentacionBiomasaHora]: alimentacionPorHora,
+      [AFOROS_FIELDS.produccionBiocharHora]: produccionPorHora,
+      [AFOROS_FIELDS.rendimientoInstantaneo]: rendimientoInstantaneo,
     };
 
     const response = await fetch(`${this.baseUrl}/${encodeURIComponent(AFOROS_TABLE)}`, {
@@ -64,6 +90,8 @@ export class AforoAirtableRepository implements IAforoRepository {
   }
 
   async findByTurno(turnoId: string): Promise<Aforo[]> {
+    this.ensureConfig();
+
     const filterFormula = encodeURIComponent(`FIND("${turnoId}", ARRAYJOIN({ID_Turno}))`);
     let allRecords: any[] = [];
     let offset: string | undefined;
@@ -98,6 +126,8 @@ export class AforoAirtableRepository implements IAforoRepository {
   }
 
   async delete(id: string): Promise<boolean> {
+    this.ensureConfig();
+
     const response = await fetch(
       `${this.baseUrl}/${encodeURIComponent(AFOROS_TABLE)}/${id}`,
       {
@@ -116,6 +146,8 @@ export class AforoAirtableRepository implements IAforoRepository {
   }
 
   async existeTurnoCerrado(): Promise<boolean> {
+    this.ensureConfig();
+
     const filterFormula = encodeURIComponent(`{Fecha Fin Turno} != BLANK()`);
     const url = `${this.baseUrl}/${encodeURIComponent(TURNOS_TABLE)}?filterByFormula=${filterFormula}&maxRecords=1&fields%5B%5D=Fecha%20Fin%20Turno`;
 
