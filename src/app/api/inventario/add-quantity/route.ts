@@ -43,23 +43,34 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Obtener el turno actual abierto (sin filtrar por usuario específico)
+    // Obtener el turno actual abierto (sin filtrar por usuario específico).
+    // Asociar el turno es OPCIONAL: si la consulta falla (p.ej. self-fetch en
+    // producción), continuamos sin vincular el turno en lugar de romper la
+    // operación completa.
     console.log('🔍 Obteniendo turno actual abierto...');
-    const turnoResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/turno/check?userId=any`, {
-      method: 'GET',
-    });
+    let turnoActual: { id: string } | null = null;
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        new URL(request.url).origin ||
+        'http://localhost:3000';
+      const turnoResponse = await fetch(`${baseUrl}/api/turno/check?userId=any`, {
+        method: 'GET',
+      });
 
-    let turnoActual = null;
-    if (turnoResponse.ok) {
-      const turnoData = await turnoResponse.json();
-      if (turnoData.hasTurnoAbierto && turnoData.turnoAbierto) {
-        turnoActual = turnoData.turnoAbierto;
-        console.log('⚠️ Turno abierto encontrado:', turnoActual.id);
+      if (turnoResponse.ok) {
+        const turnoData = await turnoResponse.json();
+        if (turnoData.hasTurnoAbierto && turnoData.turnoAbierto) {
+          turnoActual = turnoData.turnoAbierto;
+          console.log('⚠️ Turno abierto encontrado:', turnoActual?.id);
+        } else {
+          console.log('ℹ️ No hay turno abierto actualmente');
+        }
       } else {
-        console.log('ℹ️ No hay turno abierto actualmente');
+        console.log('⚠️ No se pudo obtener información del turno (status):', turnoResponse.status);
       }
-    } else {
-      console.log('⚠️ No se pudo obtener información del turno');
+    } catch (turnoErr) {
+      console.warn('⚠️ Error consultando turno (no crítico, se continúa sin vinculación):', turnoErr);
     }
 
     // Preparar los campos para crear el registro de entrada

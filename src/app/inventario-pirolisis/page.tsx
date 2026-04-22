@@ -60,8 +60,6 @@ function PaqueteLonasCard() {
     fecha_activacion: string;
     cantidad_lonas: number;
     dias_en_uso: number;
-    fecha_vencimiento_estimada: string;
-    alerta: 'ok' | 'advertencia' | 'vencido';
     total_balances_vinculados: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,17 +75,10 @@ function PaqueteLonasCard() {
   if (loading) return null;
   if (!paquete) return null;
 
-  const alertColors = {
-    ok: 'border-green-500/30 bg-green-500/10',
-    advertencia: 'border-yellow-500/30 bg-yellow-500/10',
-    vencido: 'border-orange-500/30 bg-orange-500/10',
-  };
-  const alertIcons = { ok: '✅', advertencia: '⚠️', vencido: '🔴' };
-
   return (
-    <div className={`bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border ${alertColors[paquete.alerta]}`}>
+    <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-green-500/30 bg-green-500/10">
       <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">
-        {alertIcons[paquete.alerta]} Paquete de Lonas Activo
+        📦 Paquete de Lonas Activo
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="text-center">
@@ -103,16 +94,13 @@ function PaqueteLonasCard() {
           <p className="text-white/70 text-sm">Balances vinculados</p>
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-white drop-shadow">{paquete.fecha_vencimiento_estimada}</p>
-          <p className="text-white/70 text-sm">Vence estimado</p>
+          <p className="text-sm font-medium text-white drop-shadow">{paquete.fecha_activacion}</p>
+          <p className="text-white/70 text-sm">Fecha activación</p>
         </div>
       </div>
-      {paquete.alerta === 'advertencia' && (
-        <p className="mt-3 text-yellow-200 text-sm text-center">El paquete se acerca al límite de vida útil.</p>
-      )}
-      {paquete.alerta === 'vencido' && (
-        <p className="mt-3 text-orange-200 text-sm text-center font-semibold">El paquete superó los 90 días. Se recomienda cambio inmediato.</p>
-      )}
+      <p className="mt-3 text-white/70 text-xs text-center italic">
+        Se retirará automáticamente al registrar la próxima salida de lonas para producción.
+      </p>
     </div>
   );
 }

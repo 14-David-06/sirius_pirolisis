@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { config } from '@/lib/config';
 
 const PAQUETES_TABLE_ID = config.airtable.paquetesLonasTableId;
-const VIDA_DIAS = config.airtable.lonasVidaEstimadaDias;
-const ALERTA_DIAS = config.airtable.lonasAlertaDias;
 
 export async function GET() {
   try {
@@ -53,16 +51,6 @@ export async function GET() {
       (Date.now() - new Date(fechaActivacion).getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    const fechaVencimiento = new Date(fechaActivacion);
-    fechaVencimiento.setDate(fechaVencimiento.getDate() + VIDA_DIAS);
-
-    let alerta: 'ok' | 'advertencia' | 'vencido' = 'ok';
-    if (diasEnUso >= VIDA_DIAS) {
-      alerta = 'vencido';
-    } else if (diasEnUso >= ALERTA_DIAS) {
-      alerta = 'advertencia';
-    }
-
     return NextResponse.json({
       success: true,
       data: {
@@ -70,8 +58,6 @@ export async function GET() {
         fecha_activacion: fechaActivacion,
         cantidad_lonas: cantidadLonas,
         dias_en_uso: diasEnUso,
-        fecha_vencimiento_estimada: fechaVencimiento.toISOString().split('T')[0],
-        alerta,
         total_balances_vinculados: balancesVinculados.length,
       },
     });

@@ -56,7 +56,11 @@ export default function SalidaInsumoForm({
   const [creating, setCreating] = useState(false);
   const [balancesActivos, setBalancesActivos] = useState<BalanceMasa[]>([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
-  const [lonaAlerta, setLonaAlerta] = useState<{ tipo: 'advertencia' | 'vencido'; dias: number } | null>(null);
+  const [paqueteLonasInfo, setPaqueteLonasInfo] = useState<{
+    nuevo_id: string | null;
+    anterior_id: string | null;
+    anterior_dias_uso: number | null;
+  } | null>(null);
 
   // Cargar balances activos del turno cuando tipo_uso = balance_de_masa
   useEffect(() => {
@@ -159,13 +163,14 @@ export default function SalidaInsumoForm({
 
       const responseData = await response.json();
 
-      // Mostrar alerta de lonas si aplica
-      if (responseData.lona_alerta) {
-        setLonaAlerta({
-          tipo: responseData.lona_alerta,
-          dias: responseData.dias_en_uso || 0,
+      // Mostrar info de rotación del paquete de lonas
+      if (responseData.paquete_lonas) {
+        setPaqueteLonasInfo({
+          nuevo_id: responseData.paquete_lonas.nuevo_id ?? null,
+          anterior_id: responseData.paquete_lonas.anterior_id ?? null,
+          anterior_dias_uso: responseData.paquete_lonas.anterior_dias_uso ?? null,
         });
-        // Esperar 4s para que el usuario vea la alerta antes de cerrar
+        // Esperar 4s para que el usuario vea el mensaje antes de cerrar
         await new Promise(resolve => setTimeout(resolve, 4000));
       }
 
@@ -348,18 +353,14 @@ export default function SalidaInsumoForm({
           </div>
         )}
 
-        {/* Alerta de paquete de lonas */}
-        {lonaAlerta && lonaAlerta.tipo === 'advertencia' && (
-          <div className="p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg animate-pulse">
-            <p className="text-yellow-200 text-sm font-semibold drop-shadow">
-              ⚠️ El paquete de lonas lleva {lonaAlerta.dias} días en producción. Considere programar el cambio.
-            </p>
-          </div>
-        )}
-        {lonaAlerta && lonaAlerta.tipo === 'vencido' && (
-          <div className="p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg animate-pulse">
-            <p className="text-orange-200 text-sm font-semibold drop-shadow">
-              🔴 El paquete de lonas superó los 90 días en producción ({lonaAlerta.dias} días). Se recomienda cambio inmediato.
+        {/* Info de rotación del paquete de lonas */}
+        {paqueteLonasInfo && (
+          <div className="p-3 bg-green-500/20 border border-green-500/30 rounded-lg">
+            <p className="text-green-100 text-sm font-semibold drop-shadow">
+              📦 Nuevo paquete de lonas activado.
+              {paqueteLonasInfo.anterior_id && paqueteLonasInfo.anterior_dias_uso !== null && (
+                <> El paquete anterior fue retirado tras {paqueteLonasInfo.anterior_dias_uso} días de uso.</>
+              )}
             </p>
           </div>
         )}

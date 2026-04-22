@@ -200,12 +200,14 @@ export async function POST(request: Request) {
     const salidaRecordId = data.records?.[0]?.id || '';
 
     // --- Lógica de Paquete de Lonas ---
-    let lonaAlerta: 'advertencia' | 'vencido' | null = null;
-    let diasEnUso = 0;
+    // Cada salida de lonas para producción representa la entrada de un nuevo paquete físico:
+    // se RETIRA automáticamente el paquete activo previo y se crea uno nuevo activo.
+    // Esto evita depender de una acción manual en Airtable.
+    let paqueteAnteriorId: string | null = null;
+    let paqueteAnteriorDiasUso: number | null = null;
+    let paqueteNuevoId: string | null = null;
     const LONAS_INSUMO_ID = process.env.AIRTABLE_LONA_INSUMO_ID;
     const PAQUETES_TABLE_ID = config.airtable.paquetesLonasTableId;
-    const ALERTA_DIAS = config.airtable.lonasAlertaDias;
-    const VIDA_DIAS = config.airtable.lonasVidaEstimadaDias;
 
     if (
       LONAS_INSUMO_ID &&
@@ -214,7 +216,7 @@ export async function POST(request: Request) {
       validData.tipo_uso === 'balance_de_masa'
     ) {
       try {
-        // Buscar paquete activo
+        // 1. Buscar paquete activo previo
         const paqUrl = new URL(`https://api.airtable.com/v0/${config.airtable.baseId}/${PAQUETES_TABLE_ID}`);
         paqUrl.searchParams.set('filterByFormula', `{Estado} = 'activo'`);
         paqUrl.searchParams.set('maxRecords', '1');
@@ -225,15 +227,41 @@ export async function POST(request: Request) {
         const paqData = await paqRes.json();
         const paqueteActivo = paqData.records?.[0];
 
+        // 2. Retirar paquete previo (si existe)
         if (paqueteActivo) {
-          // Reutilizar paquete existente
-          console.log(`✅ Paquete de lonas activo reutilizado: ${paqueteActivo.id}`);
+          paqueteAnteriorId = paqueteActivo.id;
           const fechaActivacion = new Date(paqueteActivo.fields['Fecha Activacion']);
-          diasEnUso = Math.floor((Date.now() - fechaActivacion.getTime()) / (1000 * 60 * 60 * 24));
-        } else {
-          // Crear nuevo paquete
-          const hoy = new Date().toISOString().split('T')[0];
-          const nuevoRes = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${PAQUETES_TABLE_ID}`, {
+          paqueteAnteriorDiasUso = Math.floor(
+            (Date.now() - fechaActivacion.getTime()) / (1000 * 60 * 60 * 24)
+          );
+
+          const retirarRes = await fetch(
+            `https://api.airtable.com/v0/${config.airtable.baseId}/${PAQUETES_TABLE_ID}/${paqueteActivo.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${config.airtable.token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fields: { 'Estado': 'retirado' },
+              }),
+            }
+          );
+          if (retirarRes.ok) {
+            console.log(
+              `✅ Paquete anterior ${paqueteActivo.id} retirado tras ${paqueteAnteriorDiasUso} días de uso`
+            );
+          } else {
+            console.warn('⚠️ Error retirando paquete anterior:', await retirarRes.text());
+          }
+        }
+
+        // 3. Crear nuevo paquete activo
+        const hoy = new Date().toISOString().split('T')[0];
+        const nuevoRes = await fetch(
+          `https://api.airtable.com/v0/${config.airtable.baseId}/${PAQUETES_TABLE_ID}`,
+          {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${config.airtable.token}`,
@@ -250,20 +278,14 @@ export async function POST(request: Request) {
                 },
               }],
             }),
-          });
-          if (nuevoRes.ok) {
-            console.log('✅ Nuevo paquete de lonas creado');
-          } else {
-            console.warn('⚠️ Error creando paquete de lonas (no crítico):', await nuevoRes.text());
           }
-          diasEnUso = 0;
-        }
-
-        // Calcular alerta
-        if (diasEnUso >= VIDA_DIAS) {
-          lonaAlerta = 'vencido';
-        } else if (diasEnUso >= ALERTA_DIAS) {
-          lonaAlerta = 'advertencia';
+        );
+        if (nuevoRes.ok) {
+          const nuevoData = await nuevoRes.json();
+          paqueteNuevoId = nuevoData.records?.[0]?.id || null;
+          console.log(`✅ Nuevo paquete de lonas creado: ${paqueteNuevoId}`);
+        } else {
+          console.warn('⚠️ Error creando paquete de lonas (no crítico):', await nuevoRes.text());
         }
       } catch (lonaErr) {
         console.warn('⚠️ Error en lógica de paquete de lonas (no crítico):', lonaErr);
@@ -276,9 +298,12 @@ export async function POST(request: Request) {
       message: `Salida registrada exitosamente. Cantidad: ${validData.cantidad} ${presentacionInsumo}, Tipo: ${validData.tipo_uso}, Productivo: ${esProductivo}`,
     };
 
-    if (lonaAlerta) {
-      responsePayload.lona_alerta = lonaAlerta;
-      responsePayload.dias_en_uso = diasEnUso;
+    if (paqueteNuevoId || paqueteAnteriorId) {
+      responsePayload.paquete_lonas = {
+        nuevo_id: paqueteNuevoId,
+        anterior_id: paqueteAnteriorId,
+        anterior_dias_uso: paqueteAnteriorDiasUso,
+      };
     }
 
     return NextResponse.json(responsePayload, { status: 201 });
