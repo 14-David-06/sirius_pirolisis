@@ -14,6 +14,10 @@ const TURNO_PIROLISIS_TABLE = process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID!;
 const BALANCES_MASA_TABLE = process.env.CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID!;
 const MANEJO_RESIDUOS_TABLE = process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID!;
 
+// Entradas de inventario (para imputar la huella de lonas en la fecha de ingreso)
+const ENTRADAS_INSUMOS_TABLE = process.env.AIRTABLE_ENTRADAS_TABLE_ID;
+const LONA_INSUMO_ID = process.env.AIRTABLE_LONA_INSUMO_ID;
+
 // Table ID (escritura)
 const CARBON_EPIROLISIS_TABLE = process.env.CARBON_EPIROLISIS_RESULTADOS_TABLE_ID!;
 
@@ -48,6 +52,41 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
     } while (offset);
 
     return allRecords;
+  }
+
+  /**
+   * Suma la cantidad de lonas ingresadas al inventario en un período.
+   * Filtra la tabla de Entradas de Insumos por:
+   *   - Insumo vinculado = LONA_INSUMO_ID
+   *   - CREATED_TIME() dentro del rango [fechaInicio, fechaFin]
+   *
+   * Devuelve 0 si la tabla o el ID de lona no están configurados (no rompe el cálculo).
+   */
+  private async sumarLonasIngresadas(fechaInicio: string, fechaFin: string): Promise<number> {
+    if (!ENTRADAS_INSUMOS_TABLE || !LONA_INSUMO_ID) {
+      console.warn('⚠️ AIRTABLE_ENTRADAS_TABLE_ID o AIRTABLE_LONA_INSUMO_ID no configurados; total_lonas = 0');
+      return 0;
+    }
+
+    // Filtro: entrada vinculada al insumo Lona Y creada dentro del período.
+    const filter = `AND(`
+      + `FIND("${LONA_INSUMO_ID}", ARRAYJOIN({Inventario Insumos Pirolisis})),`
+      + `IS_AFTER(CREATED_TIME(), '${fechaInicio}'),`
+      + `IS_BEFORE(CREATED_TIME(), DATEADD('${fechaFin}', 1, 'days'))`
+      + `)`;
+
+    const entradas = await this.fetchAllRecords(
+      ENTRADAS_INSUMOS_TABLE,
+      filter,
+      ['Cantidad Ingresa', 'Inventario Insumos Pirolisis']
+    );
+
+    let total = 0;
+    for (const rec of entradas) {
+      const cantidad = parseFloat(rec.fields?.['Cantidad Ingresa']) || 0;
+      if (cantidad > 0) total += cantidad;
+    }
+    return total;
   }
 
   async obtenerDatosAgregados(fechaInicio: string, fechaFin: string, turnoId?: string | null): Promise<EPirolisisDatosAgregados> {
@@ -96,8 +135,17 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
       residuos.forEach((id: string) => manejoResiduosIds.add(id));
     }
 
-    // 3. Count lonas = count of Balances Masa records linked to turnos
-    const total_lonas = balanceMasaIds.size;
+    // 3. Total lonas = SUM(Cantidad Ingresa) de entradas al inventario del insumo "Lona"
+    //    cuya fecha de creación cae en el período. La huella se imputa en el momento
+    //    del ingreso porque todas las lonas ingresadas se consumirán eventualmente.
+    //    Si turnoId está definido (cálculo por turno específico) se mantiene el conteo
+    //    legacy basado en balances vinculados a ese turno.
+    let total_lonas = 0;
+    if (turnoId) {
+      total_lonas = balanceMasaIds.size;
+    } else {
+      total_lonas = await this.sumarLonasIngresadas(fechaInicio, fechaFin);
+    }
 
     // 4. Count distinct baches from Balances Masa → Baches Pirolisis
     let total_big_bags = 0;
