@@ -288,7 +288,7 @@ export default function SalidaInsumoForm({
                 <option value="" className="bg-gray-800">Sin vincular (opcional)</option>
                 {balancesActivos.map((balance) => (
                   <option key={balance.id} value={balance.id} className="bg-gray-800">
-                    Balance {balance.id.slice(-6)} — {String(balance.fields['Peso Biochar (KG)'] ?? 0)} KG
+                    Balance {balance.id.slice(-6)} — {String(balance.fields?.['Peso Biochar (KG)'] ?? 0)} KG
                   </option>
                 ))}
               </select>
