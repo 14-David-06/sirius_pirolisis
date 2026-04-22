@@ -35,7 +35,6 @@ export default function TurnoProtection({
       }
       
       let userId = null;
-      let userName = null;
       try {
         const sessionData = JSON.parse(userSession);
         userId = sessionData.user?.id;
