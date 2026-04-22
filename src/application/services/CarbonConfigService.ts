@@ -4,6 +4,7 @@
 import { EBiomasConstantes } from '../../domain/entities/EBiomasCalculo';
 import { EPirolisisConstantes } from '../../domain/entities/EPirolisisCalculo';
 import { ETransporteConstantes } from '../../domain/entities/ETransporteCalculo';
+import { EUseConstantes } from '../../domain/entities/EUseCalculo';
 
 export class CarbonConfigService {
   private static parseEnvFloat(name: string): number {
@@ -64,6 +65,14 @@ export class CarbonConfigService {
       densidad_diesel: this.parseEnvFloat('CARBON_TRANSPORTE_DENSIDAD_DIESEL'),
       fe_combustion: this.parseEnvFloat('CARBON_TRANSPORTE_FE_COMBUSTION'),
       fe_upstream: this.parseEnvFloat('CARBON_TRANSPORTE_FE_UPSTREAM'),
+    };
+  }
+
+  static getEUseConstantes(): EUseConstantes {
+    return {
+      fe_euse_liviano: this.parseEnvFloat('CARBON_FE_EUSE_LIVIANO'),
+      fe_euse_pesado: this.parseEnvFloat('CARBON_FE_EUSE_PESADO'),
+      umbral_ton: this.parseEnvFloat('CARBON_EUSE_UMBRAL_TON'),
     };
   }
 }

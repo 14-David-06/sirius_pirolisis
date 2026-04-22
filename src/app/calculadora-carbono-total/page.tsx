@@ -98,10 +98,44 @@ interface ETransportePreview {
   };
 }
 
+interface EUseRemisionDetalle {
+  remision_id: string;
+  remision_numero: string;
+  cliente: string;
+  cliente_match: string;
+  fecha_evento: string;
+  kg_despachados: number;
+  ton_despachados: number;
+  distancia_km: number;
+  tipo_vehiculo: 'liviano' | 'pesado';
+  factor_emision_usado: number;
+  emisiones_kg: number;
+}
+
+interface EUsePreview {
+  periodo: { fecha_inicio: string; fecha_fin: string };
+  remisiones_analizadas: number;
+  desglose_por_remision: EUseRemisionDetalle[];
+  resumen: {
+    remisiones_liviano: number;
+    remisiones_pesado: number;
+    emisiones_liviano_kg: number;
+    emisiones_pesado_kg: number;
+    emisiones_total_kg: number;
+    emisiones_total_ton: number;
+  };
+  constantes_usadas: {
+    fe_euse_liviano: number;
+    fe_euse_pesado: number;
+    umbral_ton: number;
+  };
+}
+
 interface AllPreviews {
   ebiomas: EBiomasPreview | null;
   epirolisis: EPirolisisPreview | null;
   etransporte: ETransportePreview | null;
+  euse: EUsePreview | null;
 }
 
 // ── Main Page ────────────────────────────────────────────────────
@@ -109,17 +143,18 @@ interface AllPreviews {
 export default function CalculadoraCarbonoTotalPage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  const [previews, setPreviews] = useState<AllPreviews>({ ebiomas: null, epirolisis: null, etransporte: null });
+  const [previews, setPreviews] = useState<AllPreviews>({ ebiomas: null, epirolisis: null, etransporte: null, euse: null });
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null);
-  const [errors, setErrors] = useState<{ ebiomas?: string; epirolisis?: string; etransporte?: string }>({});
+  const [errors, setErrors] = useState<{ ebiomas?: string; epirolisis?: string; etransporte?: string; euse?: string }>({});
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
-  const hasAnyPreview = previews.ebiomas || previews.epirolisis || previews.etransporte;
+  const hasAnyPreview = previews.ebiomas || previews.epirolisis || previews.etransporte || previews.euse;
 
   const grandTotalKg = (previews.ebiomas?.emisiones_total_kg ?? 0)
     + (previews.epirolisis?.emisiones_total_kg ?? 0)
-    + (previews.etransporte?.emisiones_total_kg ?? 0);
+    + (previews.etransporte?.emisiones_total_kg ?? 0)
+    + (previews.euse?.resumen.emisiones_total_kg ?? 0);
   const grandTotalTon = grandTotalKg / 1000;
 
   const handlePreview = async () => {
@@ -135,18 +170,19 @@ export default function CalculadoraCarbonoTotalPage() {
     setLoadingPreview(true);
     setMensaje(null);
     setErrors({});
-    setPreviews({ ebiomas: null, epirolisis: null, etransporte: null });
+    setPreviews({ ebiomas: null, epirolisis: null, etransporte: null, euse: null });
 
     const body = JSON.stringify({ fecha_inicio: fechaInicio, fecha_fin: fechaFin });
     const headers = { 'Content-Type': 'application/json' };
 
-    const [resBiomas, resPirolisis, resTransporte] = await Promise.allSettled([
+    const [resBiomas, resPirolisis, resTransporte, resEUse] = await Promise.allSettled([
       fetch('/api/carbon/ebiomas/preview', { method: 'POST', headers, body }),
       fetch('/api/carbon/epirolisis/preview', { method: 'POST', headers, body }),
       fetch('/api/carbon/etransporte/preview', { method: 'POST', headers, body }),
+      fetch('/api/carbon/euse/preview', { method: 'POST', headers, body }),
     ]);
 
-    const newPreviews: AllPreviews = { ebiomas: null, epirolisis: null, etransporte: null };
+    const newPreviews: AllPreviews = { ebiomas: null, epirolisis: null, etransporte: null, euse: null };
     const newErrors: typeof errors = {};
 
     // eBiomass
@@ -176,12 +212,21 @@ export default function CalculadoraCarbonoTotalPage() {
       newErrors.etransporte = 'Error de conexión eTransporte';
     }
 
+    // eUse
+    if (resEUse.status === 'fulfilled') {
+      const data = await resEUse.value.json();
+      if (data.success) newPreviews.euse = data.data;
+      else newErrors.euse = data.error || 'Error eUse';
+    } else {
+      newErrors.euse = 'Error de conexión eUse';
+    }
+
     setPreviews(newPreviews);
     setErrors(newErrors);
     setLoadingPreview(false);
 
     const errCount = Object.keys(newErrors).length;
-    if (errCount === 3) {
+    if (errCount === 4) {
       setMensaje({ tipo: 'error', texto: 'No se pudo obtener ningún cálculo. Revisa la conexión.' });
     } else if (errCount > 0) {
       setMensaje({ tipo: 'error', texto: `Algunos cálculos fallaron: ${Object.values(newErrors).join('; ')}` });
@@ -222,7 +267,7 @@ export default function CalculadoraCarbonoTotalPage() {
               Calculadora de Carbono — Total
             </h1>
             <p className="text-center text-white/90 mb-6 drop-shadow">
-              Etapas 1 + 2 + 3: eBiomass + eProduction + eTransporte
+              Etapas 1 + 2 + 3 + 4: eBiomass + eProduction + eTransporte + eUse
             </p>
 
             {/* Mensaje */}
@@ -246,7 +291,7 @@ export default function CalculadoraCarbonoTotalPage() {
                   <input
                     type="date"
                     value={fechaInicio}
-                    onChange={(e) => { setFechaInicio(e.target.value); setPreviews({ ebiomas: null, epirolisis: null, etransporte: null }); }}
+                    onChange={(e) => { setFechaInicio(e.target.value); setPreviews({ ebiomas: null, epirolisis: null, etransporte: null, euse: null }); }}
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 font-medium"
                   />
                 </div>
@@ -255,7 +300,7 @@ export default function CalculadoraCarbonoTotalPage() {
                   <input
                     type="date"
                     value={fechaFin}
-                    onChange={(e) => { setFechaFin(e.target.value); setPreviews({ ebiomas: null, epirolisis: null, etransporte: null }); }}
+                    onChange={(e) => { setFechaFin(e.target.value); setPreviews({ ebiomas: null, epirolisis: null, etransporte: null, euse: null }); }}
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7836] focus:border-[#5A7836] bg-white text-gray-900 font-medium"
                   />
                 </div>
@@ -268,7 +313,7 @@ export default function CalculadoraCarbonoTotalPage() {
                   className="px-8 py-3 bg-white/20 hover:bg-white/30 text-white border-2 border-white/40 rounded-lg font-semibold backdrop-blur-sm drop-shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loadingPreview ? (
-                    <><Spinner /> Calculando 3 etapas...</>
+                    <><Spinner /> Calculando 4 etapas...</>
                   ) : (
                     'Calcular Todo (Preview)'
                   )}
@@ -280,7 +325,7 @@ export default function CalculadoraCarbonoTotalPage() {
             {loadingPreview && (
               <div className="text-center py-12 text-white/70">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
-                <p className="drop-shadow">Consultando datos para las 3 etapas...</p>
+                <p className="drop-shadow">Consultando datos para las 4 etapas...</p>
               </div>
             )}
 
@@ -290,7 +335,7 @@ export default function CalculadoraCarbonoTotalPage() {
 
                 {/* ═══ Grand Total ═══ */}
                 <div className="bg-green-500/20 border-2 border-green-400/50 rounded-lg p-6 shadow-lg">
-                  <h2 className="text-lg font-bold text-green-300 mb-2 drop-shadow">Total Emisiones (3 Etapas)</h2>
+                  <h2 className="text-lg font-bold text-green-300 mb-2 drop-shadow">Total Emisiones (4 Etapas)</h2>
                   <div className="flex items-baseline gap-4 flex-wrap">
                     <span className="text-4xl font-bold text-white drop-shadow-lg">{fmt(grandTotalKg)}</span>
                     <span className="text-sm text-white/80">kg CO₂eq</span>
@@ -298,7 +343,7 @@ export default function CalculadoraCarbonoTotalPage() {
                     <span className="text-3xl font-bold text-green-300 drop-shadow-lg">{fmt(Math.round(grandTotalTon * 1000000) / 1000000)}</span>
                     <span className="text-sm text-white/80">ton CO₂eq</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                     <MiniSummary
                       label="eBiomass"
                       kg={previews.ebiomas?.emisiones_total_kg}
@@ -313,6 +358,11 @@ export default function CalculadoraCarbonoTotalPage() {
                       label="eTransporte"
                       kg={previews.etransporte?.emisiones_total_kg}
                       error={errors.etransporte}
+                    />
+                    <MiniSummary
+                      label="eUse"
+                      kg={previews.euse?.resumen.emisiones_total_kg}
+                      error={errors.euse}
                     />
                   </div>
                 </div>
@@ -443,6 +493,55 @@ export default function CalculadoraCarbonoTotalPage() {
                   )}
                 </AccordionSection>
 
+                {/* ═══ eUse Accordion ═══ */}
+                <AccordionSection
+                  title="Etapa 4 — eUse"
+                  subtitle="Emisiones transporte de biochar a clientes"
+                  totalKg={previews.euse?.resumen.emisiones_total_kg}
+                  error={errors.euse}
+                  isOpen={expandedSection === 'euse'}
+                  onToggle={() => toggleSection('euse')}
+                >
+                  {previews.euse && (
+                    <div className="space-y-3">
+                      <DetailRow label="Remisiones analizadas" value={previews.euse.remisiones_analizadas} unit="remisiones"
+                        formula={`COUNT(remisiones con Fecha Evento del ${previews.euse.periodo.fecha_inicio} al ${previews.euse.periodo.fecha_fin})`} />
+                      <DetailRow label="Remisiones liviano (≤ 3.5 ton)" value={previews.euse.resumen.remisiones_liviano} unit="remisiones"
+                        formula={`FE = ${previews.euse.constantes_usadas.fe_euse_liviano} kg CO₂/ton·km`} color="blue" />
+                      <DetailRow label="Remisiones pesado (> 3.5 ton)" value={previews.euse.resumen.remisiones_pesado} unit="remisiones"
+                        formula={`FE = ${previews.euse.constantes_usadas.fe_euse_pesado} kg CO₂/ton·km`} color="orange" />
+                      <DetailRow label="Emisiones liviano" value={previews.euse.resumen.emisiones_liviano_kg} unit="kg CO₂eq"
+                        formula={`SUM(ton × km × ${previews.euse.constantes_usadas.fe_euse_liviano})`} color="yellow" />
+                      <DetailRow label="Emisiones pesado" value={previews.euse.resumen.emisiones_pesado_kg} unit="kg CO₂eq"
+                        formula={`SUM(ton × km × ${previews.euse.constantes_usadas.fe_euse_pesado})`} color="orange" />
+
+                      {previews.euse.desglose_por_remision.length > 0 && (
+                        <div className="border-t border-white/10 pt-2 mt-2">
+                          <p className="text-xs text-white/50 mb-2 font-semibold uppercase tracking-wide">Desglose por remisión</p>
+                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                            {previews.euse.desglose_por_remision.map((d) => (
+                              <div key={d.remision_id} className="bg-white/5 border border-white/15 rounded-lg p-3">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <span className="text-sm font-semibold text-white/90 truncate">{d.remision_numero || d.remision_id}</span>
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                                    d.tipo_vehiculo === 'liviano'
+                                      ? 'bg-blue-400/20 text-blue-300 border-blue-400/30'
+                                      : 'bg-orange-400/20 text-orange-300 border-orange-400/30'
+                                  }`}>{d.tipo_vehiculo}</span>
+                                </div>
+                                <p className="text-xs text-white/70 mb-1">{d.cliente} → <span className="text-white/50">{d.cliente_match}</span> · {d.fecha_evento}</p>
+                                <p className="text-xs text-white/60 font-mono">{fmt(d.ton_despachados)} ton × {d.distancia_km} km × {d.factor_emision_usado} = <span className="text-white font-bold">{fmt(d.emisiones_kg)} kg CO₂eq</span></p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <TotalRow label="Total eUse" kg={previews.euse.resumen.emisiones_total_kg} ton={previews.euse.resumen.emisiones_total_ton} />
+                    </div>
+                  )}
+                </AccordionSection>
+
               </div>
             )}
 
@@ -450,7 +549,7 @@ export default function CalculadoraCarbonoTotalPage() {
             {!loadingPreview && !hasAnyPreview && (
               <div className="text-center py-12 text-white/60">
                 <p className="drop-shadow text-lg mb-2">Selecciona un período y presiona &quot;Calcular Todo&quot;</p>
-                <p className="drop-shadow text-sm">Se ejecutarán las 3 etapas de cálculo en paralelo</p>
+                <p className="drop-shadow text-sm">Se ejecutarán las 4 etapas de cálculo en paralelo</p>
               </div>
             )}
           </div>

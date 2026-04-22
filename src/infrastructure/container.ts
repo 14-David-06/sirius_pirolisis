@@ -5,6 +5,7 @@ import { IUserRepository } from '../domain/repositories/IUserRepository';
 import { IEBiomasRepository } from '../domain/repositories/IEBiomasRepository';
 import { IEPirolisisRepository } from '../domain/repositories/IEPirolisisRepository';
 import { IETransporteRepository } from '../domain/repositories/IETransporteRepository';
+import { IEUseRepository } from '../domain/repositories/IEUseRepository';
 import { IAforoRepository } from '../domain/repositories/IAforoRepository';
 import { AuthService } from '../application/services/AuthService';
 import { CalcularEBiomasUseCase } from '../application/services/CalcularEBiomasUseCase';
@@ -16,6 +17,9 @@ import { PreviewEPirolisisUseCase } from '../application/services/PreviewEPiroli
 import { CalcularETransporteUseCase } from '../application/services/CalcularETransporteUseCase';
 import { GetResultadosETransporteUseCase } from '../application/services/GetResultadosETransporteUseCase';
 import { PreviewETransporteUseCase } from '../application/services/PreviewETransporteUseCase';
+import { CalcularEUseUseCase } from '../application/services/CalcularEUseUseCase';
+import { GetResultadosEUseUseCase } from '../application/services/GetResultadosEUseUseCase';
+import { PreviewEUseUseCase } from '../application/services/PreviewEUseUseCase';
 import { CreateAforoUseCase } from '../application/services/CreateAforoUseCase';
 import { GetAforosByTurnoUseCase } from '../application/services/GetAforosByTurnoUseCase';
 import { DeleteAforoUseCase } from '../application/services/DeleteAforoUseCase';
@@ -25,6 +29,7 @@ import { PostgresUserRepository } from './repositories/PostgresUserRepository';
 import { EBiomasAirtableRepository } from './repositories/EBiomasAirtableRepository';
 import { EPirolisisAirtableRepository } from './repositories/EPirolisisAirtableRepository';
 import { ETransporteAirtableRepository } from './repositories/ETransporteAirtableRepository';
+import { EUseAirtableRepository } from './repositories/EUseAirtableRepository';
 import { AforoAirtableRepository } from './repositories/AforoAirtableRepository';
 
 // Feature flag para elegir implementación
@@ -45,6 +50,10 @@ export class Container {
   private static calcularETransporteUseCase: CalcularETransporteUseCase | null = null;
   private static getResultadosETransporteUseCase: GetResultadosETransporteUseCase | null = null;
   private static previewETransporteUseCase: PreviewETransporteUseCase | null = null;
+  private static eUseRepository: IEUseRepository | null = null;
+  private static calcularEUseUseCase: CalcularEUseUseCase | null = null;
+  private static getResultadosEUseUseCase: GetResultadosEUseUseCase | null = null;
+  private static previewEUseUseCase: PreviewEUseUseCase | null = null;
   private static aforoRepository: IAforoRepository | null = null;
   private static createAforoUseCase: CreateAforoUseCase | null = null;
   private static getAforosByTurnoUseCase: GetAforosByTurnoUseCase | null = null;
@@ -153,6 +162,35 @@ export class Container {
     return this.previewETransporteUseCase;
   }
 
+  // eUse (Etapa 4)
+  static getEUseRepository(): IEUseRepository {
+    if (!this.eUseRepository) {
+      this.eUseRepository = new EUseAirtableRepository();
+    }
+    return this.eUseRepository;
+  }
+
+  static getCalcularEUseUseCase(): CalcularEUseUseCase {
+    if (!this.calcularEUseUseCase) {
+      this.calcularEUseUseCase = new CalcularEUseUseCase(this.getEUseRepository());
+    }
+    return this.calcularEUseUseCase;
+  }
+
+  static getGetResultadosEUseUseCase(): GetResultadosEUseUseCase {
+    if (!this.getResultadosEUseUseCase) {
+      this.getResultadosEUseUseCase = new GetResultadosEUseUseCase(this.getEUseRepository());
+    }
+    return this.getResultadosEUseUseCase;
+  }
+
+  static getPreviewEUseUseCase(): PreviewEUseUseCase {
+    if (!this.previewEUseUseCase) {
+      this.previewEUseUseCase = new PreviewEUseUseCase(this.getEUseRepository());
+    }
+    return this.previewEUseUseCase;
+  }
+
   // Aforos por Turno
   static getAforoRepository(): IAforoRepository {
     if (!this.aforoRepository) {
@@ -205,6 +243,10 @@ export class Container {
     this.calcularETransporteUseCase = null;
     this.getResultadosETransporteUseCase = null;
     this.previewETransporteUseCase = null;
+    this.eUseRepository = null;
+    this.calcularEUseUseCase = null;
+    this.getResultadosEUseUseCase = null;
+    this.previewEUseUseCase = null;
     this.aforoRepository = null;
     this.createAforoUseCase = null;
     this.getAforosByTurnoUseCase = null;
