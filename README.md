@@ -11,7 +11,7 @@ Proyecto web para Sirius Pirólisis - Innovación en el tratamiento de residuos 
 - **React** - Biblioteca de JavaScript para interfaces de usuario
 
 ## 📁 Estructura del Proyecto
-
+    
 ```
 sirius_pirolisis/
 ├── src/
