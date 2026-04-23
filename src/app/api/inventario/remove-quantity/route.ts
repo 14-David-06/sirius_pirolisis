@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       cantidad: typeof body.cantidad === 'string' ? parseFloat(body.cantidad) : body.cantidad,
       tipo_uso: body.tipo_uso || mapLegacyTipoSalida(body.tipoSalida),
       balance_masa_id: body.balance_masa_id || null,
+      mantenimiento_id: body.mantenimiento_id || body.mantenimientoId || null,
       observaciones: body.observaciones,
       documentoSoporteUrl: body.documentoSoporteUrl,
       'Realiza Registro': body['Realiza Registro'],
@@ -156,6 +157,11 @@ export async function POST(request: Request) {
       } else {
         fields['Balance Masa'] = [validData.balance_masa_id];
       }
+    }
+
+    // Link al mantenimiento cuando aplique (ej. consumos por mantenimiento)
+    if (validData.mantenimiento_id) {
+      fields[config.airtable.salidasFields.mantenimiento || 'Mantenimientos'] = [validData.mantenimiento_id];
     }
 
     // Documento soporte si se proporciona

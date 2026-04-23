@@ -74,6 +74,7 @@ export const removeQuantitySchema = z.object({
     errorMap: () => ({ message: `Tipo de uso debe ser uno de: ${TIPO_USO_VALUES.join(', ')}` }),
   }),
   balance_masa_id: z.string().nullable().optional(),
+  mantenimiento_id: z.string().nullable().optional(),
   observaciones: z.string().optional(),
   documentoSoporteUrl: z.string().optional(),
   'Realiza Registro': z.string().optional(),

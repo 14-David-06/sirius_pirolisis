@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
           console.warn('No se pudo obtener datos del inventario, usando presentaciones por defecto');
         }
 
-        // Crear una salida para cada insumo utilizado
+        // Descontar inventario por cada insumo utilizado usando el endpoint unificado
         for (const insumo of insumosFinal) {
           // Obtener la presentación del insumo desde el inventario
           let presentacionInsumo = 'Unidad'; // Valor por defecto
@@ -146,20 +146,21 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const salidaResponse = await fetch(resolveApiUrl('/api/salidas/create'), {
+          const salidaResponse = await fetch(resolveApiUrl('/api/inventario/remove-quantity'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              cantidadSale: insumo.cantidad,
-              presentacionInsumo: presentacionInsumo,
-              observaciones: `Utilizado en mantenimiento: ${descripcion}`,
+              itemId: insumo.id,
+              cantidad: insumo.cantidad,
+              tipo_uso: 'limpieza_mantenimiento',
               tipoSalida: 'Mantenimiento',
-              realizaRegistro: realizaRegistro,
-              inventarioInsumosId: insumo.id,
-              turnoId: turnoId,
-              mantenimientoId: mantenimientoId
+              observaciones: `Utilizado en mantenimiento: ${descripcion}`,
+              'Realiza Registro': realizaRegistro,
+              turno_id: turnoId,
+              mantenimiento_id: mantenimientoId,
+              presentacionInsumo,
             }),
           });
 

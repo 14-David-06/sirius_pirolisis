@@ -195,16 +195,15 @@ export async function POST(request: NextRequest) {
           const bigBagInsumoId = process.env.AIRTABLE_BIG_BAG_INSUMO_ID;
           if (bigBagInsumoId) {
             try {
-              const turnoId = data.turnoPirolisis?.[0] || '';
               const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
               const deductRes = await fetch(`${baseUrl}/api/inventario/remove-quantity`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  insumo_id: bigBagInsumoId,
+                  itemId: bigBagInsumoId,
                   cantidad: 1,
                   tipo_uso: 'balance_de_masa',
-                  turno_id: turnoId,
+                  balance_masa_id: balanceId,
                   observaciones: `Auto-deducción por bache completo: ${lastBache.id}`
                 }),
               });
