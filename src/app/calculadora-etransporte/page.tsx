@@ -322,20 +322,6 @@ export default function CalculadoraETransportePage() {
                             'Preview'
                           )}
                         </button>
-                        <button
-                          onClick={handleCalcular}
-                          disabled={loadingCalculo || !fechaInicio || !fechaFin}
-                          className="px-8 py-3 bg-gradient-to-r from-[#5A7836] to-[#4a6429] hover:from-[#4a6429] hover:to-[#3d5422] text-white border-2 border-[#5A7836]/60 rounded-lg font-semibold backdrop-blur-sm drop-shadow-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                          {loadingCalculo ? (
-                            <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                              Guardando...
-                            </>
-                          ) : (
-                            'Calcular y guardar'
-                          )}
-                        </button>
                       </div>
                     </div>
 
