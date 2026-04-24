@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { animate, motion, useMotionValue, useTransform } from 'framer-motion';
+import { animate, motion, useMotionValue, useTransform, type Variants } from 'framer-motion';
 import {
   Bar,
   BarChart,
@@ -44,7 +44,7 @@ interface CarbonoTotalDashboardProps {
   filterSignature: string;
 }
 
-const fadeInUp = {
+const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 16 },
   visible: {
     opacity: 1,
@@ -53,7 +53,7 @@ const fadeInUp = {
   },
 };
 
-const cardContainer = {
+const cardContainer: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -64,7 +64,7 @@ const cardContainer = {
   },
 };
 
-const cardItem = {
+const cardItem: Variants = {
   hidden: { opacity: 0, y: 10 },
   visible: {
     opacity: 1,
@@ -271,7 +271,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                     border: '1px solid rgba(255,255,255,0.2)',
                     borderRadius: 12,
                   }}
-                  formatter={(value: number) => [`${formatTon(value)} tCO2eq`, '']}
+                  formatter={(value) => [`${formatTon(Number(value))} tCO2eq`, ''] as [string, string]}
                 />
                 <Bar dataKey="ebiomas" stackId="total" fill="#3B6D11" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="epirolisis" stackId="total" fill="#854F0B" radius={[4, 4, 0, 0]} />
@@ -307,7 +307,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                     border: '1px solid rgba(255,255,255,0.2)',
                     borderRadius: 12,
                   }}
-                  formatter={(value: number) => `${formatTon(value)} tCO2eq`}
+                  formatter={(value) => `${formatTon(Number(value))} tCO2eq`}
                 />
               </PieChart>
             </ResponsiveContainer>
