@@ -88,6 +88,12 @@ export const config = {
     paqueteLonasActivoFieldId: process.env.AIRTABLE_FIELD_PAQUETE_LONAS_ACTIVO,
     lonasVidaEstimadaDias: parseInt(process.env.LONAS_VIDA_ESTIMADA_DIAS || '90', 10),
     lonasAlertaDias: parseInt(process.env.LONAS_ALERTA_DIAS || '75', 10),
+    // Blend (Pedidos, Producción, Remisiones)
+    blendPedidosTableId: process.env.AIRTABLE_BLEND_PEDIDOS_TABLE_ID,
+    blendProduccionTableId: process.env.AIRTABLE_BLEND_PRODUCCION_TABLE_ID,
+    blendRemisionesTableId: process.env.AIRTABLE_BLEND_REMISIONES_TABLE_ID,
+    blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,
+    blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,
     // Field IDs para Remisiones Baches Pirolisis
     remisionesBachesFields: {
       id: process.env.AIRTABLE_REMISIONES_ID_FIELD_ID,
@@ -125,7 +131,6 @@ export const config = {
     },
     // Calculadora de Carbono — Table IDs
     carbonEbiomasViajesBiomasaTableId: process.env.CARBON_EBIOMAS_VIAJES_BIOMASA_TABLE_ID,
-    carbonEbiomasResultadosTableId: process.env.CARBON_EBIOMAS_RESULTADOS_TABLE_ID,
     carbonEpirolisisTurnoTableId: process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID,
     carbonEpirolisisBalancesMasaTableId: process.env.CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID,
     carbonEpirolisisManejoResiduosTableId: process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID,
@@ -165,6 +170,8 @@ export const config = {
     transporteDensidadDiesel: process.env.CARBON_TRANSPORTE_DENSIDAD_DIESEL,
     transporteFeCombustion: process.env.CARBON_TRANSPORTE_FE_COMBUSTION,
     transporteFeUpstream: process.env.CARBON_TRANSPORTE_FE_UPSTREAM,
+    // Blend Remisiones — Factor de secuestro de CO2 por kg de Biochar Puro
+    factorSecuestroCo2: parseFloat(process.env.FACTOR_SECUESTRO_CO2 || '2.5'),
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {

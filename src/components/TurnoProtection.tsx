@@ -63,26 +63,6 @@ export default function TurnoProtection({
     };
 
     checkAuthAndTurno();
-
-    // Configurar polling para mantener sincronización (cada 30 segundos)
-    const intervalId = setInterval(() => {
-      const userSession = localStorage.getItem('userSession');
-      if (userSession) {
-        try {
-          const sessionData = JSON.parse(userSession);
-          const userId = sessionData.user?.id;
-          const shouldRequireTurno = requiresTurno;
-          
-          if (shouldRequireTurno && userId) {
-            validateAndSyncTurno(userId);
-          }
-        } catch (error) {
-          console.error('Error en polling de turno:', error);
-        }
-      }
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(intervalId);
   }, [router, requiresTurno]);
 
   const validateAndSyncTurno = async (userId: string, showFeedback = false) => {
@@ -133,15 +113,8 @@ export default function TurnoProtection({
           }
           setHasActiveTurno(true);
         } else {
-          // El turno abierto pertenece a otro usuario
-          const localTurno = localStorage.getItem('turnoActivo');
-          if (localTurno) {
-            localStorage.removeItem('turnoActivo');
-          }
-          setHasActiveTurno(false);
-          if (showFeedback) {
-            alert(`⚠️ ${data.mensaje}`);
-          }
+          // El turno abierto pertenece a otro usuario — acceso permitido
+          setHasActiveTurno(true);
         }
       } else {
         // No hay turno activo en BD
@@ -149,11 +122,8 @@ export default function TurnoProtection({
         const localTurno = localStorage.getItem('turnoActivo');
         if (localTurno) {
           localStorage.removeItem('turnoActivo');
-          if (showFeedback) {
-            alert('🧹 Estado local limpiado - no hay turno activo');
-          }
         }
-        setHasActiveTurno(false);
+        setHasActiveTurno(true);
       }
     } catch (error) {
       console.error('❌ Error validando turno:', error);
@@ -173,8 +143,7 @@ export default function TurnoProtection({
         alert(`❌ ${errorMessage}`);
       }
       
-      // En caso de error de red, mantener el estado actual pero marcar para reintento
-      setHasActiveTurno(false);
+      // En caso de error de red, mantener el estado actual
       setTurnoInfo(null);
     } finally {
       if (showFeedback) setSyncing(false);

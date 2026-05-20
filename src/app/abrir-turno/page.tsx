@@ -85,18 +85,13 @@ export default function AbrirTurno() {
         const result = await response.json();
         
         if (response.ok) {
-          if (result.hasTurnoAbierto) {
-            if (result.turnoPerteneceAlUsuario) {
-              // El turno abierto pertenece al usuario actual - redirigir
-              router.push('/');
-              return;
-            } else {
-              // El turno abierto pertenece a otro usuario
-              setOtherUserTurno(result.turnoAbierto);
-              setMensaje(result.mensaje);
-            }
-          } else {
-            setFormData(prev => ({
+          if (result.hasTurnoAbierto && result.turnoPerteneceAlUsuario) {
+            // El turno abierto pertenece al usuario actual - redirigir
+            router.push('/');
+            return;
+          }
+
+          setFormData(prev => ({
               ...prev,
               operador: userData.user?.Nombre || ''
             }));
@@ -135,7 +130,6 @@ export default function AbrirTurno() {
               setTipoApertura('continuidad');
               setTipoAperturaConfirmado(true);
             }
-          }
         } else {
           console.error('Error al verificar turnos:', result.error);
           setMensaje(`❌ Error al verificar turnos: ${result.error}`);

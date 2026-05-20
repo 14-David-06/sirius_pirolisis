@@ -10,7 +10,7 @@ import QRCode from 'qrcode';
 
 export default function SistemaBaches() {
   return (
-    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
+    <TurnoProtection requiresTurno={false} allowBitacoraUsers={true}>
       <SistemaBachesContent />
     </TurnoProtection>
   );

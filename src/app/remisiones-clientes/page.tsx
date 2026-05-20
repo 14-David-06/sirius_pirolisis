@@ -9,7 +9,7 @@ import { config } from '@/lib/config';
 
 export default function RemisionesClientes() {
   return (
-    <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
+    <TurnoProtection requiresTurno={false}>
       <RemisionesClientesContent />
     </TurnoProtection>
   );

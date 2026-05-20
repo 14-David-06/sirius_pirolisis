@@ -724,25 +724,39 @@ function InventarioPirolisisContent() {
                       <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
                       {data?.records.map((item: any) => (
                         <option key={item.id} value={item.id} className="bg-gray-800">
-                          {getItemName(item)} - {getItemCategory(item)} - Presentación: {getItemCantidadPresentacion(item)} {getItemPresentacion(item)}
+                          {getItemName(item)} — {getItemCategory(item)} (Stock: {getItemStockTotal(item)} kg)
                         </option>
                       ))}
                     </select>
+                    {addQuantityData.selectedItemId && (() => {
+                      const sel = data?.records.find((r: any) => r.id === addQuantityData.selectedItemId);
+                      return sel ? (
+                        <div className="mt-3 p-3 bg-blue-500/10 border border-blue-400/20 rounded-lg">
+                          <p className="text-sm text-blue-200 font-semibold">{getItemName(sel)}</p>
+                          <p className="text-xs text-white/60 mt-1">Categoría: {getItemCategory(sel)}</p>
+                          <p className="text-xs text-blue-300 mt-1">📊 Stock actual: <span className="font-bold">{getItemStockTotal(sel)} kg</span></p>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
 
                   <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Cantidad a Agregar *</label>
-                    <input
-                      type="number"
-                      value={addQuantityData.cantidad}
-                      onChange={(e) => setAddQuantityData({...addQuantityData, cantidad: e.target.value})}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
-                      placeholder="Ej: 25"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
+                    <label className="block text-sm font-semibold mb-2 text-white drop-shadow">Cantidad a Agregar <span className="text-blue-300 font-bold">(kg)</span> *</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={addQuantityData.cantidad}
+                        onChange={(e) => setAddQuantityData({...addQuantityData, cantidad: e.target.value})}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className="w-full p-3 pr-14 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
+                        placeholder="Ej: 25.5"
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300 font-bold text-sm pointer-events-none">kg</span>
+                    </div>
+                    <p className="text-xs text-white/50 mt-1">Ingresa siempre en kilogramos (kg)</p>
                   </div>
 
                   <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-lg p-4 border border-green-500/20">
