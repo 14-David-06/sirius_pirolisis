@@ -122,6 +122,7 @@ export default function Navbar() {
         title: "Ventas",
         icon: "",
         items: [
+          { label: "Pedidos Blend", href: "/pedidos-blend", icon: "", description: "Pedidos de biochar blend" },
           { label: "Remisiones Clientes", href: "/remisiones-clientes", icon: "", description: "Gestión de remisiones de clientes" },
         ]
       },
