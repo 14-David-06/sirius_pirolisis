@@ -84,6 +84,30 @@ export async function POST(request: NextRequest) {
       console.log(`🔍 [login] Contraseñas coinciden: ${passwordMatch}`);
       
       if (passwordMatch) {
+        // ── Obtener ID Personal Core (SIRIUS-PER-XXXX) desde Nomina Core ─────
+        let idPersonalCore: string | undefined;
+        try {
+          const nominaBaseId = config.airtable.nominaCoreBaseId;
+          const nominaToken = config.airtable.nominaCoreToken;
+          const nominaTable = config.airtable.nominaCorePersonalTable;
+          if (nominaToken && nominaBaseId && nominaTable) {
+            const nominaUrl = `https://api.airtable.com/v0/${nominaBaseId}/${nominaTable}?filterByFormula={Numero Documento}="${cedula}"&fields[]=ID+Empleado&maxRecords=1`;
+            const nominaRes = await fetch(nominaUrl, {
+              headers: { 'Authorization': `Bearer ${nominaToken}` },
+            });
+            if (nominaRes.ok) {
+              const nominaData = await nominaRes.json();
+              idPersonalCore = nominaData.records?.[0]?.fields?.['ID Empleado'] as string | undefined;
+              if (idPersonalCore) console.log(`✅ [login] ID Empleado Nomina Core: ${idPersonalCore}`);
+              else console.warn('⚠️ [login] Campo "ID Personal" no encontrado en Nomina Core para esta cédula');
+            } else {
+              console.warn('⚠️ [login] Nomina Core query falló (no crítico):', nominaRes.status);
+            }
+          }
+        } catch (nominaErr) {
+          console.warn('⚠️ [login] Error consultando Nomina Core (no crítico):', nominaErr);
+        }
+
         const userInfo = {
           id: userRecord.id,
           Cedula: userData.Cedula,
@@ -92,6 +116,7 @@ export async function POST(request: NextRequest) {
           Email: userData.Email || '',
           Telefono: userData.Telefono || '',
           Cargo: userData.Cargo,
+          ...(idPersonalCore && { idPersonalCore }),
         };
 
         // Crear sesión segura si está habilitado

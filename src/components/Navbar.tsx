@@ -122,7 +122,14 @@ export default function Navbar() {
         title: "Ventas",
         icon: "",
         items: [
-          { label: "Remisiones Clientes", href: "/remisiones-clientes", icon: "", description: "Gestión de remisiones de clientes" },
+          { label: "Admin Pedidos", href: "/pirolisis/blend/admin-pedidos", icon: "", description: "Aprobar y gestionar pedidos blend" },
+        ]
+      },
+      {
+        title: "Gestión",
+        icon: "",
+        items: [
+          { label: "Control de Horas", href: "/control-horas", icon: "", description: "Permisos, novedades y vacaciones del equipo" },
         ]
       },
       {

@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
     }
 
     const estadoPedido: string = pedidoData.fields?.['Estado'] ?? '';
-    const estadosValidos = ['Aprobado', 'En Produccion', 'Listo Despacho'];
+    const estadosValidos = ['Aprobado', 'En Producción', 'En Produccion', 'Listo Despacho'];
     if (!estadosValidos.includes(estadoPedido)) {
       return NextResponse.json({
         error: 'El pedido no está en un estado válido para crear una remisión',

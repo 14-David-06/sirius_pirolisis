@@ -6,8 +6,8 @@ import { config } from '../../../../../../../lib/config';
 const TRANSICIONES: Record<string, string[]> = {
   'Recibido':       ['Aprobado', 'Pendiente Stock', 'Cancelado'],
   'Pendiente Stock': ['Aprobado', 'Cancelado'],
-  'Aprobado':       ['En Produccion', 'Cancelado'],
-  'En Produccion':  ['Listo Despacho'],
+  'Aprobado':       ['En Producción', 'Cancelado'],
+  'En Producción':  ['Listo Despacho'],
   'Listo Despacho': ['Despachado'],
   'Despachado':     [],
   'Cancelado':      [],

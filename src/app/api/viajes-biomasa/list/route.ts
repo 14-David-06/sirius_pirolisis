@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const TABLE_ID = 'tblqToeuk9s8ohSiR'; // ID de la tabla Viajes Biomasa
+const TABLE_ID = process.env.AIRTABLE_VIAJES_BIOMASA_TABLE_ID;
 
 export async function GET(request: NextRequest) {
   try {
-    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !TABLE_ID) {
       return NextResponse.json({ 
         success: false,
         error: 'Configuración de Airtable no encontrada' 

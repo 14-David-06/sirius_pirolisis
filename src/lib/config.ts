@@ -92,6 +92,27 @@ export const config = {
     blendPedidosTableId: process.env.AIRTABLE_BLEND_PEDIDOS_TABLE_ID,
     blendProduccionTableId: process.env.AIRTABLE_BLEND_PRODUCCION_TABLE_ID,
     blendRemisionesTableId: process.env.AIRTABLE_BLEND_REMISIONES_TABLE_ID,
+    // Sirius Product Core (catálogo de productos)
+    productsBaseId: process.env.AIRTABLE_PRODUCTS_BASE_ID,
+    productsTableId: process.env.AIRTABLE_PRODUCTS_TABLE_ID,
+    productsToken: process.env.AIRTABLE_PRODUCTS_TOKEN,
+    // Sirius Pedidos Core (pedidos centralizados)
+    pedidosCoreBaseId: process.env.AIRTABLE_PEDIDOS_CORE_BASE_ID,
+    pedidosCorePedidosTable: process.env.AIRTABLE_PEDIDOS_CORE_PEDIDOS_TABLE,
+    pedidosCoreDetallesTable: process.env.AIRTABLE_PEDIDOS_CORE_DETALLES_TABLE,
+    pedidosCoreToken: process.env.AIRTABLE_PEDIDOS_CORE_TOKEN,
+    // Sirius Inventario Production Core (inventario de productos finales)
+    inventarioProdCoreBaseId: process.env.AIRTABLE_BASE_SIRIUS_INVENTARIO,
+    inventarioProdCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_INVENTARIO,
+    inventarioProdCoreMovimientosTable: process.env.AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS,
+    inventarioProdCoreStockTable: process.env.AIRTABLE_TABLE_SIRIUS_INVENTARIO_STOCK,
+    inventarioProdCoreBiocharBlendProductId: process.env.AIRTABLE_INVENTARIO_BIOCHAR_BLEND_PRODUCT_ID,
+    // Sirius Nomina Core (personal, áreas, sistemas)
+    nominaCoreBaseId: process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE,
+    nominaCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE,
+    nominaCorePersonalTable: process.env.AIRTABLE_TABLE_NOMINA_PERSONAL,
+    nominaCoreAreasTable: process.env.AIRTABLE_TABLE_NOMINA_AREAS,
+    nominaCoreSistemasTable: process.env.AIRTABLE_TABLE_NOMINA_SISTEMAS_APLICACIONES,
     blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,
     blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,
     // Field IDs para Remisiones Baches Pirolisis

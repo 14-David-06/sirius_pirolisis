@@ -13,6 +13,7 @@ export interface UserSession {
     Email: string;
     Telefono: string;
     Cargo: string;
+    idPersonalCore?: string; // SIRIUS-PER-XXXX (Nomina Core)
   };
   loginTime: string;
 }
