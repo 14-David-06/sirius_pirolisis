@@ -1,152 +1,110 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { config, validateEnvVars, logConfigSafely } from '@/lib/config';
 import { ServerSessionManager } from '@/lib/serverSession';
 
-// Validar variables de entorno al cargar el módulo
-validateEnvVars();
+const NOMINA_BASE_ID = process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE;
+const NOMINA_TOKEN  = process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE;
+const NOMINA_TABLE  = process.env.AIRTABLE_TABLE_NOMINA_PERSONAL;
 
 export async function POST(request: NextRequest) {
-  console.log('🔐 [login] Iniciando proceso de login');
-  logConfigSafely();
-  
+  console.log('🔐 [login] Sirius Nomina Core');
+
   try {
-    console.log('📥 [login] Parseando request body...');
     const { cedula, password } = await request.json();
-    console.log(`📋 [login] Cédula recibida: ${cedula}`);
-    console.log(`🔑 [login] Password recibida: ${password ? '[PRESENTE]' : '[AUSENTE]'}`);
 
     if (!cedula || !password) {
-      console.log('❌ [login] Error: Faltan campos requeridos');
       return NextResponse.json(
         { message: 'Cédula y contraseña son requeridas' },
         { status: 400 }
       );
     }
 
-    // Buscar usuario en Airtable por cédula
-    const tableName = encodeURIComponent(config.airtable.tableName || '');
-    const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${tableName}?filterByFormula={Cedula}="${cedula}"`;
-    console.log(`🌐 [login] URL de Airtable: ${airtableUrl}`);
+    if (!NOMINA_BASE_ID || !NOMINA_TOKEN || !NOMINA_TABLE) {
+      console.error('❌ [login] Variables de Nomina Core no configuradas');
+      return NextResponse.json(
+        { message: 'Error de configuración del servidor' },
+        { status: 500 }
+      );
+    }
 
-    console.log('🚀 [login] Realizando petición a Airtable...');
-    const response = await fetch(airtableUrl, {
+    // Buscar usuario por Numero Documento en Nomina Core
+    const tableEncoded = encodeURIComponent(NOMINA_TABLE);
+    const formula      = encodeURIComponent(`{Numero Documento}="${cedula}"`);
+    const url = `https://api.airtable.com/v0/${NOMINA_BASE_ID}/${tableEncoded}?filterByFormula=${formula}&maxRecords=1`;
+
+    const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
+        'Authorization': `Bearer ${NOMINA_TOKEN}`,
         'Content-Type': 'application/json',
       },
     });
 
-    console.log(`📡 [login] Respuesta de Airtable - Status: ${response.status}`);
-
-    console.log(`📡 [login] Respuesta de Airtable - Status: ${response.status}`);
-
     if (!response.ok) {
-      console.error(`💥 [login] Airtable API error: ${response.status} ${response.statusText}`);
-      try {
-        const errorText = await response.text();
-        console.error(`💥 [login] Error body: ${errorText}`);
-      } catch {
-        console.error(`💥 [login] No se pudo leer el error body`);
-      }
+      const errorText = await response.text().catch(() => 'desconocido');
+      console.error(`❌ [login] Airtable ${response.status}: ${errorText}`);
       return NextResponse.json(
         { message: 'Error al conectar con la base de datos' },
         { status: 500 }
       );
     }
 
-    console.log('📊 [login] Parseando respuesta de Airtable...');
     const data = await response.json();
-    console.log(`📊 [login] Datos recibidos:`, JSON.stringify(data, null, 2));
 
-    if (data.records && data.records.length > 0) {
-      console.log(`✅ [login] Usuario encontrado`);
-      const userRecord = data.records[0];
-      const userData = userRecord.fields;
-
-      // Verificar contraseña usando bcrypt
-      const storedHash = userData.Hash;
-      const storedSalt = userData.Salt;
-      console.log(`🔐 [login] Hash almacenado existe: ${storedHash ? 'Sí' : 'No'}`);
-      console.log(`🧂 [login] Salt almacenado existe: ${storedSalt ? 'Sí' : 'No'}`);
-      
-      if (!storedHash) {
-        console.log('❌ [login] El usuario no tiene contraseña establecida');
-        return NextResponse.json({
-          success: false,
-          message: 'El usuario no tiene contraseña establecida'
-        }, { status: 400 });
-      }
-
-      // Comparar contraseña usando bcrypt
-      console.log('🔍 [login] Comparando contraseña con bcrypt...');
-      const passwordMatch = await bcrypt.compare(password, storedHash);
-      console.log(`🔍 [login] Contraseñas coinciden: ${passwordMatch}`);
-      
-      if (passwordMatch) {
-        // ── Obtener ID Personal Core (SIRIUS-PER-XXXX) desde Nomina Core ─────
-        let idPersonalCore: string | undefined;
-        try {
-          const nominaBaseId = config.airtable.nominaCoreBaseId;
-          const nominaToken = config.airtable.nominaCoreToken;
-          const nominaTable = config.airtable.nominaCorePersonalTable;
-          if (nominaToken && nominaBaseId && nominaTable) {
-            const nominaUrl = `https://api.airtable.com/v0/${nominaBaseId}/${nominaTable}?filterByFormula={Numero Documento}="${cedula}"&fields[]=ID+Empleado&maxRecords=1`;
-            const nominaRes = await fetch(nominaUrl, {
-              headers: { 'Authorization': `Bearer ${nominaToken}` },
-            });
-            if (nominaRes.ok) {
-              const nominaData = await nominaRes.json();
-              idPersonalCore = nominaData.records?.[0]?.fields?.['ID Empleado'] as string | undefined;
-              if (idPersonalCore) console.log(`✅ [login] ID Empleado Nomina Core: ${idPersonalCore}`);
-              else console.warn('⚠️ [login] Campo "ID Personal" no encontrado en Nomina Core para esta cédula');
-            } else {
-              console.warn('⚠️ [login] Nomina Core query falló (no crítico):', nominaRes.status);
-            }
-          }
-        } catch (nominaErr) {
-          console.warn('⚠️ [login] Error consultando Nomina Core (no crítico):', nominaErr);
-        }
-
-        const userInfo = {
-          id: userRecord.id,
-          Cedula: userData.Cedula,
-          Nombre: userData.Nombre,
-          Apellido: userData.Apellido || '',
-          Email: userData.Email || '',
-          Telefono: userData.Telefono || '',
-          Cargo: userData.Cargo,
-          ...(idPersonalCore && { idPersonalCore }),
-        };
-
-        // Crear sesión segura si está habilitado
-        await ServerSessionManager.createSecureSession(userInfo);
-
-        const result = {
-          success: true,
-          user: userInfo
-        };
-        console.log(`✅ [login] Login exitoso:`, JSON.stringify(result, null, 2));
-        return NextResponse.json(result);
-      } else {
-        console.log('❌ [login] Contraseña incorrecta');
-        return NextResponse.json({
-          success: false,
-          message: 'Contraseña incorrecta'
-        }, { status: 401 });
-      }
-    } else {
-      console.log(`❌ [login] Usuario no encontrado para cédula: ${cedula}`);
-      return NextResponse.json({
-        success: false,
-        message: 'Usuario no encontrado'
-      }, { status: 404 });
+    if (!data.records || data.records.length === 0) {
+      console.log(`❌ [login] No encontrado: ${cedula}`);
+      return NextResponse.json(
+        { success: false, message: 'Usuario no encontrado' },
+        { status: 404 }
+      );
     }
 
+    const userRecord = data.records[0];
+    const f = userRecord.fields;
+
+    // Verificar que el usuario está activo
+    if (f['Estado de actividad'] !== 'Activo') {
+      console.log(`❌ [login] Usuario inactivo: ${cedula}`);
+      return NextResponse.json(
+        { success: false, message: 'Usuario inactivo. Contacta al administrador.' },
+        { status: 403 }
+      );
+    }
+
+    // Verificar que tiene contraseña configurada
+    if (!f.Password) {
+      return NextResponse.json(
+        { success: false, message: 'El usuario no tiene contraseña establecida' },
+        { status: 400 }
+      );
+    }
+
+    // Comparar contraseña con bcrypt
+    const passwordMatch = await bcrypt.compare(password, f.Password);
+    if (!passwordMatch) {
+      return NextResponse.json(
+        { success: false, message: 'Contraseña incorrecta' },
+        { status: 401 }
+      );
+    }
+
+    const userInfo = {
+      id:             userRecord.id,
+      Cedula:         String(f['Numero Documento'] ?? cedula),
+      Nombre:         f['Nombre completo']     || '',
+      Apellido:       '',
+      Email:          f['Correo electrónico']  || '',
+      Telefono:       f['Teléfono']            || '',
+      Cargo:          (f['Rol (from Rol)'] as string[])?.[0] || '',
+      idPersonalCore: f['ID Empleado']         || '',
+    };
+
+    await ServerSessionManager.createSecureSession(userInfo);
+
+    console.log(`✅ [login] OK — ${userInfo.Nombre} (${userInfo.idPersonalCore})`);
+    return NextResponse.json({ success: true, user: userInfo });
+
   } catch (error) {
-    console.error('💥 [login] Error general:', error);
-    console.error('💥 [login] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    
+    console.error('💥 [login] Error:', error);
     return NextResponse.json(
       { message: 'Error interno del servidor' },
       { status: 500 }

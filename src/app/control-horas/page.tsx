@@ -103,6 +103,13 @@ function fmtCOP(n: number) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 }
 
+// ─── Mock data (estado inicial vacío hasta integrar con API) ─────────────────
+
+const EMPLEADOS: NominaSirius[] = [];
+const PERMISOS_MOCK: SolicitudPermiso[] = [];
+const NOVEDADES_MOCK: ReporteNovedad[] = [];
+const VACACIONES_MOCK: SolicitudVacaciones[] = [];
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 type TabKey = "resumen" | "permisos" | "novedades" | "vacaciones";
@@ -224,21 +231,27 @@ export default function ControlHoras() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white">
+    <div
+      className="min-h-screen bg-cover bg-center bg-no-repeat relative text-white"
+      style={{ backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')" }}
+    >
+      <div className="absolute inset-0 bg-black/55"></div>
+
+      <div className="relative z-10">
       <Navbar />
 
-      {/* Header */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#5A7836]/20 via-transparent to-[#3d5422]/10 pointer-events-none" />
-        <div className="relative max-w-7xl mx-auto px-6 pt-10 pb-8">
+      <div className="max-w-7xl mx-auto px-6 pt-10 pb-16">
+        <div className="bg-white/20 backdrop-blur-md rounded-2xl border border-white/30 shadow-2xl p-8">
+
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-white">Novedades Nómina</h1>
-              <p className="text-gray-400 mt-1 text-sm">Permisos, novedades y vacaciones — Base Airtable: Novedades Nomina</p>
+              <h1 className="text-3xl font-bold text-white drop-shadow-lg">Novedades Nómina</h1>
+              <p className="text-white/70 mt-1 text-sm drop-shadow">Permisos, novedades y vacaciones — Base Airtable: Novedades Nomina</p>
             </div>
             <button
               onClick={() => setModalPermiso(true)}
-              className="self-start sm:self-auto bg-[#5A7836] hover:bg-[#4a6429] text-white px-5 py-2.5 rounded-xl font-semibold transition-all hover:scale-105 flex items-center gap-2 shadow-lg shadow-[#5A7836]/20"
+              className="self-start sm:self-auto bg-[#5A7836] hover:bg-[#4a6429] text-white px-5 py-2.5 rounded-xl font-semibold transition-all hover:scale-105 flex items-center gap-2 shadow-lg shadow-[#5A7836]/20 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -254,19 +267,16 @@ export default function ControlHoras() {
             <StatCard label="Vacaciones sin revisar" value={String(stats.vacPendientes)} color="text-blue-400" />
             <StatCard label="Horas permiso (concedidas)" value={`${stats.totalHorasPerm.toFixed(0)}h`} color="text-green-400" />
           </div>
-        </div>
-      </div>
 
-      {/* Toast */}
-      {mensaje && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#1e2a1a] border border-[#5A7836]/40 text-white px-5 py-3 rounded-xl shadow-2xl text-sm font-medium">
-          {mensaje}
-        </div>
-      )}
+          {/* Toast */}
+          {mensaje && (
+            <div className="mt-6 p-4 bg-[#5A7836]/30 backdrop-blur-sm border border-[#5A7836]/40 rounded-xl text-white text-sm font-semibold drop-shadow">
+              {mensaje}
+            </div>
+          )}
 
-      <div className="max-w-7xl mx-auto px-6">
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mb-6">
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-white/20 mt-8 mb-6">
           {([
             { key: "resumen",    label: "Empleados" },
             { key: "permisos",   label: `Permisos (${permisos.length})` },
@@ -276,8 +286,8 @@ export default function ControlHoras() {
             <button
               key={t.key}
               onClick={() => { setTab(t.key); setFiltroEmpleado("todos"); setBusqueda(""); }}
-              className={`px-5 py-3 text-sm font-semibold transition-all border-b-2 -mb-px ${
-                tab === t.key ? "border-[#5A7836] text-[#7ab349]" : "border-transparent text-gray-400 hover:text-gray-200"
+              className={`px-5 py-3 text-sm font-semibold transition-all border-b-2 -mb-px cursor-pointer ${
+                tab === t.key ? "border-[#5A7836] text-[#7ab349]" : "border-transparent text-white/50 hover:text-white/80"
               }`}
             >
               {t.label}
@@ -293,12 +303,12 @@ export default function ControlHoras() {
               placeholder="Buscar..."
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
-              className="flex-1 min-w-[180px] bg-white/5 border border-white/20 rounded-xl px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#5A7836]/60"
+              className="flex-1 min-w-[180px] bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#5A7836]/60 backdrop-blur-sm"
             />
             <select
               value={filtroEmpleado}
               onChange={e => setFiltroEmpleado(e.target.value)}
-              className="bg-white/5 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#5A7836]/60"
+              className="bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#5A7836]/60 backdrop-blur-sm [color-scheme:dark]"
             >
               <option value="todos" className="bg-[#1a2412]">Todos los empleados</option>
               {EMPLEADOS.map(e => (
@@ -316,8 +326,8 @@ export default function ControlHoras() {
                 <button
                   key={a}
                   onClick={() => setFiltroArea(a)}
-                  className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    filtroArea === a ? "bg-[#5A7836] border-[#5A7836] text-white" : "border-white/20 text-gray-400 hover:border-white/40 hover:text-white"
+                  className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                    filtroArea === a ? "bg-[#5A7836] border-[#5A7836] text-white" : "border-white/30 text-white/60 hover:border-white/50 hover:text-white"
                   }`}
                 >
                   {a === "todos" ? "Todas las áreas" : a}
@@ -342,11 +352,11 @@ export default function ControlHoras() {
         {/* ── TAB: PERMISOS ───────────────────────────────────────────────── */}
         {tab === "permisos" && (
           <div className="pb-16">
-            <div className="text-xs text-gray-500 mb-3">{permisosFiltrados.length} registros</div>
+            <div className="text-xs text-white/40 mb-3">{permisosFiltrados.length} registros</div>
             {/* Desktop table */}
-            <div className="hidden md:block rounded-xl border border-white/10 overflow-hidden">
+            <div className="hidden md:block rounded-xl border border-white/20 overflow-hidden bg-white/5 backdrop-blur-sm">
               <table className="w-full text-sm">
-                <thead className="bg-white/5 text-gray-400 uppercase text-xs tracking-wide">
+                <thead className="bg-white/10 text-white/60 uppercase text-xs tracking-wide">
                   <tr>
                     <th className="text-left px-5 py-3">Empleado</th>
                     <th className="text-left px-4 py-3">Fecha Permiso</th>
@@ -358,25 +368,25 @@ export default function ControlHoras() {
                     <th className="text-left px-4 py-3">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody className="divide-y divide-white/10">
                   {permisosFiltrados.length === 0
-                    ? <tr><td colSpan={8} className="text-center py-12 text-gray-500">Sin resultados</td></tr>
+                    ? <tr><td colSpan={8} className="text-center py-12 text-white/40">Sin resultados</td></tr>
                     : permisosFiltrados.map(p => (
-                      <tr key={p.id} className="hover:bg-white/[0.03] transition-colors">
+                      <tr key={p.id} className="hover:bg-white/[0.06] transition-colors">
                         <td className="px-5 py-3">
                           <div className="font-semibold text-white">{p.nombre}</div>
-                          <div className="text-xs text-gray-500">{p.cargo}</div>
+                          <div className="text-xs text-white/40">{p.cargo}</div>
                         </td>
-                        <td className="px-4 py-3 text-gray-300">{fmtDate(p.fechaPermiso)}</td>
+                        <td className="px-4 py-3 text-white/70">{fmtDate(p.fechaPermiso)}</td>
                         <td className="px-4 py-3">
                           <span className="text-yellow-400 font-bold">{p.horasPermiso}h</span>
                         </td>
                         <td className="px-4 py-3 text-gray-300 capitalize">{p.tipoPermiso}</td>
-                        <td className="px-4 py-3 text-gray-400 max-w-[200px] truncate" title={p.motivoPermiso}>{p.motivoPermiso}</td>
+                        <td className="px-4 py-3 text-white/50 max-w-[200px] truncate" title={p.motivoPermiso}>{p.motivoPermiso}</td>
                         <td className="px-4 py-3">
                           {p.remunerado
                             ? <span className="text-green-400 text-xs font-semibold">Sí</span>
-                            : <span className="text-gray-600 text-xs">No</span>}
+                            : <span className="text-white/30 text-xs">No</span>}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${PERMISO_ESTADO_COLORS[p.estadoPermiso]}`}>
@@ -407,11 +417,11 @@ export default function ControlHoras() {
             {/* Mobile cards */}
             <div className="md:hidden space-y-3">
               {permisosFiltrados.map(p => (
-                <div key={p.id} className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div key={p.id} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <div className="font-semibold text-white">{p.nombre}</div>
-                      <div className="text-xs text-gray-400">{p.cargo} · {fmtDate(p.fechaPermiso)}</div>
+                      <div className="text-xs text-white/50">{p.cargo} · {fmtDate(p.fechaPermiso)}</div>
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${PERMISO_ESTADO_COLORS[p.estadoPermiso]}`}>{p.estadoPermiso}</span>
                   </div>
@@ -420,7 +430,7 @@ export default function ControlHoras() {
                     <MiniStat label="Tipo"     value={p.tipoPermiso} />
                     <MiniStat label="Remun."   value={p.remunerado ? "Sí" : "No"} />
                   </div>
-                  <p className="text-xs text-gray-500 mb-3">{p.motivoPermiso}</p>
+                  <p className="text-xs text-white/40 mb-3">{p.motivoPermiso}</p>
                   {p.estadoPermiso === "Pendiente" && (
                     <div className="flex gap-2">
                       <button onClick={() => actualizarEstadoPermiso(p.id, "Concedido")} className="flex-1 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-xs font-semibold">Conceder</button>
@@ -436,10 +446,10 @@ export default function ControlHoras() {
         {/* ── TAB: NOVEDADES ──────────────────────────────────────────────── */}
         {tab === "novedades" && (
           <div className="pb-16">
-            <div className="text-xs text-gray-500 mb-3">{novedadesFiltradas.length} registros</div>
-            <div className="hidden md:block rounded-xl border border-white/10 overflow-hidden">
+            <div className="text-xs text-white/40 mb-3">{novedadesFiltradas.length} registros</div>
+            <div className="hidden md:block rounded-xl border border-white/20 overflow-hidden bg-white/5 backdrop-blur-sm">
               <table className="w-full text-sm">
-                <thead className="bg-white/5 text-gray-400 uppercase text-xs tracking-wide">
+                <thead className="bg-white/10 text-white/60 uppercase text-xs tracking-wide">
                   <tr>
                     <th className="text-left px-5 py-3">Empleado</th>
                     <th className="text-left px-4 py-3">Fecha</th>
@@ -449,22 +459,22 @@ export default function ControlHoras() {
                     <th className="text-left px-4 py-3">Actualizar Estado</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody className="divide-y divide-white/10">
                   {novedadesFiltradas.length === 0
-                    ? <tr><td colSpan={6} className="text-center py-12 text-gray-500">Sin resultados</td></tr>
+                    ? <tr><td colSpan={6} className="text-center py-12 text-white/40">Sin resultados</td></tr>
                     : novedadesFiltradas.map(n => {
                       const emp = EMPLEADOS.find(e => e.nombre === n.empleado);
                       return (
-                        <tr key={n.id} className="hover:bg-white/[0.03] transition-colors">
+                        <tr key={n.id} className="hover:bg-white/[0.06] transition-colors">
                           <td className="px-5 py-3">
                             <div className="font-semibold text-white">{n.empleado}</div>
-                            <div className="text-xs text-gray-500">{emp?.cargo ?? ""}</div>
+                            <div className="text-xs text-white/40">{emp?.cargo ?? ""}</div>
                           </td>
                           <td className="px-4 py-3 text-gray-300 text-xs">{new Date(n.fechaCreacion).toLocaleDateString("es-CO")}</td>
                           <td className="px-4 py-3">
                             <span className="text-[#7ab349] font-medium">{n.tipoNovedad}</span>
                           </td>
-                          <td className="px-4 py-3 text-gray-400 max-w-[240px] truncate" title={n.descripcion}>{n.descripcion}</td>
+                          <td className="px-4 py-3 text-white/50 max-w-[240px] truncate" title={n.descripcion}>{n.descripcion}</td>
                           <td className="px-4 py-3">
                             <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${NOVEDAD_ESTADO_COLORS[n.estadoRegistro]}`}>
                               {n.estadoRegistro}
@@ -474,7 +484,7 @@ export default function ControlHoras() {
                             <select
                               value={n.estadoRegistro}
                               onChange={e => actualizarEstadoNovedad(n.id, e.target.value as ReporteNovedad["estadoRegistro"])}
-                              className="bg-white/5 border border-white/20 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-[#5A7836]/60"
+                              className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-[#5A7836]/60 [color-scheme:dark]"
                             >
                               {["Pendiente", "Revisado", "En seguimiento", "Resuelto"].map(s => (
                                 <option key={s} value={s} className="bg-[#1a2412]">{s}</option>
@@ -490,20 +500,20 @@ export default function ControlHoras() {
             {/* Mobile */}
             <div className="md:hidden space-y-3">
               {novedadesFiltradas.map(n => (
-                <div key={n.id} className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div key={n.id} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <div className="font-semibold text-white">{n.empleado}</div>
-                      <div className="text-xs text-gray-400">{new Date(n.fechaCreacion).toLocaleDateString("es-CO")}</div>
+                      <div className="text-xs text-white/50">{new Date(n.fechaCreacion).toLocaleDateString("es-CO")}</div>
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${NOVEDAD_ESTADO_COLORS[n.estadoRegistro]}`}>{n.estadoRegistro}</span>
                   </div>
                   <div className="text-xs text-[#7ab349] font-medium mb-1">{n.tipoNovedad}</div>
-                  <p className="text-xs text-gray-500 mb-3">{n.descripcion}</p>
+                  <p className="text-xs text-white/40 mb-3">{n.descripcion}</p>
                   <select
                     value={n.estadoRegistro}
                     onChange={e => actualizarEstadoNovedad(n.id, e.target.value as ReporteNovedad["estadoRegistro"])}
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none [color-scheme:dark]"
                   >
                     {["Pendiente", "Revisado", "En seguimiento", "Resuelto"].map(s => (
                       <option key={s} value={s} className="bg-[#1a2412]">{s}</option>
@@ -518,7 +528,7 @@ export default function ControlHoras() {
         {/* ── TAB: VACACIONES ─────────────────────────────────────────────── */}
         {tab === "vacaciones" && (
           <div className="pb-16">
-            <div className="text-xs text-gray-500 mb-3">{vacaciones.length} registros</div>
+            <div className="text-xs text-white/40 mb-3">{vacaciones.length} registros</div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {vacaciones
                 .filter(v => filtroEmpleado === "todos" || v.nombre === filtroEmpleado)
@@ -527,11 +537,11 @@ export default function ControlHoras() {
                   const estadoLabel = v.estadoSolicitud === "" ? "Sin revisar" : v.estadoSolicitud;
                   const estadoCls   = v.estadoSolicitud === "" ? VACACION_ESTADO_COLORS[""] : VACACION_ESTADO_COLORS[v.estadoSolicitud];
                   return (
-                    <div key={v.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-[#5A7836]/30 transition-all">
+                    <div key={v.id} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-5 hover:border-[#5A7836]/50 transition-all cursor-pointer">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <div className="font-bold text-white">{v.nombre}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">{v.cargo}</div>
+                          <div className="text-xs text-white/50 mt-0.5">{v.cargo}</div>
                         </div>
                         <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${estadoCls}`}>{estadoLabel}</span>
                       </div>
@@ -554,15 +564,17 @@ export default function ControlHoras() {
             </div>
           </div>
         )}
-      </div>
+
+        </div>{/* end glass container */}
+      </div>{/* end max-w-7xl */}
 
       {/* ── MODAL SOLICITAR PERMISO ──────────────────────────────────────────── */}
       {modalPermiso && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#111a0e] border border-white/15 rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h2 className="font-bold text-lg text-white">Nueva Solicitud de Permiso</h2>
-              <button onClick={() => setModalPermiso(false)} className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors">
+          <div className="bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/20">
+              <h2 className="font-bold text-lg text-white drop-shadow">Nueva Solicitud de Permiso</h2>
+              <button onClick={() => setModalPermiso(false)} className="text-white/50 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -576,7 +588,7 @@ export default function ControlHoras() {
                     const emp = EMPLEADOS.find(x => x.nombre === e.target.value);
                     setFormPermiso(p => ({ ...p, nombre: e.target.value, cedula: String(emp?.cedula ?? ""), cargo: emp?.cargo ?? "" }));
                   }}
-                  className="w-full bg-white/5 border border-white/20 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#5A7836]/60"
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#5A7836]/60 [color-scheme:dark]"
                 >
                   <option value="" className="bg-[#111a0e]">Seleccionar empleado...</option>
                   {EMPLEADOS.map(e => (
@@ -597,7 +609,7 @@ export default function ControlHoras() {
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Horas Permiso *">
                   <input type="text" placeholder="Ej: 3, 8, 23 horas" value={formPermiso.horasPermiso} onChange={e => setFormPermiso(p => ({ ...p, horasPermiso: e.target.value }))}
-                    className="w-full bg-white/5 border border-white/20 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#5A7836]/60" />
+                    className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#5A7836]/60" />
                 </FormField>
                 <FormField label="Tipo Permiso">
                   <select value={formPermiso.tipoPermiso} onChange={e => setFormPermiso(p => ({ ...p, tipoPermiso: e.target.value }))}
@@ -611,15 +623,15 @@ export default function ControlHoras() {
               <FormField label="Motivo">
                 <textarea rows={2} value={formPermiso.motivoPermiso} onChange={e => setFormPermiso(p => ({ ...p, motivoPermiso: e.target.value }))}
                   placeholder="Describe el motivo del permiso..."
-                  className="w-full bg-white/5 border border-white/20 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#5A7836]/60 resize-none" />
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#5A7836]/60 resize-none" />
               </FormField>
               <div className="flex gap-6">
-                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
                   <input type="checkbox" checked={formPermiso.remunerado} onChange={e => setFormPermiso(p => ({ ...p, remunerado: e.target.checked }))}
                     className="w-4 h-4 accent-[#5A7836]" />
                   Remunerado
                 </label>
-                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
                   <input type="checkbox" checked={formPermiso.compensado} onChange={e => setFormPermiso(p => ({ ...p, compensado: e.target.checked }))}
                     className="w-4 h-4 accent-[#5A7836]" />
                   Compensado
@@ -627,14 +639,15 @@ export default function ControlHoras() {
               </div>
             </div>
             <div className="px-6 pb-5 flex gap-3">
-              <button onClick={() => setModalPermiso(false)} className="flex-1 py-2.5 rounded-xl border border-white/20 text-gray-400 text-sm font-semibold hover:bg-white/5">Cancelar</button>
-              <button onClick={guardarPermiso} className="flex-1 py-2.5 rounded-xl bg-[#5A7836] hover:bg-[#4a6429] text-white text-sm font-semibold">Registrar</button>
+              <button onClick={() => setModalPermiso(false)} className="flex-1 py-2.5 rounded-xl border border-white/20 text-white/50 text-sm font-semibold hover:bg-white/10 transition-colors cursor-pointer">Cancelar</button>
+              <button onClick={guardarPermiso} className="flex-1 py-2.5 rounded-xl bg-[#5A7836] hover:bg-[#4a6429] text-white text-sm font-semibold transition-colors cursor-pointer">Registrar</button>
             </div>
           </div>
         </div>
       )}
 
       <Footer />
+      </div>{/* end relative z-10 */}
     </div>
   );
 }
@@ -643,9 +656,9 @@ export default function ControlHoras() {
 
 function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl px-5 py-4">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+    <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl px-5 py-4">
+      <div className="text-xs text-white/50 mb-1 drop-shadow">{label}</div>
+      <div className={`text-2xl font-bold drop-shadow ${color}`}>{value}</div>
     </div>
   );
 }
@@ -656,35 +669,35 @@ function EmpleadoCard({ empleado, onVerPermisos, onVerNovedades }: {
   onVerNovedades: () => void;
 }) {
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-[#5A7836]/40 transition-all">
+    <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-5 hover:border-[#5A7836]/50 transition-all cursor-pointer">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <div className="font-bold text-white">{empleado.nombre}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{empleado.cargo}</div>
-          <div className="text-xs text-gray-600 mt-0.5">Cédula: {empleado.cedula.toLocaleString()}</div>
+          <div className="font-bold text-white drop-shadow">{empleado.nombre}</div>
+          <div className="text-xs text-white/50 mt-0.5">{empleado.cargo}</div>
+          <div className="text-xs text-white/30 mt-0.5">Cédula: {empleado.cedula.toLocaleString()}</div>
         </div>
         <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${AREA_COLORS[empleado.area] ?? "bg-gray-500/20 text-gray-300 border-gray-500/40"}`}>
           {empleado.area}
         </span>
       </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="text-center bg-white/5 rounded-xl py-2">
-          <div className="text-yellow-400 font-bold text-lg">{empleado.horasPerm}<span className="text-sm font-normal">h</span></div>
-          <div className="text-xs text-gray-500">Horas perm.</div>
+        <div className="text-center bg-white/10 rounded-xl py-2">
+          <div className="text-yellow-300 font-bold text-lg drop-shadow">{empleado.horasPerm}<span className="text-sm font-normal">h</span></div>
+          <div className="text-xs text-white/40">Horas perm.</div>
         </div>
-        <div className="text-center bg-white/5 rounded-xl py-2">
-          <div className="text-blue-400 font-bold text-lg">{empleado.diasVac}<span className="text-sm font-normal">d</span></div>
-          <div className="text-xs text-gray-500">Días vac.</div>
+        <div className="text-center bg-white/10 rounded-xl py-2">
+          <div className="text-blue-300 font-bold text-lg drop-shadow">{empleado.diasVac}<span className="text-sm font-normal">d</span></div>
+          <div className="text-xs text-white/40">Días vac.</div>
         </div>
-        <div className="text-center bg-white/5 rounded-xl py-2">
-          <div className="text-purple-400 font-bold text-lg">{empleado.totalNovedades}</div>
-          <div className="text-xs text-gray-500">Novedades</div>
+        <div className="text-center bg-white/10 rounded-xl py-2">
+          <div className="text-purple-300 font-bold text-lg drop-shadow">{empleado.totalNovedades}</div>
+          <div className="text-xs text-white/40">Novedades</div>
         </div>
       </div>
-      <div className="text-xs text-gray-500 mb-4">
+      <div className="text-xs text-white/40 mb-4">
         Valor hora: <span className="text-[#7ab349] font-semibold">{fmtCOP(empleado.valorHora)}</span>
         <span className="mx-2">·</span>
-        Jornada: <span className="text-gray-300">{empleado.horasDia}h/día</span>
+        Jornada: <span className="text-white/60">{empleado.horasDia}h/día</span>
       </div>
       {empleado.pendientes > 0 && (
         <div className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-1.5 mb-3">
@@ -692,8 +705,8 @@ function EmpleadoCard({ empleado, onVerPermisos, onVerNovedades }: {
         </div>
       )}
       <div className="flex gap-2">
-        <button onClick={onVerPermisos} className="flex-1 py-2 rounded-xl border border-white/20 text-gray-300 text-xs font-semibold hover:bg-white/10 transition-colors">Permisos</button>
-        <button onClick={onVerNovedades} className="flex-1 py-2 rounded-xl bg-[#5A7836]/70 hover:bg-[#5A7836] text-white text-xs font-semibold transition-colors">Novedades</button>
+        <button onClick={onVerPermisos} className="flex-1 py-2 rounded-xl border border-white/20 text-white/60 text-xs font-semibold hover:bg-white/10 transition-colors cursor-pointer">Permisos</button>
+        <button onClick={onVerNovedades} className="flex-1 py-2 rounded-xl bg-[#5A7836]/70 hover:bg-[#5A7836] text-white text-xs font-semibold transition-colors cursor-pointer">Novedades</button>
       </div>
     </div>
   );
@@ -702,14 +715,14 @@ function EmpleadoCard({ empleado, onVerPermisos, onVerNovedades }: {
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-400 mb-1.5">{label}</label>
+      <label className="block text-xs font-semibold text-white/70 mb-1.5 drop-shadow">{label}</label>
       {children}
     </div>
   );
 }
 
 function Btn({ color, title, onClick, children }: { color: "green" | "red" | "gray"; title: string; onClick: () => void; children: React.ReactNode }) {
-  const cls = { green: "bg-green-500/15 text-green-400 hover:bg-green-500/30", red: "bg-red-500/15 text-red-400 hover:bg-red-500/30", gray: "bg-white/10 text-gray-400 hover:bg-white/20" }[color];
+  const cls = { green: "bg-green-500/15 text-green-300 hover:bg-green-500/30", red: "bg-red-500/15 text-red-300 hover:bg-red-500/30", gray: "bg-white/10 text-white/50 hover:bg-white/20" }[color];
   return (
     <button onClick={onClick} title={title} className={`p-1.5 rounded-lg transition-colors text-xs font-bold ${cls}`}>{children}</button>
   );
@@ -717,9 +730,9 @@ function Btn({ color, title, onClick, children }: { color: "green" | "red" | "gr
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white/5 rounded-lg px-2 py-1.5 text-center">
-      <div className="text-white font-semibold text-sm truncate">{value}</div>
-      <div className="text-gray-500 text-[10px]">{label}</div>
+    <div className="bg-white/10 rounded-lg px-2 py-1.5 text-center">
+      <div className="text-white font-semibold text-sm truncate drop-shadow">{value}</div>
+      <div className="text-white/40 text-[10px]">{label}</div>
     </div>
   );
 }

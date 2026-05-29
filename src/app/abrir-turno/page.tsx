@@ -91,6 +91,12 @@ export default function AbrirTurno() {
             return;
           }
 
+          if (result.hasTurnoAbierto && !result.turnoPerteneceAlUsuario) {
+            // Hay un turno activo de otro operador - bloquear acceso
+            setOtherUserTurno(result.turnoAbierto);
+            return;
+          }
+
           setFormData(prev => ({
               ...prev,
               operador: userData.user?.Nombre || ''
