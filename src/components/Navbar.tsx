@@ -153,6 +153,7 @@ export default function Navbar() {
         title: "Gestión",
         icon: "",
         items: [
+          { label: "Mis Solicitudes", href: "/solicitudes", icon: "", description: "Permisos, vacaciones y novedades de nómina" },
           { label: "Control de Horas", href: "/control-horas", icon: "", description: "Gestiona tus permisos, novedades y vacaciones" },
           ...(esAdmin
             ? [{ label: "Panel de Control", href: "/panel-control", icon: "", description: "Autorización de horas extras del equipo" }]
