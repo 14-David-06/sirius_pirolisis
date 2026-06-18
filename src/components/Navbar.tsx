@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
+import { tieneAccesoPanel } from "@/lib/panel-access";
 
 interface MenuItem {
   label: string;
@@ -22,12 +23,35 @@ export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeTurno, setActiveTurno] = useState<any>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>("");
+  const [userCedula, setUserCedula] = useState<string>("");
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const esAdmin = tieneAccesoPanel(userCedula);
 
   useEffect(() => {
     // Verificar si hay una sesión activa
     const userSession = localStorage.getItem('userSession');
     setIsLoggedIn(!!userSession);
+    if (userSession) {
+      try {
+        const s = JSON.parse(userSession);
+        if (s?.user?.Nombre) setUserName(s.user.Nombre);
+        if (s?.user?.Cedula) setUserCedula(s.user.Cedula);
+      } catch { /* noop */ }
+    }
+
+    // Confirmar identidad con sesión segura
+    fetch('/api/session')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data?.authenticated && data.user) {
+          setIsLoggedIn(true);
+          setUserName(data.user.Nombre || data.user.nombre || "");
+          setUserCedula(data.user.Cedula || data.user.cedula || "");
+        }
+      })
+      .catch(() => { /* noop */ });
 
     // Verificar si hay un turno activo
     const turnoActivo = localStorage.getItem('turnoActivo');
@@ -129,7 +153,10 @@ export default function Navbar() {
         title: "Gestión",
         icon: "",
         items: [
-          { label: "Control de Horas", href: "/control-horas", icon: "", description: "Permisos, novedades y vacaciones del equipo" },
+          { label: "Control de Horas", href: "/control-horas", icon: "", description: "Gestiona tus permisos, novedades y vacaciones" },
+          ...(esAdmin
+            ? [{ label: "Panel de Control", href: "/panel-control", icon: "", description: "Autorización de horas extras del equipo" }]
+            : []),
         ]
       },
       {
