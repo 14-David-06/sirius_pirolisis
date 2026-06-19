@@ -13,7 +13,7 @@ Proyecto web para Sirius Pirólisis - Innovación en el tratamiento de residuos 
 ## 📁 Estructura del Proyecto
     
 ```
-sirius_pirolisis/
+sirius_pirolisis/     
 ├── src/
 │   └── app/
 │       ├── globals.css      # Estilos globales
