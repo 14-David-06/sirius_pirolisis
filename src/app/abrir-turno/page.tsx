@@ -63,11 +63,10 @@ export default function AbrirTurno() {
         return;
       }
 
-      // Verificar si ya hay un turno activo en localStorage
+      // Si ya tiene turno activo, redirigir al home (no bloquear)
       const turnoActivo = localStorage.getItem('turnoActivo');
       if (turnoActivo) {
-        setHasActiveTurno(true);
-        setIsCheckingTurnos(false);
+        router.replace('/');
         return;
       }
 
