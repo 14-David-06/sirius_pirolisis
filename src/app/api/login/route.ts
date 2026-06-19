@@ -11,7 +11,7 @@ const PIROLISIS_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const USUARIOS_TABLE   = process.env.AIRTABLE_USUARIOS_TABLE_ID;
 
 async function lookupPirolisisUserId(idPersonalCore: string): Promise<string> {
-  if (!PIROLISIS_TOKEN || !PIROLISIS_BASE_ID || !idPersonalCore) return '';
+  if (!PIROLISIS_TOKEN || !PIROLISIS_BASE_ID || !USUARIOS_TABLE || !idPersonalCore) return '';
   try {
     const formula = encodeURIComponent(`{ID Usuario Core}="${idPersonalCore}"`);
     const url = `https://api.airtable.com/v0/${PIROLISIS_BASE_ID}/${USUARIOS_TABLE}?filterByFormula=${formula}&maxRecords=1`;
