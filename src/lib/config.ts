@@ -113,6 +113,13 @@ export const config = {
     nominaCorePersonalTable: process.env.AIRTABLE_TABLE_NOMINA_PERSONAL,
     nominaCoreAreasTable: process.env.AIRTABLE_TABLE_NOMINA_AREAS,
     nominaCoreSistemasTable: process.env.AIRTABLE_TABLE_NOMINA_SISTEMAS_APLICACIONES,
+    // Novedades Nomina (appnRVYZMd4EAQoRF)
+    novedadesNominaBaseId: process.env.AIRTABLE_BASE_ID_NOVEDADES_NOMINA,
+    novedadesNominaToken: process.env.AIRTABLE_API_KEY_NOVEDADES_NOMINA,
+    novedadesNominaReportesTable: process.env.AIRTABLE_TABLE_NOVEDADES_REPORTES,
+    novedadesNominaPermisosTable: process.env.AIRTABLE_TABLE_NOVEDADES_PERMISOS,
+    novedadesNominaVacacionesTable: process.env.AIRTABLE_TABLE_NOVEDADES_VACACIONES,
+    novedadesNominaSiriusTable: process.env.AIRTABLE_TABLE_NOVEDADES_NOMINA_SIRIUS,
     blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,
     blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,
     // Field IDs para Remisiones Baches Pirolisis

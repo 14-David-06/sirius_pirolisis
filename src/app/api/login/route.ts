@@ -6,6 +6,7 @@ const NOMINA_BASE_ID = process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE;
 const NOMINA_TOKEN  = process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE;
 const NOMINA_TABLE  = process.env.AIRTABLE_TABLE_NOMINA_PERSONAL;
 
+
 export async function POST(request: NextRequest) {
   console.log('🔐 [login] Sirius Nomina Core');
 
