@@ -60,25 +60,22 @@ export default function Navbar() {
     }
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (activeTurno) {
       alert('Debes cerrar el turno activo antes de cerrar sesión');
       return;
     }
-    
-    // Confirmar logout
+
     const confirmar = confirm('¿Estás seguro de que quieres cerrar sesión?');
     if (!confirmar) return;
-    
-    // Limpiar todas las cookies y storage
+
+    // Destruir sesión del servidor (elimina la cookie HttpOnly)
+    await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+
+    // Limpiar storage local
     localStorage.clear();
     sessionStorage.clear();
-    
-    // Limpiar cookies si las hay
-    document.cookie.split(";").forEach(function(c) { 
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-    });
-    
+
     setIsLoggedIn(false);
     setActiveTurno(null);
     window.location.href = '/login';
