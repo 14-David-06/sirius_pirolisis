@@ -37,7 +37,7 @@ export default function TurnoProtection({
       let userId = null;
       try {
         const sessionData = JSON.parse(userSession);
-        userId = sessionData.user?.id;
+        userId = sessionData.user?.idPirolisis;
       } catch (error) {
         console.error('Error parsing user session:', error);
         router.push('/login');
@@ -155,7 +155,7 @@ export default function TurnoProtection({
     if (userSession) {
       try {
         const sessionData = JSON.parse(userSession);
-        const userId = sessionData.user?.id;
+        const userId = sessionData.user?.idPirolisis;
         if (userId) {
           await validateAndSyncTurno(userId, true);
         }

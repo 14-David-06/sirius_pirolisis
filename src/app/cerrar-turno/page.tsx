@@ -58,7 +58,7 @@ function CerrarTurnoContent() {
       }
 
       const sessionData = JSON.parse(userSession);
-      const userId = sessionData.user?.id;
+      const userId = sessionData.user?.idPirolisis;
       
       if (!userId) {
         throw new Error('ID de usuario no encontrado');

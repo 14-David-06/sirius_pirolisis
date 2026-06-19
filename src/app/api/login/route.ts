@@ -6,6 +6,26 @@ const NOMINA_BASE_ID = process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE;
 const NOMINA_TOKEN  = process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE;
 const NOMINA_TABLE  = process.env.AIRTABLE_TABLE_NOMINA_PERSONAL;
 
+const PIROLISIS_TOKEN  = process.env.AIRTABLE_TOKEN;
+const PIROLISIS_BASE_ID = process.env.AIRTABLE_BASE_ID;
+const USUARIOS_TABLE   = process.env.AIRTABLE_USUARIOS_TABLE_ID;
+
+async function lookupPirolisisUserId(idPersonalCore: string): Promise<string> {
+  if (!PIROLISIS_TOKEN || !PIROLISIS_BASE_ID || !idPersonalCore) return '';
+  try {
+    const formula = encodeURIComponent(`{ID Usuario Core}="${idPersonalCore}"`);
+    const url = `https://api.airtable.com/v0/${PIROLISIS_BASE_ID}/${USUARIOS_TABLE}?filterByFormula=${formula}&maxRecords=1`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${PIROLISIS_TOKEN}` },
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.records?.[0]?.id || '';
+  } catch {
+    return '';
+  }
+}
+
 
 export async function POST(request: NextRequest) {
   console.log('🔐 [login] Sirius Nomina Core');
@@ -88,6 +108,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const idPersonalCore = f['ID Empleado'] || '';
+    const idPirolisis = await lookupPirolisisUserId(idPersonalCore);
+
     const userInfo = {
       id:             userRecord.id,
       Cedula:         String(f['Numero Documento'] ?? cedula),
@@ -96,7 +119,8 @@ export async function POST(request: NextRequest) {
       Email:          f['Correo electrónico']  || '',
       Telefono:       f['Teléfono']            || '',
       Cargo:          (f['Rol (from Rol)'] as string[])?.[0] || '',
-      idPersonalCore: f['ID Empleado']         || '',
+      idPersonalCore,
+      idPirolisis,
     };
 
     await ServerSessionManager.createSecureSession(userInfo);

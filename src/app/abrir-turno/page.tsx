@@ -73,10 +73,10 @@ export default function AbrirTurno() {
       try {
         const userData = JSON.parse(userSession);
         // Verificar si hay turnos abiertos en Airtable
-        const userId = userData.user?.id;
+        const userId = userData.user?.idPirolisis;
         if (!userId) {
-          console.error('❌ No se pudo obtener el userId del usuario');
-          setMensaje('❌ Error: No se pudo identificar al usuario');
+          console.error('❌ No se pudo obtener el idPirolisis del usuario');
+          setMensaje('❌ Error: Tu usuario no tiene acceso al sistema de turnos. Contacta al administrador.');
           return;
         }
         
@@ -170,18 +170,11 @@ export default function AbrirTurno() {
       const userData = sessionData.user || {};
 
       // Validar que tengamos los datos del usuario
-      if (!userData.Nombre || !userData.id) {
-        setMensaje('❌ Error: No se pudo obtener la información del usuario. Por favor, vuelve a iniciar sesión.');
+      if (!userData.Nombre || !userData.idPirolisis) {
+        setMensaje('❌ Error: Tu usuario no tiene acceso al sistema de turnos. Contacta al administrador.');
         return;
       }
 
-        // Validar que el usuario ID tenga formato de Airtable
-        if (!userData.id.startsWith('rec')) {
-          console.warn('⚠️ Usuario ID no tiene formato de Airtable:', userData.id);
-          setMensaje(`❌ Error: ID de usuario inválido (${userData.id}). Por favor, vuelve a iniciar sesión.`);
-          return;
-        }
-      
       const dataToSend = {
         operador: userData.Nombre || 'Usuario no identificado',
         alimentacionBiomasa: tipoApertura === 'continuidad' ? (parseFloat(formData.alimentacionBiomasa) || 0) : 0,
@@ -190,7 +183,7 @@ export default function AbrirTurno() {
         consumoEnergiaInicio: parseFloat(formData.consumoEnergiaInicio) || 0,
         consumoGasInicial: parseInt(formData.consumoGasInicial) || 0,
         realizaRegistro: userData.Nombre || 'Usuario no identificado',
-        usuarioId: userData.id || '',
+        usuarioId: userData.idPirolisis,
         tipoApertura: tipoApertura,
       };
 

@@ -14,6 +14,7 @@ export interface UserSession {
     Telefono: string;
     Cargo: string;
     idPersonalCore?: string; // SIRIUS-PER-XXXX (Nomina Core)
+    idPirolisis?: string;    // record ID en tabla Usuarios Pirolisis
   };
   loginTime: string;
 }
