@@ -30,8 +30,10 @@ interface CarbonoTotalDashboardProps {
   stageConfigs: CarbonStageConfig[];
   periodPreset: CarbonPeriodPreset;
   setPeriodPreset: (value: CarbonPeriodPreset) => void;
-  customMonth: string;
-  setCustomMonth: (value: string) => void;
+  customMonthStart: string;
+  setCustomMonthStart: (value: string) => void;
+  customMonthEnd: string;
+  setCustomMonthEnd: (value: string) => void;
   enabledStages: Record<CarbonStageKey, boolean>;
   toggleStage: (stage: CarbonStageKey) => void;
   totalTon: number;
@@ -131,8 +133,10 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
     stageConfigs,
     periodPreset,
     setPeriodPreset,
-    customMonth,
-    setCustomMonth,
+    customMonthStart,
+    setCustomMonthStart,
+    customMonthEnd,
+    setCustomMonthEnd,
     enabledStages,
     toggleStage,
     totalTon,
@@ -196,14 +200,25 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
         </div>
 
         {periodPreset === 'custom' && (
-          <div className="mb-4 max-w-xs">
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-white/70">Mes</label>
-            <input
-              type="month"
-              value={customMonth}
-              onChange={(event) => setCustomMonth(event.target.value)}
-              className="w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#3B6D11]"
-            />
+          <div className="mb-4 flex flex-wrap gap-4">
+            <div className="min-w-[160px]">
+              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-white/70">Mes inicio</label>
+              <input
+                type="month"
+                value={customMonthStart}
+                onChange={(event) => setCustomMonthStart(event.target.value)}
+                className="w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#3B6D11]"
+              />
+            </div>
+            <div className="min-w-[160px]">
+              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-white/70">Mes fin</label>
+              <input
+                type="month"
+                value={customMonthEnd}
+                onChange={(event) => setCustomMonthEnd(event.target.value)}
+                className="w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#3B6D11]"
+              />
+            </div>
           </div>
         )}
 

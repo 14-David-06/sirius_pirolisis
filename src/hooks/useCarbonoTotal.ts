@@ -81,13 +81,30 @@ const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(
 const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
 const addMonths = (date: Date, months: number) => new Date(date.getFullYear(), date.getMonth() + months, 1);
 
-function buildRangeFromPreset(preset: CarbonPeriodPreset, customMonth: string): { start: Date; end: Date } {
+function buildRangeFromPreset(preset: CarbonPeriodPreset, customMonthStart: string, customMonthEnd: string): { start: Date; end: Date } {
   const now = new Date();
 
-  if (preset === 'custom' && /^\d{4}-\d{2}$/.test(customMonth)) {
-    const [year, month] = customMonth.split('-').map(Number);
-    const start = new Date(year, month - 1, 1);
-    return { start, end: endOfMonth(start) };
+  if (preset === 'custom') {
+    const validStart = /^\d{4}-\d{2}$/.test(customMonthStart);
+    const validEnd = /^\d{4}-\d{2}$/.test(customMonthEnd);
+
+    if (validStart && validEnd) {
+      const [sy, sm] = customMonthStart.split('-').map(Number);
+      const [ey, em] = customMonthEnd.split('-').map(Number);
+      const start = new Date(sy, sm - 1, 1);
+      const end = endOfMonth(new Date(ey, em - 1, 1));
+      return start <= end ? { start, end } : { start: end, end: start };
+    }
+    if (validStart) {
+      const [sy, sm] = customMonthStart.split('-').map(Number);
+      const start = new Date(sy, sm - 1, 1);
+      return { start, end: endOfMonth(start) };
+    }
+    if (validEnd) {
+      const [ey, em] = customMonthEnd.split('-').map(Number);
+      const d = new Date(ey, em - 1, 1);
+      return { start: d, end: endOfMonth(d) };
+    }
   }
 
   const end = endOfMonth(now);
@@ -118,8 +135,10 @@ export interface UseCarbonoTotalResult {
   stageConfigs: CarbonStageConfig[];
   periodPreset: CarbonPeriodPreset;
   setPeriodPreset: (value: CarbonPeriodPreset) => void;
-  customMonth: string;
-  setCustomMonth: (value: string) => void;
+  customMonthStart: string;
+  setCustomMonthStart: (value: string) => void;
+  customMonthEnd: string;
+  setCustomMonthEnd: (value: string) => void;
   enabledStages: Record<CarbonStageKey, boolean>;
   toggleStage: (stage: CarbonStageKey) => void;
   totalTon: number;
@@ -135,7 +154,8 @@ export interface UseCarbonoTotalResult {
 
 export function useCarbonoTotal(): UseCarbonoTotalResult {
   const [periodPreset, setPeriodPreset] = useState<CarbonPeriodPreset>('1y');
-  const [customMonth, setCustomMonth] = useState('');
+  const [customMonthStart, setCustomMonthStart] = useState('');
+  const [customMonthEnd, setCustomMonthEnd] = useState('');
   const [enabledStages, setEnabledStages] = useState<Record<CarbonStageKey, boolean>>({
     ebiomas: true,
     epirolisis: true,
@@ -149,9 +169,9 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
   const [reloadKey, setReloadKey] = useState(0);
 
   const { rangeStart, rangeEnd } = useMemo(() => {
-    const range = buildRangeFromPreset(periodPreset, customMonth);
+    const range = buildRangeFromPreset(periodPreset, customMonthStart, customMonthEnd);
     return { rangeStart: range.start, rangeEnd: range.end };
-  }, [periodPreset, customMonth]);
+  }, [periodPreset, customMonthStart, customMonthEnd]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -267,7 +287,7 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
     setEnabledStages((prev) => ({ ...prev, [stage]: !prev[stage] }));
   };
 
-  const filterSignature = `${periodPreset}|${customMonth}|${Object.values(enabledStages).join('-')}`;
+  const filterSignature = `${periodPreset}|${customMonthStart}|${customMonthEnd}|${Object.values(enabledStages).join('-')}`;
 
   return {
     loading,
@@ -276,8 +296,10 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
     stageConfigs: STAGES,
     periodPreset,
     setPeriodPreset,
-    customMonth,
-    setCustomMonth,
+    customMonthStart,
+    setCustomMonthStart,
+    customMonthEnd,
+    setCustomMonthEnd,
     enabledStages,
     toggleStage,
     totalTon: totalEnabledTon,
