@@ -1,5 +1,58 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Museo Slab";
+  font-weight: 300;
+  src: url("/fonts/MuseoSlab-300.otf") format("opentype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Museo Slab";
+  font-weight: 500;
+  src: url("/fonts/MuseoSlab-500.otf") format("opentype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Museo Slab";
+  font-weight: 700;
+  src: url("/fonts/MuseoSlab-700.otf") format("opentype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Museo Slab";
+  font-weight: 900;
+  src: url("/fonts/MuseoSlab-900.otf") format("opentype");
+  font-display: swap;
+}
+
+@keyframes sir-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sir-pulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-sir-rise {
+  animation: sir-rise 0.45s ease-out forwards;
+}
+
+.animate-sir-pulse {
+  animation: sir-pulse 2.5s ease-in-out infinite;
+}
+
 :root {
   --background: #1a1a2e;
   --foreground: #eee2dc;

@@ -3,18 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { animate, motion, useMotionValue, useTransform, type Variants } from 'framer-motion';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
   CarbonPeriodPreset,
   CarbonStageConfig,
   CarbonStageKey,
@@ -52,52 +40,42 @@ interface CarbonoTotalDashboardProps {
 }
 
 const fadeInUp: Variants = {
-  hidden: { opacity: 0, y: 16 },
+  hidden: { opacity: 0, y: 14 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.35, ease: 'easeOut', delay: 0 },
+    transition: { duration: 0.4, ease: 'easeOut' },
   },
 };
 
-const cardContainer: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.04,
-    },
-  },
-};
-
-const cardItem: Variants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.25, ease: 'easeOut' },
-  },
-};
-
-const periodOptions: { key: CarbonPeriodPreset; label: string }[] = [
-  { key: 'all', label: 'Todo' },
-  { key: '3m', label: '3 meses' },
-  { key: '6m', label: '6 meses' },
-  { key: '1y', label: '1 año' },
-  { key: 'custom', label: 'Rango personalizado (mes)' },
-];
-
-function formatTon(value: number, maxDigits = 3) {
+function formatTon(value: number, maxDigits = 2) {
   return value.toLocaleString('es-CO', {
+    minimumFractionDigits: maxDigits,
     maximumFractionDigits: maxDigits,
   });
 }
 
-function AnimatedCount({ value, className, suffix }: { value: number; className?: string; suffix?: string }) {
+function AnimatedCount({ 
+  value, 
+  className, 
+  suffix, 
+  maxDigits = 3, 
+  style 
+}: { 
+  value: number; 
+  className?: string; 
+  suffix?: string; 
+  maxDigits?: number; 
+  style?: React.CSSProperties 
+}) {
   const motionValue = useMotionValue(value);
-  const rounded = useTransform(motionValue, (latest) => Number(latest).toLocaleString('es-CO', { maximumFractionDigits: 3 }));
-  const [display, setDisplay] = useState(() => formatTon(value));
+  const rounded = useTransform(motionValue, (latest) => 
+    Number(latest).toLocaleString('es-CO', { 
+      minimumFractionDigits: maxDigits,
+      maximumFractionDigits: maxDigits 
+    })
+  );
+  const [display, setDisplay] = useState(() => formatTon(value, maxDigits));
   const first = useRef(true);
 
   useEffect(() => {
@@ -105,7 +83,7 @@ function AnimatedCount({ value, className, suffix }: { value: number; className?
       setDisplay(latest);
     });
     return unsubscribe;
-  }, [rounded]);
+  }, [rounded, maxDigits]);
 
   useEffect(() => {
     if (first.current) {
@@ -115,7 +93,7 @@ function AnimatedCount({ value, className, suffix }: { value: number; className?
     }
 
     const controls = animate(motionValue, value, {
-      duration: 0.6,
+      duration: 0.65,
       ease: 'easeOut',
     });
 
@@ -123,14 +101,22 @@ function AnimatedCount({ value, className, suffix }: { value: number; className?
   }, [motionValue, value]);
 
   return (
-    <span className={className}>
+    <span className={className} style={style}>
       {display}
-      {suffix ? <span className="ml-1 text-sm text-white/65">{suffix}</span> : null}
+      {suffix ? <span className="ml-1 text-sm text-white/60">{suffix}</span> : null}
     </span>
   );
 }
 
 const E_STORED = 2.6;
+
+const periodOptions: { key: CarbonPeriodPreset; label: string }[] = [
+  { key: '3m', label: '3 meses' },
+  { key: '6m', label: '6 meses' },
+  { key: '1y', label: '1 año' },
+  { key: 'all', label: 'Todo' },
+  { key: 'custom', label: 'Personalizado' },
+];
 
 export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps) {
   const {
@@ -146,7 +132,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
     setCustomMonthEnd,
     enabledStages,
     toggleStage,
-    totalTon,
+    totalTon, // represents the sum of emissions for enabled stages
     dateRangeLabel,
     summaryCards,
     monthlySeries,
@@ -154,362 +140,579 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
     periodsCount,
     lastUpdatedLabel,
     filterSignature,
-    masaSecaTon,
-    masaSecaBaches,
-    huellaIntensidad,
     biocharAplicadoTon,
     biocharAplicadoBaches,
   } = props;
 
-  const E_STORED_PER_TON = E_STORED; // 2.6 tCO₂eq / ton biochar aplicado
-  const allStagesTon = summaryCards.reduce((acc, c) => acc + c.totalTon, 0);
   const hasApplied = biocharAplicadoTon > 0;
-  const remoccionBruta = E_STORED_PER_TON * biocharAplicadoTon;
-  const netCorcs = remoccionBruta - allStagesTon;
-  const netCorcsPositive = netCorcs >= 0;
-  const totalEmisionesPorTon = hasApplied ? allStagesTon / biocharAplicadoTon : null;
-  const factorCorcNeto = totalEmisionesPorTon !== null ? E_STORED_PER_TON - totalEmisionesPorTon : null;
+  const biocharAppliedNum = biocharAplicadoTon || 0;
+
+  // 1. Period Totals (Left Column)
+  const brutaPeriod = E_STORED * biocharAppliedNum;
+  const emisPeriod = totalTon;
+  const netPeriod = brutaPeriod - emisPeriod;
+  const netPositive = netPeriod >= 0;
+
+  // 2. Per Ton Applied (Right Column)
+  const brutaPerTon = E_STORED;
+  const emisPerTon = hasApplied ? totalTon / biocharAppliedNum : 0;
+  const factorNeto = hasApplied ? brutaPerTon - emisPerTon : 0;
+
+  // Styles for the Net Badge
+  const netBadgeBorder = netPositive ? 'rgba(232, 213, 183, 0.28)' : 'rgba(231, 76, 60, 0.5)';
+  const netBadgeBg = netPositive ? 'rgba(255, 255, 255, 0.04)' : 'rgba(231, 76, 60, 0.14)';
+  const netBadgeColor = netPositive ? '#e8d5b7' : '#f0a097';
+  const netLabel = netPositive ? 'Net positivo' : 'Net negativo';
+  const netColor = netPositive ? '#5ccd95' : '#f0706a';
+  const netGlow = netPositive ? 'rgba(46, 204, 113, 0.26)' : 'rgba(231, 76, 60, 0.26)';
+
+  // Helper to find Stage Color
+  const getColor = (key: CarbonStageKey) => {
+    return stageConfigs.find((s) => s.key === key)?.color || '#ffffff';
+  };
+
+  // Conic gradient for Donut Chart
+  let acc = 0;
+  const segments: string[] = [];
+  summaryCards.forEach((c) => {
+    if (!c.enabled) return;
+    const pct = totalTon > 0 ? (c.totalTon / totalTon) * 100 : 0;
+    if (pct <= 0) return;
+    segments.push(`${c.color} ${acc.toFixed(2)}% ${(acc + pct).toFixed(2)}%`);
+    acc += pct;
+  });
+  const donutGradient = segments.length ? `conic-gradient(${segments.join(',')})` : '#1a1a3e';
+
+  // Heights for Monthly Bars
+  const H = 230; // Max height in pixels
+  const maxMonthlyVal = Math.max(
+    ...monthlySeries.map((m) => m.ebiomas + m.epirolisis + m.euse + m.etransporte),
+    0.001
+  );
 
   return (
-    <div
-      style={{
-        ['--stage-ebiomas' as string]: '#3B6D11',
-        ['--stage-epirolisis' as string]: '#854F0B',
-        ['--stage-euse' as string]: '#185FA5',
-        ['--stage-etransporte' as string]: '#533AB7',
-      }}
-      className="space-y-6"
-    >
-      {/* ── CASCADA DE REMOCIÓN NETA ─────────────────────────────────────── */}
+    <div className="space-y-6 animate-sir-rise">
+      {/* ── HERO: CASCADA DE REMOCIÓN NETA ─────────────────────────────────── */}
       <motion.section
         variants={fadeInUp}
         initial="hidden"
         animate="visible"
-        className="rounded-2xl border border-white/20 bg-white/10 p-5 sm:p-7 backdrop-blur-md"
+        className="border border-white/9 rounded-2xl bg-[#0d121a]/72 backdrop-blur-[6px] shadow-[0_8px_40px_rgba(0,0,0,0.45)] overflow-hidden"
       >
-        {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold uppercase tracking-[0.16em] text-white">
-              Cascada de Remoción Neta
-            </h2>
-            <p className="mt-1 text-sm font-medium text-white/55">MRV estimado · Período: {dateRangeLabel}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
-              loading
-                ? 'border-amber-300/70 bg-amber-500/20 text-amber-200'
-                : 'border-emerald-300/70 bg-emerald-500/20 text-emerald-200'
-            }`}>{statusLabel}</span>
-            <span className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
-              netCorcsPositive
-                ? 'border-emerald-300/70 bg-emerald-500/20 text-emerald-200'
-                : 'border-red-300/70 bg-red-500/20 text-red-200'
-            }`}>{netCorcsPositive ? 'Net Positivo' : 'Net Negativo'}</span>
-          </div>
-        </div>
-
-        {/* Biochar context strip */}
-        {hasApplied ? (
-          <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-white/15 bg-white/5 px-5 py-3">
-            <span className="text-sm font-medium text-white/65">Biochar seco aplicado en el período</span>
-            <span className="ml-auto text-lg font-bold text-white">{formatTon(biocharAplicadoTon, 3)} t</span>
-            <span className="text-sm text-white/45">· {biocharAplicadoBaches} remisiones</span>
-          </div>
-        ) : !loading ? (
-          <div className="mb-4 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm italic text-white/45">
-            Sin remisiones de biochar aplicado en este período — solo se muestran emisiones.
-          </div>
-        ) : null}
-
-        {/* Column headers */}
-        <div className="mb-1.5 grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] gap-x-5 px-5 text-[11px] font-bold uppercase tracking-widest text-white/45">
-          <span>Concepto</span>
-          <span className="text-right">tCO₂eq (período)</span>
-          <span className="hidden text-right sm:block">tCO₂eq / ton aplicada</span>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-white/15 divide-y divide-white/10">
-
-          {/* ── (+) REMOCIÓN BRUTA ──────────────────────────────────────────── */}
-          <div className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5 bg-emerald-500/10 px-5 py-3.5">
+        <div className="p-6.5 sm:p-7.5 pb-6">
+          {/* Top strip */}
+          <div className="flex flex-wrap items-start justify-between gap-3.5 mb-4.5">
             <div>
-              <div className="flex items-center gap-2.5">
-                <span className="shrink-0 rounded-md bg-emerald-400/20 px-2 py-0.5 text-sm font-bold text-emerald-300">+</span>
-                <span className="text-base font-bold text-white">Remoción bruta del período</span>
-              </div>
-              <p className="mt-1 pl-9 text-sm leading-snug text-white/50">
-                2.6 tCO₂/t × {hasApplied ? formatTon(biocharAplicadoTon, 3) : '0'} t aplicadas
-                <span className="block text-white/35">relación H/Corg + factor permanencia (Woolf)</span>
+              <p className="m-0 text-xs font-semibold tracking-[0.2em] uppercase text-[#6a6a7a]">
+                Cascada de remoción neta
+              </p>
+              <p className="mt-1 text-[13px] text-[#8a8a9a]">
+                Remoción bruta − Emisiones = CORCs · Biochar seco aplicado:{' '}
+                <span className="text-[#e8d5b7] font-bold">{formatTon(biocharAplicadoTon, 3)} t</span> ·{' '}
+                {biocharAplicadoBaches} remisiones
               </p>
             </div>
-            <div className="text-right tabular-nums">
-              <span className="text-2xl font-extrabold text-emerald-300">+{formatTon(remoccionBruta, 3)}</span>
-            </div>
-            <div className="hidden text-right tabular-nums sm:block">
-              <span className="text-xl font-bold text-emerald-300/80">+{formatTon(E_STORED_PER_TON, 4)}</span>
-            </div>
+            <span
+              className="rounded-full px-3.5 py-1 text-[11px] font-bold tracking-[0.08em] uppercase whitespace-nowrap border transition-all duration-300"
+              style={{
+                borderColor: netBadgeBorder,
+                backgroundColor: netBadgeBg,
+                color: netBadgeColor,
+              }}
+            >
+              {netLabel}
+            </span>
           </div>
 
-          {/* ── (−) EMISIONES DEL PERÍODO ──────────────────────────────────── */}
-          <div className="bg-red-500/10 px-5 py-3.5">
-            <div className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <span className="shrink-0 rounded-md bg-red-400/20 px-2 py-0.5 text-sm font-bold text-red-300">−</span>
-                  <span className="text-base font-bold text-white">Emisiones del período</span>
+          {/* Two parallel columns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-0">
+            {/* ───────── LEFT · totales del período ───────── */}
+            <div className="md:pr-6 pb-6 md:pb-0 md:border-r border-white/8">
+              <p className="mb-3 text-[11px] font-bold tracking-[0.16em] uppercase text-[#7e8794]">
+                tCO₂eq · totales del período
+              </p>
+
+              {/* (+) Remoción Bruta */}
+              <div className="flex items-start justify-between gap-3 p-3 sm:p-3.5 rounded-lg bg-emerald-500/6 border border-emerald-500/18 mb-2">
+                <div className="flex gap-2.5">
+                  <span className="w-6 h-6 flex shrink-0 items-center justify-center rounded-md bg-emerald-500/16 text-[#5ccd95] font-black text-sm">
+                    +
+                  </span>
+                  <div>
+                    <p className="m-0 text-[14px] font-bold text-[#cdd3da]">
+                      Remoción bruta del período
+                    </p>
+                    <p className="mt-1 text-[11px] sm:text-[12px] leading-snug text-[#7e8794]">
+                      2,6 tCO₂ removidas por t × {formatTon(biocharAplicadoTon, 3)} t aplicadas. El 2,6 sale de la relación H/Corg + factor de permanencia (Woolf).
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-1 pl-9 text-sm text-white/50">Huella total consolidada</p>
-              </div>
-              <div className="text-right tabular-nums">
-                <span className="text-2xl font-extrabold text-red-300">−{formatTon(allStagesTon, 3)}</span>
-              </div>
-              <div className="hidden text-right tabular-nums sm:block">
-                <span className="text-xl font-bold text-red-300/80">
-                  {totalEmisionesPorTon !== null ? `−${formatTon(totalEmisionesPorTon, 4)}` : '—'}
+                <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#5ccd95] whitespace-nowrap">
+                  +{formatTon(brutaPeriod, 2)}
                 </span>
               </div>
-            </div>
 
-            {/* Sub-filas por rubro */}
-            <div className="mt-2.5 space-y-1.5 border-l-2 border-white/15 pl-4 ml-9">
-              {summaryCards.map((card) => (
-                <div
-                  key={card.key}
-                  className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5 text-sm"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: card.color }} />
-                    <span className="font-medium" style={{ color: `${card.color}E6` }}>{card.label}</span>
+              {/* (−) Emisiones */}
+              <div className="p-3 sm:p-3.5 rounded-lg bg-red-500/7 border border-red-500/18 mb-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex gap-2.5">
+                    <span className="w-6 h-6 flex shrink-0 items-center justify-center rounded-md bg-red-500/18 text-[#f0706a] font-black text-sm">
+                      −
                   </span>
-                  <span className="text-right font-semibold tabular-nums" style={{ color: `${card.color}CC` }}>
-                    −{formatTon(card.totalTon, 3)}
-                  </span>
-                  <span className="hidden text-right font-medium tabular-nums sm:block" style={{ color: `${card.color}99` }}>
-                    {hasApplied ? `−${formatTon(card.totalTon / biocharAplicadoTon, 4)}` : '—'}
+                    <div>
+                      <p className="m-0 text-[14px] font-bold text-[#cdd3da]">
+                        Emisiones del período
+                      </p>
+                      <p className="mt-1 text-[11px] sm:text-[12px] text-[#7e8794]">
+                        Huella total consolidada del proceso.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#f0706a] whitespace-nowrap">
+                    -{formatTon(emisPeriod, 2)}
                   </span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Separador doble */}
-          <div className="h-[3px] bg-gradient-to-r from-white/5 via-white/30 to-white/5" />
-
-          {/* ── (=) REMOCIÓN NETA — CORCs ──────────────────────────────────── */}
-          <div className={`px-5 py-4 ${netCorcsPositive ? 'bg-emerald-500/15' : 'bg-red-500/15'}`}>
-            <div className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5">
-              <div className="flex items-center gap-2.5">
-                <span className={`shrink-0 rounded-md px-2 py-0.5 text-sm font-bold ${
-                  netCorcsPositive ? 'bg-emerald-400/20 text-emerald-300' : 'bg-red-400/20 text-red-300'
-                }`}>=</span>
-                <span className="text-lg font-extrabold text-white">Remoción neta — CORCs</span>
+                {/* Breakdown of stages */}
+                <div className="mt-2.5 pl-3 border-l-2 border-white/10 flex flex-col gap-1.5 ml-6">
+                  {summaryCards.map((c) => (
+                    <div
+                      key={c.key}
+                      className="flex items-center justify-between gap-2.5 text-[11px] sm:text-[12px] transition-opacity duration-200"
+                      style={{ opacity: c.enabled ? 1 : 0.4 }}
+                    >
+                      <span className="flex items-center gap-2 text-[#bdb8ad]">
+                        ↳ {c.label}
+                      </span>
+                      <span className="font-mono text-[#bdb8ad] font-semibold">
+                        -{formatTon(c.totalTon, 3)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="text-right tabular-nums">
+
+              {/* (=) Remoción Neta */}
+              <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <div className="flex gap-2.5 items-center">
+                  <span className="w-5 h-5 flex shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-[#5ccd95] font-black text-xs">
+                    =
+                  </span>
+                  <p className="m-0 text-[11px] sm:text-[12px] font-bold text-[#e8d5b7]">
+                    Remoción neta — CORCs
+                  </p>
+                </div>
                 <AnimatedCount
-                  value={netCorcs}
-                  className={`text-4xl font-extrabold leading-none ${netCorcsPositive ? 'text-emerald-300' : 'text-red-300'}`}
+                  value={netPeriod}
+                  maxDigits={3}
+                  className="font-mono text-[11px] sm:text-[12px] font-bold whitespace-nowrap transition-all duration-300"
+                  style={{
+                    color: netColor,
+                    textShadow: `0 0 10px ${netGlow}`,
+                  }}
                 />
-                <p className="mt-1 text-sm font-medium text-white/45">tCO₂eq</p>
-              </div>
-              <div className="hidden text-right tabular-nums sm:block">
-                {factorCorcNeto !== null ? (
-                  <>
-                    <span className={`text-2xl font-extrabold ${factorCorcNeto >= 0 ? 'text-emerald-300/90' : 'text-red-300/90'}`}>
-                      {formatTon(factorCorcNeto, 4)}
-                    </span>
-                    <p className="mt-1 text-sm font-medium text-white/45">Factor CORC neto</p>
-                  </>
-                ) : <span className="text-xl text-white/30">—</span>}
               </div>
             </div>
 
-            {/* Nota puente: der. × ton = izq. */}
-            {factorCorcNeto !== null && hasApplied && (
-              <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-xl border border-white/15 bg-black/25 px-4 py-3 text-base">
-                <span className="font-medium text-white/50">Factor neto</span>
-                <span className={`font-bold tabular-nums ${factorCorcNeto >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {formatTon(factorCorcNeto, 4)}
-                </span>
-                <span className="text-white/30">×</span>
-                <span className="font-semibold tabular-nums text-white/70">{formatTon(biocharAplicadoTon, 3)} t</span>
-                <span className="text-white/30">=</span>
-                <span className={`text-lg font-extrabold tabular-nums ${netCorcsPositive ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {formatTon(netCorcs, 3)} CORCs
+            {/* ───────── RIGHT · por tonelada aplicada ───────── */}
+            <div className="md:pl-6 pt-6 md:pt-0">
+              <p className="mb-3 text-[11px] font-bold tracking-[0.16em] uppercase text-[#7e8794]">
+                tCO₂eq · por tonelada aplicada
+              </p>
+
+              {/* (+) Bruta por tonelada */}
+              <div className="flex items-start justify-between gap-3 p-3 sm:p-3.5 rounded-lg bg-emerald-500/6 border border-emerald-500/18 mb-2">
+                <div className="flex gap-2.5">
+                  <span className="w-6 h-6 flex shrink-0 items-center justify-center rounded-md bg-emerald-500/16 text-[#5ccd95] font-black text-sm">
+                    +
+                  </span>
+                  <div>
+                    <p className="m-0 text-[14px] font-bold text-[#cdd3da]">
+                      Remoción bruta
+                    </p>
+                    <p className="mt-1 text-[11px] sm:text-[12px] leading-snug text-[#7e8794]">
+                      Relación H/Corg + factor de permanencia.
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#5ccd95] whitespace-nowrap">
+                  +{formatTon(brutaPerTon, 4)}
                 </span>
               </div>
-            )}
+
+              {/* (−) Emisiones por tonelada */}
+              <div className="p-3 sm:p-3.5 rounded-lg bg-red-500/7 border border-red-500/18 mb-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex gap-2.5">
+                    <span className="w-6 h-6 flex shrink-0 items-center justify-center rounded-md bg-red-500/18 text-[#f0706a] font-black text-sm">
+                      −
+                    </span>
+                    <div>
+                      <p className="m-0 text-[14px] font-bold text-[#cdd3da]">
+                        Emisiones
+                      </p>
+                      <p className="mt-1 text-[11px] sm:text-[12px] text-[#7e8794]">
+                        Huella consolidada por unidad.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#f0706a] whitespace-nowrap">
+                    -{formatTon(emisPerTon, 4)}
+                  </span>
+                </div>
+                {/* Breakdown of stages */}
+                <div className="mt-2.5 pl-3 border-l-2 border-white/10 flex flex-col gap-1.5 ml-6">
+                  {summaryCards.map((c) => {
+                    const stagePerTon = hasApplied ? c.totalTon / biocharAppliedNum : 0;
+                    return (
+                      <div
+                        key={c.key}
+                        className="flex items-center justify-between gap-2.5 text-[11px] sm:text-[12px] transition-opacity duration-200"
+                        style={{ opacity: c.enabled ? 1 : 0.4 }}
+                      >
+                        <span className="flex items-center gap-2 text-[#bdb8ad]">
+                          ↳ {c.label}
+                        </span>
+                        <span className="font-mono text-[#bdb8ad] font-semibold">
+                          -{formatTon(stagePerTon, 4)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* (=) Factor Neto */}
+              <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <div className="flex gap-2.5 items-center">
+                  <span className="w-5 h-5 flex shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-[#5ccd95] font-black text-xs">
+                    =
+                  </span>
+                  <p className="m-0 text-[11px] sm:text-[12px] font-bold text-[#e8d5b7]">
+                    Factor CORC neto
+                  </p>
+                </div>
+                <AnimatedCount
+                  value={factorNeto}
+                  maxDigits={4}
+                  className="font-mono text-[11px] sm:text-[12px] font-bold text-[#5ccd95] whitespace-nowrap"
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Bridge Section */}
+          {hasApplied && (
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2 border border-dashed border-white/16 rounded-xl bg-black/22 p-3 sm:p-3.5 text-[15px]">
+              <span className="text-[11px] font-bold tracking-[0.14em] uppercase text-[#7e8794] mr-2">
+                El puente
+              </span>
+              <span className="text-[#8a8a9a]">Factor neto</span>
+              <span className="font-mono font-bold text-[#cdd3da]">
+                {formatTon(factorNeto, 4)}
+              </span>
+              <span className="text-[#6a6a7a]">×</span>
+              <span className="font-mono font-bold text-[#cdd3da]">
+                {formatTon(biocharAplicadoTon, 3)} t
+              </span>
+              <span className="text-[#6a6a7a]">=</span>
+              <span className="font-mono font-bold text-[#5ccd95]">
+                {formatTon(netPeriod, 3)} CORCs
+              </span>
+            </div>
+          )}
         </div>
       </motion.section>
 
-      <section className="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-md">
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.14em] text-white/80">Filtros</h3>
-        <div className="mb-4 flex flex-wrap gap-2">
-          {periodOptions.map((option) => (
-            <button
-              key={option.key}
-              onClick={() => setPeriodPreset(option.key)}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors duration-150 ${
-                periodPreset === option.key
-                  ? 'border-white/70 bg-white/20 text-white'
-                  : 'border-white/30 bg-white/5 text-white/75 hover:bg-white/10'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        {periodPreset === 'custom' && (
-          <div className="mb-4 flex flex-wrap gap-4">
-            <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-white/70">Mes inicio</label>
-              <input
-                type="month"
-                value={customMonthStart}
-                onChange={(event) => setCustomMonthStart(event.target.value)}
-                className="w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#3B6D11]"
-              />
-            </div>
-            <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-white/70">Mes fin</label>
-              <input
-                type="month"
-                value={customMonthEnd}
-                onChange={(event) => setCustomMonthEnd(event.target.value)}
-                className="w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#3B6D11]"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          {stageConfigs.map((stage) => {
-            const enabled = enabledStages[stage.key];
+      {/* ── FILTERS ──────────────────────────────────────────────────────── */}
+      <section className="flex flex-wrap items-center justify-between gap-4 border border-white/9 rounded-xl bg-[#0d121a]/72 backdrop-blur-[6px] p-4.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="text-[11px] font-semibold tracking-[0.16em] uppercase text-[#6a6a7a] mr-1">
+            Período
+          </span>
+          {periodOptions.map((o) => {
+            const isSelected = periodPreset === o.key;
             return (
               <button
-                key={stage.key}
-                onClick={() => toggleStage(stage.key)}
-                className="rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-150"
-                style={{
-                  borderColor: stage.color,
-                  backgroundColor: enabled ? stage.color : 'transparent',
-                  color: enabled ? '#FFFFFF' : stage.color,
-                  opacity: enabled ? 1 : 0.55,
-                }}
+                key={o.key}
+                onClick={() => setPeriodPreset(o.key)}
+                className={`cursor-pointer font-inherit rounded-[9px] px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-150 border ${
+                  isSelected
+                    ? 'border-white/45 bg-white/10 text-[#e8d5b7]'
+                    : 'border-white/12 bg-white/2 text-[#9a968d] hover:border-white/30 hover:bg-white/5'
+                }`}
               >
-                {stage.label}
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold tracking-[0.16em] uppercase text-[#6a6a7a] mr-1">
+            Etapas
+          </span>
+          {stageConfigs.map((s) => {
+            const isEnabled = enabledStages[s.key];
+            return (
+              <button
+                key={s.key}
+                onClick={() => toggleStage(s.key)}
+                className={`cursor-pointer font-inherit flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-150 border ${
+                  isEnabled
+                    ? 'border-white/28 bg-white/7 text-[#e8d5b7] opacity-100'
+                    : 'border-white/12 bg-transparent text-[#7e8794] opacity-75 hover:opacity-90'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full inline-block"
+                  style={{ backgroundColor: s.color }}
+                />
+                {s.label}
               </button>
             );
           })}
         </div>
       </section>
 
+      {/* Custom Month Range selector */}
+      {periodPreset === 'custom' && (
+        <section className="flex flex-wrap gap-4 border border-white/9 rounded-xl bg-[#0d121a]/72 backdrop-blur-[6px] p-4.5">
+          <div className="min-w-[160px] flex-1 sm:flex-initial">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#8a8a9a]">
+              Mes inicio
+            </label>
+            <input
+              type="month"
+              value={customMonthStart}
+              onChange={(e) => setCustomMonthStart(e.target.value)}
+              className="w-full rounded-lg border border-white/20 bg-[#06080d]/80 px-3.5 py-2 text-sm text-[#e8d5b7] focus:border-[#bdb8ad] focus:outline-none transition-colors"
+            />
+          </div>
+          <div className="min-w-[160px] flex-1 sm:flex-initial">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#8a8a9a]">
+              Mes fin
+            </label>
+            <input
+              type="month"
+              value={customMonthEnd}
+              onChange={(e) => setCustomMonthEnd(e.target.value)}
+              className="w-full rounded-lg border border-white/20 bg-[#06080d]/80 px-3.5 py-2 text-sm text-[#e8d5b7] focus:border-[#bdb8ad] focus:outline-none transition-colors"
+            />
+          </div>
+        </section>
+      )}
+
+      {/* ── SUMMARY CARDS ────────────────────────────────────────────────── */}
       <motion.section
         key={filterSignature}
-        variants={cardContainer}
+        variants={fadeInUp}
         initial="hidden"
         animate="visible"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
       >
-        {summaryCards.map((card) => (
-          <motion.article
-            key={card.key}
-            variants={cardItem}
-            whileHover={{ scale: 1.02, transition: { type: 'spring', stiffness: 260, damping: 20 } }}
-            className="rounded-2xl border bg-white/10 p-4 backdrop-blur-sm"
-            style={{
-              borderColor: `${card.color}AA`,
-              opacity: card.enabled ? 1 : 0.55,
-            }}
-          >
-            <p className="text-sm font-semibold" style={{ color: card.color }}>{card.label}</p>
-            <div className="mt-2 text-2xl font-bold text-white">
-              <AnimatedCount value={card.totalTon} suffix="tCO2eq" />
-            </div>
-            <p className="mt-1 text-sm text-white/70">{formatTon(card.percentage, 1)}% del total</p>
-          </motion.article>
-        ))}
+        {summaryCards.map((card) => {
+          const totalStr = formatTon(card.totalTon, 3);
+          const pctStr = card.percentage.toFixed(1);
+          return (
+            <article
+              key={card.key}
+              className="border rounded-2xl bg-[#0d121a]/72 backdrop-blur-[6px] p-5 pb-4.5 transition-all duration-250 hover:-translate-y-[3px] hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
+              style={{
+                borderTop: `3px solid ${card.color}`,
+                borderColor: card.enabled ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.05)',
+                opacity: card.enabled ? 1 : 0.4,
+              }}
+            >
+              <div className="flex items-center gap-2 mb-3.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-[3px] inline-block"
+                  style={{
+                    backgroundColor: card.color,
+                    boxShadow: `0 0 8px ${card.color}55`,
+                  }}
+                />
+                <span className="text-[14px] font-bold" style={{ color: card.color }}>
+                  {card.label}
+                </span>
+              </div>
+              <p className="m-0 font-mono text-[30px] font-bold text-[#e8d5b7] leading-none">
+                {totalStr}
+              </p>
+              <p className="mt-1.5 mb-3.5 text-[12px] text-[#8a8a9a]">
+                tCO₂eq · <span className="font-semibold text-[#cdd3da]">{pctStr}%</span> del total
+              </p>
+              {/* Progress bar */}
+              <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-400 ease-out"
+                  style={{
+                    width: `${pctStr}%`,
+                    background: `linear-gradient(90deg, ${card.color}, ${card.color}88)`,
+                  }}
+                />
+              </div>
+            </article>
+          );
+        })}
       </motion.section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-md">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/80">Evolución mensual por etapa</h3>
-          <div className="h-[320px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={monthlySeries} margin={{ top: 12, right: 8, left: -20, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
-                <XAxis dataKey="label" stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 12 }} />
-                <YAxis stroke="rgba(255,255,255,0.7)" tick={{ fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{
-                    background: 'rgba(12,17,24,0.92)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: 12,
-                  }}
-                  formatter={(value) => [`${formatTon(Number(value))} tCO2eq`, ''] as [string, string]}
-                />
-                <Bar dataKey="ebiomas" stackId="total" fill="#3B6D11" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="epirolisis" stackId="total" fill="#854F0B" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="euse" stackId="total" fill="#185FA5" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="etransporte" stackId="total" fill="#533AB7" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+      {/* ── CHARTS ───────────────────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
+        {/* Monthly Bars */}
+        <div className="border border-white/9 rounded-2xl bg-[#0d121a]/72 backdrop-blur-[6px] p-5.5 sm:p-6">
+          <div className="flex items-baseline justify-between mb-5">
+            <h3 className="m-0 text-[13px] font-bold tracking-[0.16em] uppercase text-[#e8d5b7]">
+              Evolución mensual por etapa
+            </h3>
+            <span className="text-xs text-[#6a6a7a]">tCO₂eq</span>
+          </div>
+
+          <div className="flex items-end gap-2.5 h-[240px] pb-1 border-b border-[#e8d5b7]/10">
+            {monthlySeries.map((m, idx) => {
+              const total = m.ebiomas + m.epirolisis + m.euse + m.etransporte;
+              const ebH = maxMonthlyVal > 0 ? (m.ebiomas / maxMonthlyVal) * H : 0;
+              const epH = maxMonthlyVal > 0 ? (m.epirolisis / maxMonthlyVal) * H : 0;
+              const euH = maxMonthlyVal > 0 ? (m.euse / maxMonthlyVal) * H : 0;
+              const etH = maxMonthlyVal > 0 ? (m.etransporte / maxMonthlyVal) * H : 0;
+
+              return (
+                <div
+                  key={idx}
+                  className="group relative flex-1 flex flex-col justify-end items-center h-full min-w-0 cursor-pointer"
+                >
+                  {/* Custom interactive tooltip */}
+                  <div className="absolute bottom-full mb-2 hidden group-hover:block z-30 bg-[#0c1118]/95 border border-white/20 rounded-xl p-3 shadow-2xl text-xs text-left min-w-[160px] pointer-events-none transition-all duration-150">
+                    <p className="font-bold text-[#e8d5b7] mb-1.5 border-b border-white/10 pb-1">
+                      {m.label}
+                    </p>
+                    <div className="space-y-1.5">
+                      {stageConfigs.map((s) => {
+                        const val = m[s.key as CarbonStageKey] || 0;
+                        return (
+                          <div key={s.key} className="flex justify-between items-center gap-4">
+                            <span className="flex items-center gap-1.5 text-white/60">
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
+                              {s.label}
+                            </span>
+                            <span className="font-mono font-bold" style={{ color: s.color }}>
+                              {formatTon(val, 2)} t
+                            </span>
+                          </div>
+                        );
+                      })}
+                      <div className="border-t border-white/15 pt-1.5 mt-1.5 flex justify-between font-bold text-white">
+                        <span>Total</span>
+                        <span className="font-mono">{formatTon(total, 2)} t</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Vertical bar stack */}
+                  <div className="w-full max-w-[26px] flex flex-col justify-end rounded-t-[4px] overflow-hidden transition-all duration-200 group-hover:brightness-110">
+                    <div
+                      style={{ height: `${etH.toFixed(1)}px`, backgroundColor: getColor('etransporte') }}
+                      className="w-full transition-all duration-300"
+                    />
+                    <div
+                      style={{ height: `${euH.toFixed(1)}px`, backgroundColor: getColor('euse') }}
+                      className="w-full transition-all duration-300"
+                    />
+                    <div
+                      style={{ height: `${epH.toFixed(1)}px`, backgroundColor: getColor('epirolisis') }}
+                      className="w-full transition-all duration-300"
+                    />
+                    <div
+                      style={{ height: `${ebH.toFixed(1)}px`, backgroundColor: getColor('ebiomas') }}
+                      className="w-full transition-all duration-300"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Month labels */}
+          <div className="flex gap-2.5 mt-2">
+            {monthlySeries.map((m, idx) => (
+              <span
+                key={idx}
+                className="flex-1 text-center text-[10px] sm:text-xs text-[#6a6a7a] min-w-0 truncate"
+              >
+                {m.label}
+              </span>
+            ))}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-md">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/80">Proporción por etapa</h3>
-          <div className="h-[320px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <PieChart>
-                <Pie
-                  data={donutData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={105}
-                  paddingAngle={2}
-                >
-                  {donutData.map((entry) => (
-                    <Cell key={entry.key} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: 'rgba(12,17,24,0.92)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: 12,
-                  }}
-                  formatter={(value) => `${formatTon(Number(value))} tCO2eq`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+        {/* Donut Chart */}
+        <div className="border border-white/9 rounded-2xl bg-[#0d121a]/72 backdrop-blur-[6px] p-5.5 sm:p-6 flex flex-col">
+          <h3 className="m-0 mb-4 text-[13px] font-bold tracking-[0.16em] uppercase text-[#e8d5b7]">
+            Proporción de emisiones
+          </h3>
+
+          <div className="flex items-center justify-center flex-1 py-4">
+            <div className="relative w-[180px] h-[180px] shrink-0">
+              {/* Conic Gradient Circle */}
+              <div
+                className="absolute inset-0 rounded-full transition-all duration-500"
+                style={{ background: donutGradient }}
+              />
+              {/* Center hole overlay */}
+              <div className="absolute inset-[26px] rounded-full bg-[#0a0a1a] flex flex-col items-center justify-center shadow-inner">
+                <span className="font-mono text-[26px] sm:text-[30px] font-bold text-[#e8d5b7] leading-none">
+                  {formatTon(totalTon, 2)}
+                </span>
+                <span className="text-[11px] text-[#6a6a7a] mt-1.5">
+                  tCO₂eq total
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+
+          {/* Legend */}
+          <div className="grid grid-cols-2 gap-2 mt-4.5">
             {summaryCards.map((card) => (
-              <div key={card.key} className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/80">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: card.color }} />
-                <span className="ml-2">{card.label}</span>
+              <div
+                key={card.key}
+                className="flex items-center justify-between gap-1.5 border border-[#e8d5b7]/10 rounded-[9px] px-2.5 py-1.5 bg-white/2 transition-opacity duration-200"
+                style={{ opacity: card.enabled ? 1 : 0.4 }}
+              >
+                <span className="flex items-center gap-1.5 text-xs text-[#c8c4bb] truncate">
+                  <span
+                    className="w-2 h-2 rounded-full inline-block shrink-0"
+                    style={{ backgroundColor: card.color }}
+                  />
+                  {card.label}
+                </span>
+                <span className="text-xs font-bold text-[#e8d5b7] shrink-0">
+                  {card.percentage.toFixed(1)}%
+                </span>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <footer className="rounded-2xl border border-white/20 bg-white/10 p-4 text-sm text-white/75 backdrop-blur-md">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <p>Períodos: <span className="font-semibold text-white">{periodsCount}</span></p>
-          <p>Última actualización: <span className="font-semibold text-white">{lastUpdatedLabel}</span></p>
-          <p>Total sin biogénicos: <span className="font-semibold text-white">excluidos</span></p>
-        </div>
+      {/* ── FOOTER ───────────────────────────────────────────────────────── */}
+      <footer className="mt-6 flex flex-wrap gap-y-4 gap-x-10 border-t border-[#e8d5b7]/8 pt-4.5 text-[13px] text-[#8a8a9a] items-center">
+        <span>
+          Períodos analizados:{' '}
+          <span className="text-[#e8d5b7] font-semibold">{periodsCount}</span>
+        </span>
+        <span>
+          Última actualización:{' '}
+          <span className="text-[#e8d5b7] font-semibold">{lastUpdatedLabel}</span>
+        </span>
+        <span>
+          Metodología:{' '}
+          <span className="text-[#e8d5b7] font-semibold">Woolf et al. · permanencia 100a</span>
+        </span>
+        <span className="sm:ml-auto text-[#6a6a7a]">
+          Barranca de Upía · Biofábrica Sirius
+        </span>
       </footer>
 
       {error && (
-        <div className="rounded-xl border border-red-400/60 bg-red-500/20 p-3 text-sm text-red-100">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200 backdrop-blur-md">
           {error}
         </div>
       )}

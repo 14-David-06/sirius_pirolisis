@@ -38,10 +38,10 @@ export interface CarbonDonutPoint {
 }
 
 const STAGES: CarbonStageConfig[] = [
-  { key: 'ebiomas', label: 'eBiomas', color: '#3B6D11' },
-  { key: 'epirolisis', label: 'ePirólisis', color: '#854F0B' },
-  { key: 'euse', label: 'eUse', color: '#185FA5' },
-  { key: 'etransporte', label: 'eTransporte', color: '#533AB7' },
+  { key: 'ebiomas', label: 'eBiomas', color: '#3dd96a' },
+  { key: 'epirolisis', label: 'ePirólisis', color: '#2d7ed9' },
+  { key: 'euse', label: 'eUse', color: '#42b4ff' },
+  { key: 'etransporte', label: 'eTransporte', color: '#7e8794' },
 ];
 
 const monthlyPointSchema = z.object({

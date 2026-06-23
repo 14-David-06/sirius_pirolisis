@@ -180,13 +180,10 @@ export default function Navbar() {
         <nav className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="px-10">
             <Link href="/" className="flex items-center space-x-2">
-              <Image
-                src="/logo.png"
+              <img
+                src="/logo-sirius.png"
                 alt="Sirius Logo"
-                width={180}
-                height={200}
-                priority
-                className="transition-transform duration-300 hover:scale-105 cursor-pointer"
+                className="!h-[52px] !w-auto transition-transform duration-300 hover:scale-105 cursor-pointer object-contain shrink-0"
               />
             </Link>
           </div>
@@ -300,13 +297,10 @@ export default function Navbar() {
         {/* Logo flotante para móviles */}
         <div className="fixed top-4 left-4 z-40">
           <Link href="/" className="block">
-            <Image
-              src="/logo.png"
+            <img
+              src="/logo-sirius.png"
               alt="Sirius Logo"
-              width={120}
-              height={40}
-              priority
-              className="transition-transform duration-300 hover:scale-105"
+              className="h-10 w-auto transition-transform duration-300 hover:scale-105 object-contain"
             />
           </Link>
         </div>
@@ -333,13 +327,10 @@ export default function Navbar() {
             {/* Header del menú móvil */}
             <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5">
               <div className="flex items-center space-x-3">
-                <Image
-                  src="/logo.png"
+                <img
+                  src="/logo-sirius.png"
                   alt="Sirius Logo"
-                  width={100}
-                  height={35}
-                  priority
-                  className=""
+                  className="h-10 w-auto object-contain"
                 />
               </div>
               <button
