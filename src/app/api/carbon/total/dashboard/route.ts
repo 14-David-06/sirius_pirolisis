@@ -86,6 +86,7 @@ async function computeMonth(bucket: MonthBucket) {
     eBiomas: tonBiomas,
     epirolisis: tonPiro,
     etransporte: tonTransp,
+    etransporte_baches: resTransp?.total_baches ?? 0,
     euse: tonUse,
     has_data: Boolean(
       (resBiomas && (resBiomas.total_viajes ?? 0) > 0) ||
@@ -142,12 +143,34 @@ export async function POST(request: NextRequest) {
     const totals: Record<StageKey, number> = {
       eBiomas: 0, epirolisis: 0, etransporte: 0, euse: 0,
     };
+    let totalBachesETransporte = 0;
     for (const m of monthly) {
       totals.eBiomas += m.eBiomas;
       totals.epirolisis += m.epirolisis;
       totals.etransporte += m.etransporte;
       totals.euse += m.euse;
+      totalBachesETransporte += (m.etransporte_baches ?? 0);
     }
+
+    // eTransporte: Math.floor(baches/10) aplicado mes a mes pierde viajes acumulados
+    // incompletos. Se recalcula una sola vez sobre el período completo.
+    const safeOnce = async <T>(p: Promise<T>): Promise<T | null> => {
+      try { return await p; } catch { return null; }
+    };
+    const resTranspFull = await safeOnce(
+      Container.getPreviewETransporteUseCase().ejecutar(fecha_inicio, fecha_fin)
+    );
+    if (resTranspFull) {
+      totals.etransporte = resTranspFull.emisiones_total_ton;
+      // Distribuir el total del período en las barras mensuales (proporcional a baches)
+      if (totalBachesETransporte > 0) {
+        for (const m of monthly) {
+          m.etransporte = resTranspFull.emisiones_total_ton *
+            ((m.etransporte_baches ?? 0) / totalBachesETransporte);
+        }
+      }
+    }
+
     const total_ton = totals.eBiomas + totals.epirolisis + totals.etransporte + totals.euse;
 
     return NextResponse.json({
