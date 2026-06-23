@@ -149,6 +149,11 @@ export interface UseCarbonoTotalResult {
   periodsCount: number;
   lastUpdatedLabel: string;
   filterSignature: string;
+  masaSecaTon: number;
+  masaSecaBaches: number;
+  huellaIntensidad: number | null;
+  biocharAplicadoTon: number;
+  biocharAplicadoBaches: number;
   refresh: () => void;
 }
 
@@ -167,6 +172,10 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [masaSecaTon, setMasaSecaTon] = useState(0);
+  const [masaSecaBaches, setMasaSecaBaches] = useState(0);
+  const [biocharAplicadoTonApi, setBiocharAplicadoTonApi] = useState(0);
+  const [biocharAplicadoBaches, setBiocharAplicadoBaches] = useState(0);
 
   const { rangeStart, rangeEnd } = useMemo(() => {
     const range = buildRangeFromPreset(periodPreset, customMonthStart, customMonthEnd);
@@ -181,29 +190,67 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
         setLoading(true);
         setError(null);
 
-        const response = await fetch('/api/carbon/total/dashboard', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          signal: controller.signal,
-          body: JSON.stringify({
-            fecha_inicio: toIso(rangeStart),
-            fecha_fin: toIso(rangeEnd),
+        const body = {
+          fecha_inicio: toIso(rangeStart),
+          fecha_fin: toIso(rangeEnd),
+        };
+
+        const [carbonRes, masaSecaRes, biocharRes] = await Promise.all([
+          fetch('/api/carbon/total/dashboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            signal: controller.signal,
+            body: JSON.stringify(body),
           }),
-        });
+          fetch('/api/baches/masa-seca-total', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            signal: controller.signal,
+            body: JSON.stringify(body),
+          }),
+          fetch('/api/remisiones-baches/biochar-aplicado', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            signal: controller.signal,
+            body: JSON.stringify(body),
+          }),
+        ]);
 
-        const json = await response.json();
+        const [carbonJson, masaSecaJson, biocharJson] = await Promise.all([
+          carbonRes.json(),
+          masaSecaRes.json(),
+          biocharRes.json(),
+        ]);
 
-        if (!response.ok) {
-          throw new Error(json?.error || `HTTP ${response.status}`);
+        if (!carbonRes.ok) {
+          throw new Error(carbonJson?.error || `HTTP ${carbonRes.status}`);
         }
 
-        const parsed = dashboardSchema.safeParse(json);
+        const parsed = dashboardSchema.safeParse(carbonJson);
         if (!parsed.success || !parsed.data.success) {
           throw new Error('Respuesta inválida del servidor.');
         }
 
         setData(parsed.data.data);
+
+        if (masaSecaRes.ok && masaSecaJson?.success) {
+          setMasaSecaTon(masaSecaJson.masaSecaTon ?? 0);
+          setMasaSecaBaches(masaSecaJson.bachesCount ?? 0);
+        } else {
+          setMasaSecaTon(0);
+          setMasaSecaBaches(0);
+        }
+
+        if (biocharRes.ok && biocharJson?.success) {
+          setBiocharAplicadoTonApi(biocharJson.biocharSecoTon ?? 0);
+          setBiocharAplicadoBaches(biocharJson.bachesCount ?? 0);
+        } else {
+          setBiocharAplicadoTonApi(0);
+          setBiocharAplicadoBaches(0);
+        }
       } catch (err: unknown) {
         if ((err as { name?: string })?.name === 'AbortError') return;
         const text = err instanceof Error ? err.message : 'No fue posible cargar el consolidado de carbono.';
@@ -289,6 +336,9 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
 
   const filterSignature = `${periodPreset}|${customMonthStart}|${customMonthEnd}|${Object.values(enabledStages).join('-')}`;
 
+  const biocharAplicadoTon = biocharAplicadoTonApi;
+  const huellaIntensidad = biocharAplicadoTon > 0 ? totalEnabledTon / biocharAplicadoTon : null;
+
   return {
     loading,
     error,
@@ -310,6 +360,11 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
     periodsCount: monthlySeries.length,
     lastUpdatedLabel,
     filterSignature,
+    masaSecaTon,
+    masaSecaBaches,
+    huellaIntensidad,
+    biocharAplicadoTon,
+    biocharAplicadoBaches,
     refresh: () => setReloadKey((k) => k + 1),
   };
 }

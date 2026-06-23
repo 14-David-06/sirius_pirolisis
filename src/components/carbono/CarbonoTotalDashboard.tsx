@@ -44,6 +44,11 @@ interface CarbonoTotalDashboardProps {
   periodsCount: number;
   lastUpdatedLabel: string;
   filterSignature: string;
+  masaSecaTon: number;
+  masaSecaBaches: number;
+  huellaIntensidad: number | null;
+  biocharAplicadoTon: number;
+  biocharAplicadoBaches: number;
 }
 
 const fadeInUp: Variants = {
@@ -125,6 +130,8 @@ function AnimatedCount({ value, className, suffix }: { value: number; className?
   );
 }
 
+const E_STORED = 2.6;
+
 export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps) {
   const {
     loading,
@@ -147,7 +154,21 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
     periodsCount,
     lastUpdatedLabel,
     filterSignature,
+    masaSecaTon,
+    masaSecaBaches,
+    huellaIntensidad,
+    biocharAplicadoTon,
+    biocharAplicadoBaches,
   } = props;
+
+  const E_STORED_PER_TON = E_STORED; // 2.6 tCO₂eq / ton biochar aplicado
+  const allStagesTon = summaryCards.reduce((acc, c) => acc + c.totalTon, 0);
+  const hasApplied = biocharAplicadoTon > 0;
+  const remoccionBruta = E_STORED_PER_TON * biocharAplicadoTon;
+  const netCorcs = remoccionBruta - allStagesTon;
+  const netCorcsPositive = netCorcs >= 0;
+  const totalEmisionesPorTon = hasApplied ? allStagesTon / biocharAplicadoTon : null;
+  const factorCorcNeto = totalEmisionesPorTon !== null ? E_STORED_PER_TON - totalEmisionesPorTon : null;
 
   return (
     <div
@@ -159,26 +180,167 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
       }}
       className="space-y-6"
     >
+      {/* ── CASCADA DE REMOCIÓN NETA ─────────────────────────────────────── */}
       <motion.section
         variants={fadeInUp}
         initial="hidden"
         animate="visible"
-        className="rounded-2xl border border-white/20 bg-white/10 p-6 text-center backdrop-blur-md"
+        className="rounded-2xl border border-white/20 bg-white/10 p-5 sm:p-7 backdrop-blur-md"
       >
-        <span
-          className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
-            loading
-              ? 'border-amber-300/70 bg-amber-500/20 text-amber-200'
-              : 'border-emerald-300/70 bg-emerald-500/20 text-emerald-200'
-          }`}
-        >
-          {statusLabel}
-        </span>
-        <h2 className="mt-3 text-sm font-medium uppercase tracking-[0.18em] text-white/75">Huella total consolidada</h2>
-        <div className="mt-2 text-5xl font-bold text-white sm:text-6xl">
-          <AnimatedCount value={totalTon} suffix="tCO2eq" />
+        {/* Header */}
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold uppercase tracking-[0.16em] text-white">
+              Cascada de Remoción Neta
+            </h2>
+            <p className="mt-1 text-sm font-medium text-white/55">MRV estimado · Período: {dateRangeLabel}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
+              loading
+                ? 'border-amber-300/70 bg-amber-500/20 text-amber-200'
+                : 'border-emerald-300/70 bg-emerald-500/20 text-emerald-200'
+            }`}>{statusLabel}</span>
+            <span className={`inline-flex rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
+              netCorcsPositive
+                ? 'border-emerald-300/70 bg-emerald-500/20 text-emerald-200'
+                : 'border-red-300/70 bg-red-500/20 text-red-200'
+            }`}>{netCorcsPositive ? 'Net Positivo' : 'Net Negativo'}</span>
+          </div>
         </div>
-        <p className="mt-2 text-sm text-white/70">Período activo: {dateRangeLabel}</p>
+
+        {/* Biochar context strip */}
+        {hasApplied ? (
+          <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-white/15 bg-white/5 px-5 py-3">
+            <span className="text-sm font-medium text-white/65">Biochar seco aplicado en el período</span>
+            <span className="ml-auto text-lg font-bold text-white">{formatTon(biocharAplicadoTon, 3)} t</span>
+            <span className="text-sm text-white/45">· {biocharAplicadoBaches} remisiones</span>
+          </div>
+        ) : !loading ? (
+          <div className="mb-4 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm italic text-white/45">
+            Sin remisiones de biochar aplicado en este período — solo se muestran emisiones.
+          </div>
+        ) : null}
+
+        {/* Column headers */}
+        <div className="mb-1.5 grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] gap-x-5 px-5 text-[11px] font-bold uppercase tracking-widest text-white/45">
+          <span>Concepto</span>
+          <span className="text-right">tCO₂eq (período)</span>
+          <span className="hidden text-right sm:block">tCO₂eq / ton aplicada</span>
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-white/15 divide-y divide-white/10">
+
+          {/* ── (+) REMOCIÓN BRUTA ──────────────────────────────────────────── */}
+          <div className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5 bg-emerald-500/10 px-5 py-3.5">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <span className="shrink-0 rounded-md bg-emerald-400/20 px-2 py-0.5 text-sm font-bold text-emerald-300">+</span>
+                <span className="text-base font-bold text-white">Remoción bruta del período</span>
+              </div>
+              <p className="mt-1 pl-9 text-sm leading-snug text-white/50">
+                2.6 tCO₂/t × {hasApplied ? formatTon(biocharAplicadoTon, 3) : '0'} t aplicadas
+                <span className="block text-white/35">relación H/Corg + factor permanencia (Woolf)</span>
+              </p>
+            </div>
+            <div className="text-right tabular-nums">
+              <span className="text-2xl font-extrabold text-emerald-300">+{formatTon(remoccionBruta, 3)}</span>
+            </div>
+            <div className="hidden text-right tabular-nums sm:block">
+              <span className="text-xl font-bold text-emerald-300/80">+{formatTon(E_STORED_PER_TON, 4)}</span>
+            </div>
+          </div>
+
+          {/* ── (−) EMISIONES DEL PERÍODO ──────────────────────────────────── */}
+          <div className="bg-red-500/10 px-5 py-3.5">
+            <div className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <span className="shrink-0 rounded-md bg-red-400/20 px-2 py-0.5 text-sm font-bold text-red-300">−</span>
+                  <span className="text-base font-bold text-white">Emisiones del período</span>
+                </div>
+                <p className="mt-1 pl-9 text-sm text-white/50">Huella total consolidada</p>
+              </div>
+              <div className="text-right tabular-nums">
+                <span className="text-2xl font-extrabold text-red-300">−{formatTon(allStagesTon, 3)}</span>
+              </div>
+              <div className="hidden text-right tabular-nums sm:block">
+                <span className="text-xl font-bold text-red-300/80">
+                  {totalEmisionesPorTon !== null ? `−${formatTon(totalEmisionesPorTon, 4)}` : '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Sub-filas por rubro */}
+            <div className="mt-2.5 space-y-1.5 border-l-2 border-white/15 pl-4 ml-9">
+              {summaryCards.map((card) => (
+                <div
+                  key={card.key}
+                  className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5 text-sm"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: card.color }} />
+                    <span className="font-medium" style={{ color: `${card.color}E6` }}>{card.label}</span>
+                  </span>
+                  <span className="text-right font-semibold tabular-nums" style={{ color: `${card.color}CC` }}>
+                    −{formatTon(card.totalTon, 3)}
+                  </span>
+                  <span className="hidden text-right font-medium tabular-nums sm:block" style={{ color: `${card.color}99` }}>
+                    {hasApplied ? `−${formatTon(card.totalTon / biocharAplicadoTon, 4)}` : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Separador doble */}
+          <div className="h-[3px] bg-gradient-to-r from-white/5 via-white/30 to-white/5" />
+
+          {/* ── (=) REMOCIÓN NETA — CORCs ──────────────────────────────────── */}
+          <div className={`px-5 py-4 ${netCorcsPositive ? 'bg-emerald-500/15' : 'bg-red-500/15'}`}>
+            <div className="grid grid-cols-[1fr_minmax(120px,auto)] sm:grid-cols-[1fr_minmax(130px,auto)_minmax(150px,auto)] items-center gap-x-5">
+              <div className="flex items-center gap-2.5">
+                <span className={`shrink-0 rounded-md px-2 py-0.5 text-sm font-bold ${
+                  netCorcsPositive ? 'bg-emerald-400/20 text-emerald-300' : 'bg-red-400/20 text-red-300'
+                }`}>=</span>
+                <span className="text-lg font-extrabold text-white">Remoción neta — CORCs</span>
+              </div>
+              <div className="text-right tabular-nums">
+                <AnimatedCount
+                  value={netCorcs}
+                  className={`text-4xl font-extrabold leading-none ${netCorcsPositive ? 'text-emerald-300' : 'text-red-300'}`}
+                />
+                <p className="mt-1 text-sm font-medium text-white/45">tCO₂eq</p>
+              </div>
+              <div className="hidden text-right tabular-nums sm:block">
+                {factorCorcNeto !== null ? (
+                  <>
+                    <span className={`text-2xl font-extrabold ${factorCorcNeto >= 0 ? 'text-emerald-300/90' : 'text-red-300/90'}`}>
+                      {formatTon(factorCorcNeto, 4)}
+                    </span>
+                    <p className="mt-1 text-sm font-medium text-white/45">Factor CORC neto</p>
+                  </>
+                ) : <span className="text-xl text-white/30">—</span>}
+              </div>
+            </div>
+
+            {/* Nota puente: der. × ton = izq. */}
+            {factorCorcNeto !== null && hasApplied && (
+              <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-xl border border-white/15 bg-black/25 px-4 py-3 text-base">
+                <span className="font-medium text-white/50">Factor neto</span>
+                <span className={`font-bold tabular-nums ${factorCorcNeto >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {formatTon(factorCorcNeto, 4)}
+                </span>
+                <span className="text-white/30">×</span>
+                <span className="font-semibold tabular-nums text-white/70">{formatTon(biocharAplicadoTon, 3)} t</span>
+                <span className="text-white/30">=</span>
+                <span className={`text-lg font-extrabold tabular-nums ${netCorcsPositive ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {formatTon(netCorcs, 3)} CORCs
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </motion.section>
 
       <section className="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-md">
