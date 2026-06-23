@@ -1,8 +1,5 @@
 // POST /api/carbon/total/dashboard
-// Streaming NDJSON — emite cada mes apenas termina de calcularse.
-// Formato de líneas: { type: 'month'|'totals'|'error', data|message }
-
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Container } from '../../../../../infrastructure/container';
 
@@ -57,120 +54,85 @@ async function computeMonth(bucket: MonthBucket) {
     safe(Container.getPreviewEUseUseCase().ejecutar(bucket.fecha_inicio, bucket.fecha_fin)),
   ]);
   return {
-    month:            bucket.key,
-    label:            bucket.label,
-    fecha_inicio:     bucket.fecha_inicio,
-    fecha_fin:        bucket.fecha_fin,
-    eBiomas:          resBiomas?.emisiones_total_ton ?? 0,
-    epirolisis:       resPiro?.emisiones_total_ton ?? 0,
-    etransporte:      resTransp?.emisiones_total_ton ?? 0,
+    month:              bucket.key,
+    label:              bucket.label,
+    fecha_inicio:       bucket.fecha_inicio,
+    fecha_fin:          bucket.fecha_fin,
+    eBiomas:            resBiomas?.emisiones_total_ton ?? 0,
+    epirolisis:         resPiro?.emisiones_total_ton ?? 0,
+    etransporte:        resTransp?.emisiones_total_ton ?? 0,
     etransporte_baches: resTransp?.total_baches ?? 0,
-    euse:             resUse?.resumen?.emisiones_total_ton ?? 0,
+    euse:               resUse?.resumen?.emisiones_total_ton ?? 0,
     has_data: Boolean(
-      (resBiomas  && (resBiomas.total_viajes ?? 0)         > 0) ||
-      (resPiro    && (resPiro.turnos_analizados ?? 0)       > 0) ||
-      (resTransp  && (resTransp.total_baches ?? 0)          > 0) ||
-      (resUse     && (resUse.remisiones_analizadas ?? 0)    > 0)
+      (resBiomas  && (resBiomas.total_viajes ?? 0)        > 0) ||
+      (resPiro    && (resPiro.turnos_analizados ?? 0)      > 0) ||
+      (resTransp  && (resTransp.total_baches ?? 0)         > 0) ||
+      (resUse     && (resUse.remisiones_analizadas ?? 0)   > 0)
     ),
   };
 }
 
 export async function POST(request: NextRequest) {
-  // ── Validación ──────────────────────────────────────────────────────────────
   let bodyRaw: unknown;
   try { bodyRaw = await request.json(); }
-  catch { return new Response('{"type":"error","message":"Invalid JSON"}', { status: 400 }); }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const parsed = schema.safeParse(bodyRaw);
   if (!parsed.success) {
-    return new Response(
-      JSON.stringify({ type: 'error', message: 'Datos inválidos', details: parsed.error.issues }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    return NextResponse.json(
+      { error: 'Datos inválidos', details: parsed.error.issues },
+      { status: 400 }
     );
   }
 
   const { fecha_inicio, fecha_fin } = parsed.data;
   if (new Date(fecha_inicio) > new Date(fecha_fin)) {
-    return new Response(
-      JSON.stringify({ type: 'error', message: 'Fecha inicio debe ser anterior a fecha fin' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    return NextResponse.json(
+      { error: 'Fecha inicio debe ser anterior a fecha fin' },
+      { status: 400 }
     );
   }
 
   const buckets = buildMonthBuckets(fecha_inicio, fecha_fin);
   if (buckets.length > 36) {
-    return new Response(
-      JSON.stringify({ type: 'error', message: 'Rango demasiado amplio (máx. 36 meses)' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    return NextResponse.json(
+      { error: 'Rango demasiado amplio (máx. 36 meses)' },
+      { status: 400 }
     );
   }
 
-  // ── Streaming NDJSON ────────────────────────────────────────────────────────
-  const encoder = new TextEncoder();
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
-  const send = (obj: unknown) =>
-    writer.write(encoder.encode(JSON.stringify(obj) + '\n'));
+  try {
+    const monthly = await Promise.all(buckets.map(computeMonth));
 
-  void (async () => {
-    try {
-      const monthly: Awaited<ReturnType<typeof computeMonth>>[] = [];
-      let totalBaches = 0;
-
-      for (let i = 0; i < buckets.length; i++) {
-        const m = await computeMonth(buckets[i]);
-        monthly.push(m);
-        totalBaches += m.etransporte_baches ?? 0;
-        // Emitir el mes apenas esté listo
-        await send({ type: 'month', data: m });
-        if (i < buckets.length - 1) {
-          await new Promise((r) => setTimeout(r, 150));
-        }
-      }
-
-      // ── Totales ────────────────────────────────────────────────────────────
-      const totals: Record<StageKey, number> = {
-        eBiomas: 0, epirolisis: 0, etransporte: 0, euse: 0,
-      };
-      for (const m of monthly) {
-        totals.eBiomas    += m.eBiomas;
-        totals.epirolisis += m.epirolisis;
-        totals.etransporte += m.etransporte;
-        totals.euse       += m.euse;
-      }
-
-      // eTransporte: Math.floor(baches/10) por mes pierde viajes acumulados.
-      // Recalcular sobre el período completo da el valor correcto.
-      const resTranspFull = await Container.getPreviewETransporteUseCase()
-        .ejecutar(fecha_inicio, fecha_fin).catch(() => null);
-      if (resTranspFull) totals.etransporte = resTranspFull.emisiones_total_ton;
-
-      const total_ton =
-        totals.eBiomas + totals.epirolisis + totals.etransporte + totals.euse;
-
-      await send({
-        type: 'totals',
-        data: {
-          range:        { fecha_inicio, fecha_fin },
-          months_count: buckets.length,
-          totals:       { ...totals, total_ton },
-          generated_at: new Date().toISOString(),
-        },
-      });
-    } catch (err) {
-      await send({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Error desconocido',
-      });
-    } finally {
-      writer.close().catch(() => {});
+    const totals: Record<StageKey, number> = {
+      eBiomas: 0, epirolisis: 0, etransporte: 0, euse: 0,
+    };
+    for (const m of monthly) {
+      totals.eBiomas     += m.eBiomas;
+      totals.epirolisis  += m.epirolisis;
+      totals.etransporte += m.etransporte;
+      totals.euse        += m.euse;
     }
-  })();
 
-  return new Response(readable, {
-    headers: {
-      'Content-Type': 'application/x-ndjson',
-      'Cache-Control': 'no-store',
-    },
-  });
+    // Recalculate transport over the full period to avoid floor(baches/10) accumulation error
+    const resTranspFull = await Container.getPreviewETransporteUseCase()
+      .ejecutar(fecha_inicio, fecha_fin).catch(() => null);
+    if (resTranspFull) totals.etransporte = resTranspFull.emisiones_total_ton;
+
+    const total_ton = totals.eBiomas + totals.epirolisis + totals.etransporte + totals.euse;
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        range:        { fecha_inicio, fecha_fin },
+        months_count: buckets.length,
+        monthly,
+        totals:       { ...totals, total_ton },
+        generated_at: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error desconocido';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

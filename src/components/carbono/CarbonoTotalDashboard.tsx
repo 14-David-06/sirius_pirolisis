@@ -484,7 +484,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
               type="month"
               value={customMonthStart}
               onChange={(e) => setCustomMonthStart(e.target.value)}
-              className="w-full rounded-lg border border-white/20 bg-[#06080d]/80 px-3.5 py-2 text-sm text-[#e8d5b7] focus:border-[#bdb8ad] focus:outline-none transition-colors"
+              className="w-full rounded-lg border border-white/20 bg-[#1a2540] px-3.5 py-2 text-sm text-[#e8d5b7] focus:border-[#bdb8ad] focus:outline-none transition-colors [color-scheme:dark]"
             />
           </div>
           <div className="min-w-[160px] flex-1 sm:flex-initial">
@@ -495,7 +495,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
               type="month"
               value={customMonthEnd}
               onChange={(e) => setCustomMonthEnd(e.target.value)}
-              className="w-full rounded-lg border border-white/20 bg-[#06080d]/80 px-3.5 py-2 text-sm text-[#e8d5b7] focus:border-[#bdb8ad] focus:outline-none transition-colors"
+              className="w-full rounded-lg border border-white/20 bg-[#1a2540] px-3.5 py-2 text-sm text-[#e8d5b7] focus:border-[#bdb8ad] focus:outline-none transition-colors [color-scheme:dark]"
             />
           </div>
         </section>
