@@ -68,7 +68,7 @@ export default function CalculadoraCarbonoPage() {
   const cargarResultados = useCallback(async (page: number = 1) => {
     setLoadingResultados(true);
     try {
-      const res = await fetch(`/api/carbon/eBiomas/resultados?page=${page}&pageSize=10`);
+      const res = await fetch(`/api/carbon/ebiomas/resultados?page=${page}&pageSize=10`);
       const data = await res.json();
       if (data.success) {
         setResultados(data.data || []);
@@ -98,7 +98,7 @@ export default function CalculadoraCarbonoPage() {
     setLoadingPreview(true);
     setMensaje(null);
     try {
-      const res = await fetch('/api/carbon/eBiomas/preview', {
+      const res = await fetch('/api/carbon/ebiomas/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,7 +129,7 @@ export default function CalculadoraCarbonoPage() {
     setLoadingCalculo(true);
     setMensaje(null);
     try {
-      const res = await fetch('/api/carbon/eBiomas/calcular', {
+      const res = await fetch('/api/carbon/ebiomas/calcular', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

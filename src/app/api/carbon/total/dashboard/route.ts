@@ -129,14 +129,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Serialize month-by-month to evitar rate-limit de Airtable (5 req/s por base).
-    // Cada mes ya hace 4 requests internos en paralelo; encadenar meses con un
-    // pequeño delay mantiene el throughput bajo el límite.
+    // Procesar mes a mes para respetar el rate-limit de Airtable (5 req/s por base).
+    // Cada mes hace 4 llamadas en paralelo; 150ms de pausa entre meses es suficiente
+    // y mantiene el total bajo ~6s para 12 meses (bien dentro del límite de Vercel).
     const monthly: Awaited<ReturnType<typeof computeMonth>>[] = [];
     for (let i = 0; i < buckets.length; i++) {
       monthly.push(await computeMonth(buckets[i]));
       if (i < buckets.length - 1) {
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 150));
       }
     }
 
