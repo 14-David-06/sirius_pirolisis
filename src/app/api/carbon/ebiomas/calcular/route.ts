@@ -1,5 +1,5 @@
-// POST /api/carbon/ebiomas/calcular
-// Ejecuta el cálculo de eBiomass, guarda en carbon_ebiomas_resultados, retorna resultado
+// POST /api/carbon/eBiomas/calcular
+// Ejecuta el cálculo de eBiomass, guarda en carbon_eBiomas_resultados, retorna resultado
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     // Obtener usuario de la sesión (si disponible)
     const calculado_por = body.calculado_por || 'Sistema';
 
-    const useCase = Container.getCalcularEBiomasUseCase();
+    const useCase = Container.getCalculareBiomasUseCase();
     const { resultado, guardado } = await useCase.ejecutar({
       fecha_inicio,
       fecha_fin,
@@ -53,6 +53,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: unknown) {
-    return handleApiError(error, 'POST /api/carbon/ebiomas/calcular');
+    return handleApiError(error, 'POST /api/carbon/eBiomas/calcular');
   }
 }

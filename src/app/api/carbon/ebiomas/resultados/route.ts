@@ -1,4 +1,4 @@
-// GET /api/carbon/ebiomas/resultados
+// GET /api/carbon/eBiomas/resultados
 // Lista histórico de cálculos guardados con paginación
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20', 10)));
 
-    const useCase = Container.getGetResultadosEBiomasUseCase();
+    const useCase = Container.getGetResultadoseBiomasUseCase();
     const { resultados, total } = await useCase.listar(page, pageSize);
 
     return NextResponse.json({
@@ -26,6 +26,6 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: unknown) {
-    return handleApiError(error, 'GET /api/carbon/ebiomas/resultados');
+    return handleApiError(error, 'GET /api/carbon/eBiomas/resultados');
   }
 }

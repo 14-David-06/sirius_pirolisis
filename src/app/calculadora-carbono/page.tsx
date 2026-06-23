@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 
-interface EBiomasPreview {
+interface eBiomasPreview {
   periodo: { fecha_inicio: string; fecha_fin: string };
   total_viajes: number;
   litros_diesel: number;
@@ -22,7 +22,7 @@ interface EBiomasPreview {
   };
 }
 
-interface EBiomasResultado {
+interface eBiomasResultado {
   id: string;
   fecha_inicio_periodo: string;
   fecha_fin_periodo: string;
@@ -43,10 +43,10 @@ export default function CalculadoraCarbonoPage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [turnoId, setTurnoId] = useState('');
-  const [preview, setPreview] = useState<EBiomasPreview | null>(null);
+  const [preview, setPreview] = useState<eBiomasPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingCalculo, setLoadingCalculo] = useState(false);
-  const [resultados, setResultados] = useState<EBiomasResultado[]>([]);
+  const [resultados, setResultados] = useState<eBiomasResultado[]>([]);
   const [loadingResultados, setLoadingResultados] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [mensaje, setMensaje] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null);
@@ -68,7 +68,7 @@ export default function CalculadoraCarbonoPage() {
   const cargarResultados = useCallback(async (page: number = 1) => {
     setLoadingResultados(true);
     try {
-      const res = await fetch(`/api/carbon/ebiomas/resultados?page=${page}&pageSize=10`);
+      const res = await fetch(`/api/carbon/eBiomas/resultados?page=${page}&pageSize=10`);
       const data = await res.json();
       if (data.success) {
         setResultados(data.data || []);
@@ -98,7 +98,7 @@ export default function CalculadoraCarbonoPage() {
     setLoadingPreview(true);
     setMensaje(null);
     try {
-      const res = await fetch('/api/carbon/ebiomas/preview', {
+      const res = await fetch('/api/carbon/eBiomas/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,7 +129,7 @@ export default function CalculadoraCarbonoPage() {
     setLoadingCalculo(true);
     setMensaje(null);
     try {
-      const res = await fetch('/api/carbon/ebiomas/calcular', {
+      const res = await fetch('/api/carbon/eBiomas/calcular', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -154,17 +154,17 @@ export default function CalculadoraCarbonoPage() {
     }
   };
 
-  const exportarJSON = (resultado: EBiomasResultado) => {
+  const exportarJSON = (resultado: eBiomasResultado) => {
     const blob = new Blob([JSON.stringify(resultado, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ebiomas_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.json`;
+    a.download = `eBiomas_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportarCSV = (resultado: EBiomasResultado) => {
+  const exportarCSV = (resultado: eBiomasResultado) => {
     const rows = [
       ['Campo', 'Valor', 'Unidad'],
       ['Período inicio', resultado.fecha_inicio_periodo, ''],
@@ -184,7 +184,7 @@ export default function CalculadoraCarbonoPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ebiomas_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.csv`;
+    a.download = `eBiomas_reporte_${resultado.fecha_inicio_periodo}_${resultado.fecha_fin_periodo}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

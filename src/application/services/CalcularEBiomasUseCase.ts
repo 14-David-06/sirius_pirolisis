@@ -1,15 +1,15 @@
-// src/application/services/CalcularEBiomasUseCase.ts
+// src/application/services/CalculareBiomasUseCase.ts
 // Caso de uso para calcular emisiones eBiomass
 
-import { IEBiomasRepository } from '../../domain/repositories/IEBiomasRepository';
-import { EBiomasCalculoInput, EBiomasCalculoResponse, EBiomasResultado } from '../../domain/entities/EBiomasCalculo';
+import { IeBiomasRepository } from '../../domain/repositories/IEBiomasRepository';
+import { eBiomasCalculoInput, eBiomasCalculoResponse, eBiomasResultado } from '../../domain/entities/EBiomasCalculo';
 import { CarbonConfigService } from './CarbonConfigService';
 
-export class CalcularEBiomasUseCase {
-  constructor(private repository: IEBiomasRepository) {}
+export class CalculareBiomasUseCase {
+  constructor(private repository: IeBiomasRepository) {}
 
-  async ejecutar(input: EBiomasCalculoInput): Promise<{ resultado: EBiomasCalculoResponse; guardado: EBiomasResultado }> {
-    const constantes = CarbonConfigService.getEBiomasConstantes();
+  async ejecutar(input: eBiomasCalculoInput): Promise<{ resultado: eBiomasCalculoResponse; guardado: eBiomasResultado }> {
+    const constantes = CarbonConfigService.geteBiomasConstantes();
 
     // Paso 1 — Total viajes en el período
     const total_viajes = await this.repository.contarViajesPorPeriodo(
@@ -52,10 +52,10 @@ export class CalcularEBiomasUseCase {
       calculado_por: input.calculado_por,
     };
 
-    // Guardar resultado en tabla carbon_ebiomas_resultados
+    // Guardar resultado en tabla carbon_eBiomas_resultados
     const guardado = await this.repository.guardarResultado(calculoData);
 
-    const resultado: EBiomasCalculoResponse = {
+    const resultado: eBiomasCalculoResponse = {
       periodo: {
         fecha_inicio: input.fecha_inicio,
         fecha_fin: input.fecha_fin,

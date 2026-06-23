@@ -186,7 +186,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
   // Heights for Monthly Bars
   const H = 230; // Max height in pixels
   const maxMonthlyVal = Math.max(
-    ...monthlySeries.map((m) => m.ebiomas + m.epirolisis + m.euse + m.etransporte),
+    ...monthlySeries.map((m) => m.eBiomas + m.epirolisis + m.euse + m.etransporte),
     0.001
   );
 
@@ -248,7 +248,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                   </div>
                 </div>
                 <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#5ccd95] whitespace-nowrap">
-                  +{formatTon(brutaPeriod, 2)}
+                  +{formatTon(brutaPeriod, 3)}
                 </span>
               </div>
 
@@ -269,7 +269,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                     </div>
                   </div>
                   <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#f0706a] whitespace-nowrap">
-                    -{formatTon(emisPeriod, 2)}
+                    -{formatTon(emisPeriod, 3)}
                   </span>
                 </div>
                 {/* Breakdown of stages */}
@@ -277,13 +277,13 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                   {summaryCards.map((c) => (
                     <div
                       key={c.key}
-                      className="flex items-center justify-between gap-2.5 text-[11px] sm:text-[12px] transition-opacity duration-200"
+                      className="flex items-center justify-between gap-2.5 transition-opacity duration-200"
                       style={{ opacity: c.enabled ? 1 : 0.4 }}
                     >
-                      <span className="flex items-center gap-2 text-[#bdb8ad]">
+                      <span className="flex items-center gap-2 text-[14px] text-[#bdb8ad]">
                         ↳ {c.label}
                       </span>
-                      <span className="font-mono text-[#bdb8ad] font-semibold">
+                      <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#bdb8ad]">
                         -{formatTon(c.totalTon, 3)}
                       </span>
                     </div>
@@ -304,7 +304,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                 <AnimatedCount
                   value={netPeriod}
                   maxDigits={3}
-                  className="font-mono text-[11px] sm:text-[12px] font-bold whitespace-nowrap transition-all duration-300"
+                  className="font-mono text-[20px] sm:text-[22px] font-bold whitespace-nowrap transition-all duration-300"
                   style={{
                     color: netColor,
                     textShadow: `0 0 10px ${netGlow}`,
@@ -335,7 +335,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                   </div>
                 </div>
                 <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#5ccd95] whitespace-nowrap">
-                  +{formatTon(brutaPerTon, 4)}
+                  +{formatTon(brutaPerTon, 1)}
                 </span>
               </div>
 
@@ -366,13 +366,13 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                     return (
                       <div
                         key={c.key}
-                        className="flex items-center justify-between gap-2.5 text-[11px] sm:text-[12px] transition-opacity duration-200"
+                        className="flex items-center justify-between gap-2.5 transition-opacity duration-200"
                         style={{ opacity: c.enabled ? 1 : 0.4 }}
                       >
-                        <span className="flex items-center gap-2 text-[#bdb8ad]">
+                        <span className="flex items-center gap-2 text-[14px] text-[#bdb8ad]">
                           ↳ {c.label}
                         </span>
-                        <span className="font-mono text-[#bdb8ad] font-semibold">
+                        <span className="font-mono text-[20px] sm:text-[22px] font-bold text-[#bdb8ad]">
                           -{formatTon(stagePerTon, 4)}
                         </span>
                       </div>
@@ -394,7 +394,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                 <AnimatedCount
                   value={factorNeto}
                   maxDigits={4}
-                  className="font-mono text-[11px] sm:text-[12px] font-bold text-[#5ccd95] whitespace-nowrap"
+                  className="font-mono text-[20px] sm:text-[22px] font-bold text-[#5ccd95] whitespace-nowrap"
                 />
               </div>
             </div>
@@ -568,8 +568,8 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
 
           <div className="flex items-end gap-2.5 h-[240px] pb-1 border-b border-[#e8d5b7]/10">
             {monthlySeries.map((m, idx) => {
-              const total = m.ebiomas + m.epirolisis + m.euse + m.etransporte;
-              const ebH = maxMonthlyVal > 0 ? (m.ebiomas / maxMonthlyVal) * H : 0;
+              const total = m.eBiomas + m.epirolisis + m.euse + m.etransporte;
+              const ebH = maxMonthlyVal > 0 ? (m.eBiomas / maxMonthlyVal) * H : 0;
               const epH = maxMonthlyVal > 0 ? (m.epirolisis / maxMonthlyVal) * H : 0;
               const euH = maxMonthlyVal > 0 ? (m.euse / maxMonthlyVal) * H : 0;
               const etH = maxMonthlyVal > 0 ? (m.etransporte / maxMonthlyVal) * H : 0;
@@ -621,7 +621,7 @@ export default function CarbonoTotalDashboard(props: CarbonoTotalDashboardProps)
                       className="w-full transition-all duration-300"
                     />
                     <div
-                      style={{ height: `${ebH.toFixed(1)}px`, backgroundColor: getColor('ebiomas') }}
+                      style={{ height: `${ebH.toFixed(1)}px`, backgroundColor: getColor('eBiomas') }}
                       className="w-full transition-all duration-300"
                     />
                   </div>

@@ -1,4 +1,4 @@
-// GET /api/carbon/ebiomas/resultados/:id
+// GET /api/carbon/eBiomas/resultados/:id
 // Detalle de un cálculo específico (para reporte exportable)
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,7 +19,7 @@ export async function GET(
       }, { status: 400 });
     }
 
-    const useCase = Container.getGetResultadosEBiomasUseCase();
+    const useCase = Container.getGetResultadoseBiomasUseCase();
     const resultado = await useCase.obtenerPorId(id);
 
     if (!resultado) {
@@ -35,6 +35,6 @@ export async function GET(
     });
 
   } catch (error: unknown) {
-    return handleApiError(error, 'GET /api/carbon/ebiomas/resultados/[id]');
+    return handleApiError(error, 'GET /api/carbon/eBiomas/resultados/[id]');
   }
 }

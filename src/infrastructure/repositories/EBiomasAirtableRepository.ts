@@ -1,15 +1,15 @@
-// src/infrastructure/repositories/EBiomasAirtableRepository.ts
-// Adapter Airtable para operaciones de eBiomass (solo lectura sobre Viajes Biomasa, escritura en carbon_ebiomas_resultados)
+// src/infrastructure/repositories/eBiomasAirtableRepository.ts
+// Adapter Airtable para operaciones de eBiomass (solo lectura sobre Viajes Biomasa, escritura en carbon_eBiomas_resultados)
 
-import { IEBiomasRepository } from '../../domain/repositories/IEBiomasRepository';
-import { EBiomasResultado, EBiomasConstantes } from '../../domain/entities/EBiomasCalculo';
+import { IeBiomasRepository } from '../../domain/repositories/IEBiomasRepository';
+import { eBiomasResultado, eBiomasConstantes } from '../../domain/entities/EBiomasCalculo';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY;
-const VIAJES_BIOMASA_TABLE_ID = process.env.CARBON_EBIOMAS_VIAJES_BIOMASA_TABLE_ID!;
-const CARBON_RESULTADOS_TABLE = process.env.CARBON_EBIOMAS_RESULTADOS_TABLE_ID!;
+const VIAJES_BIOMASA_TABLE_ID = process.env.CARBON_eBiomas_VIAJES_BIOMASA_TABLE_ID!;
+const CARBON_RESULTADOS_TABLE = process.env.CARBON_eBiomas_RESULTADOS_TABLE_ID!;
 
-export class EBiomasAirtableRepository implements IEBiomasRepository {
+export class eBiomasAirtableRepository implements IeBiomasRepository {
   private get headers() {
     return {
       'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
@@ -64,7 +64,7 @@ export class EBiomasAirtableRepository implements IEBiomasRepository {
     return allRecords.length;
   }
 
-  async guardarResultado(resultado: Omit<EBiomasResultado, 'id' | 'created_at'>): Promise<EBiomasResultado> {
+  async guardarResultado(resultado: Omit<eBiomasResultado, 'id' | 'created_at'>): Promise<eBiomasResultado> {
     const fields: Record<string, any> = {
       'fecha_inicio_periodo': resultado.fecha_inicio_periodo,
       'fecha_fin_periodo': resultado.fecha_fin_periodo,
@@ -97,7 +97,7 @@ export class EBiomasAirtableRepository implements IEBiomasRepository {
     return this.mapRecordToResultado(record);
   }
 
-  async listarResultados(page: number, pageSize: number): Promise<{ resultados: EBiomasResultado[]; total: number }> {
+  async listarResultados(page: number, pageSize: number): Promise<{ resultados: eBiomasResultado[]; total: number }> {
     let allRecords: any[] = [];
     let offset: string | undefined;
 
@@ -135,7 +135,7 @@ export class EBiomasAirtableRepository implements IEBiomasRepository {
     };
   }
 
-  async obtenerResultadoPorId(id: string): Promise<EBiomasResultado | null> {
+  async obtenerResultadoPorId(id: string): Promise<eBiomasResultado | null> {
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${CARBON_RESULTADOS_TABLE}/${id}`;
 
     const response = await fetch(url, {
@@ -153,9 +153,9 @@ export class EBiomasAirtableRepository implements IEBiomasRepository {
     return this.mapRecordToResultado(record);
   }
 
-  private mapRecordToResultado(record: any): EBiomasResultado {
+  private mapRecordToResultado(record: any): eBiomasResultado {
     const fields = record.fields || {};
-    let constantes: EBiomasConstantes;
+    let constantes: eBiomasConstantes;
     try {
       constantes = typeof fields['constantes_usadas'] === 'string'
         ? JSON.parse(fields['constantes_usadas'])

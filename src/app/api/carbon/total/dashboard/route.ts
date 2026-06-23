@@ -13,7 +13,7 @@ const schema = z.object({
   fecha_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD'),
 });
 
-type StageKey = 'ebiomas' | 'epirolisis' | 'etransporte' | 'euse';
+type StageKey = 'eBiomas' | 'epirolisis' | 'etransporte' | 'euse';
 
 interface MonthBucket {
   key: string;            // YYYY-MM
@@ -57,7 +57,7 @@ function buildMonthBuckets(start: string, end: string): MonthBucket[] {
 }
 
 async function computeMonth(bucket: MonthBucket) {
-  const ebiomas = Container.getPreviewEBiomasUseCase();
+  const eBiomas = Container.getPrevieweBiomasUseCase();
   const epirolisis = Container.getPreviewEPirolisisUseCase();
   const etransporte = Container.getPreviewETransporteUseCase();
   const euse = Container.getPreviewEUseUseCase();
@@ -67,7 +67,7 @@ async function computeMonth(bucket: MonthBucket) {
   };
 
   const [resBiomas, resPiro, resTransp, resUse] = await Promise.all([
-    safe(ebiomas.ejecutar(bucket.fecha_inicio, bucket.fecha_fin, null)),
+    safe(eBiomas.ejecutar(bucket.fecha_inicio, bucket.fecha_fin, null)),
     safe(epirolisis.ejecutar(bucket.fecha_inicio, bucket.fecha_fin, null)),
     safe(etransporte.ejecutar(bucket.fecha_inicio, bucket.fecha_fin)),
     safe(euse.ejecutar(bucket.fecha_inicio, bucket.fecha_fin)),
@@ -83,7 +83,7 @@ async function computeMonth(bucket: MonthBucket) {
     label: bucket.label,
     fecha_inicio: bucket.fecha_inicio,
     fecha_fin: bucket.fecha_fin,
-    ebiomas: tonBiomas,
+    eBiomas: tonBiomas,
     epirolisis: tonPiro,
     etransporte: tonTransp,
     euse: tonUse,
@@ -140,15 +140,15 @@ export async function POST(request: NextRequest) {
     }
 
     const totals: Record<StageKey, number> = {
-      ebiomas: 0, epirolisis: 0, etransporte: 0, euse: 0,
+      eBiomas: 0, epirolisis: 0, etransporte: 0, euse: 0,
     };
     for (const m of monthly) {
-      totals.ebiomas += m.ebiomas;
+      totals.eBiomas += m.eBiomas;
       totals.epirolisis += m.epirolisis;
       totals.etransporte += m.etransporte;
       totals.euse += m.euse;
     }
-    const total_ton = totals.ebiomas + totals.epirolisis + totals.etransporte + totals.euse;
+    const total_ton = totals.eBiomas + totals.epirolisis + totals.etransporte + totals.euse;
 
     return NextResponse.json({
       success: true,

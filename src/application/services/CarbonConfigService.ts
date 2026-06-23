@@ -1,7 +1,7 @@
 // src/application/services/CarbonConfigService.ts
 // Servicio para leer las constantes de carbono desde variables de entorno
 
-import { EBiomasConstantes } from '../../domain/entities/EBiomasCalculo';
+import { eBiomasConstantes } from '../../domain/entities/EBiomasCalculo';
 import { EPirolisisConstantes } from '../../domain/entities/EPirolisisCalculo';
 import { ETransporteConstantes } from '../../domain/entities/ETransporteCalculo';
 import { EUseConstantes } from '../../domain/entities/EUseCalculo';
@@ -15,7 +15,7 @@ export class CarbonConfigService {
     return parseFloat(value);
   }
 
-  static getEBiomasConstantes(): EBiomasConstantes {
+  static geteBiomasConstantes(): eBiomasConstantes {
     return {
       consumo_diesel_por_viaje: this.parseEnvFloat('CARBON_CONSUMO_DIESEL_POR_VIAJE'),
       densidad_diesel: this.parseEnvFloat('CARBON_DENSIDAD_DIESEL'),

@@ -1,15 +1,15 @@
-// src/application/services/PreviewEBiomasUseCase.ts
+// src/application/services/PrevieweBiomasUseCase.ts
 // Caso de uso para calcular preview sin guardar (tiempo real)
 
-import { IEBiomasRepository } from '../../domain/repositories/IEBiomasRepository';
-import { EBiomasCalculoResponse } from '../../domain/entities/EBiomasCalculo';
+import { IeBiomasRepository } from '../../domain/repositories/IEBiomasRepository';
+import { eBiomasCalculoResponse } from '../../domain/entities/EBiomasCalculo';
 import { CarbonConfigService } from './CarbonConfigService';
 
-export class PreviewEBiomasUseCase {
-  constructor(private repository: IEBiomasRepository) {}
+export class PrevieweBiomasUseCase {
+  constructor(private repository: IeBiomasRepository) {}
 
-  async ejecutar(fechaInicio: string, fechaFin: string, turnoId?: string | null): Promise<EBiomasCalculoResponse> {
-    const constantes = CarbonConfigService.getEBiomasConstantes();
+  async ejecutar(fechaInicio: string, fechaFin: string, turnoId?: string | null): Promise<eBiomasCalculoResponse> {
+    const constantes = CarbonConfigService.geteBiomasConstantes();
 
     const total_viajes = await this.repository.contarViajesPorPeriodo(fechaInicio, fechaFin, turnoId);
 

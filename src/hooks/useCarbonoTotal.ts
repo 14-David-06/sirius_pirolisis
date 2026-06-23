@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 
-export type CarbonStageKey = 'ebiomas' | 'epirolisis' | 'euse' | 'etransporte';
+export type CarbonStageKey = 'eBiomas' | 'epirolisis' | 'euse' | 'etransporte';
 export type CarbonPeriodPreset = 'all' | '3m' | '6m' | '1y' | 'custom';
 
 export interface CarbonStageConfig {
@@ -24,7 +24,7 @@ export interface CarbonSummaryCard {
 export interface CarbonMonthlyPoint {
   month: string;
   label: string;
-  ebiomas: number;
+  eBiomas: number;
   epirolisis: number;
   euse: number;
   etransporte: number;
@@ -38,10 +38,10 @@ export interface CarbonDonutPoint {
 }
 
 const STAGES: CarbonStageConfig[] = [
-  { key: 'ebiomas', label: 'eBiomas', color: '#3dd96a' },
-  { key: 'epirolisis', label: 'ePirólisis', color: '#2d7ed9' },
-  { key: 'euse', label: 'eUse', color: '#42b4ff' },
-  { key: 'etransporte', label: 'eTransporte', color: '#7e8794' },
+  { key: 'eBiomas', label: 'E-Biomass', color: '#3dd96a' },
+  { key: 'epirolisis', label: 'E-Pirólisis', color: '#2d7ed9' },
+  { key: 'euse', label: 'E-Use', color: '#42b4ff' },
+  { key: 'etransporte', label: 'E-Transporte', color: '#7e8794' },
 ];
 
 const monthlyPointSchema = z.object({
@@ -49,7 +49,7 @@ const monthlyPointSchema = z.object({
   label: z.string(),
   fecha_inicio: z.string(),
   fecha_fin: z.string(),
-  ebiomas: z.coerce.number(),
+  eBiomas: z.coerce.number(),
   epirolisis: z.coerce.number(),
   etransporte: z.coerce.number(),
   euse: z.coerce.number(),
@@ -63,7 +63,7 @@ const dashboardSchema = z.object({
     months_count: z.number(),
     monthly: z.array(monthlyPointSchema),
     totals: z.object({
-      ebiomas: z.coerce.number(),
+      eBiomas: z.coerce.number(),
       epirolisis: z.coerce.number(),
       etransporte: z.coerce.number(),
       euse: z.coerce.number(),
@@ -162,7 +162,7 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
   const [customMonthStart, setCustomMonthStart] = useState('');
   const [customMonthEnd, setCustomMonthEnd] = useState('');
   const [enabledStages, setEnabledStages] = useState<Record<CarbonStageKey, boolean>>({
-    ebiomas: true,
+    eBiomas: true,
     epirolisis: true,
     euse: true,
     etransporte: true,
@@ -266,9 +266,9 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
   }, [rangeStart, rangeEnd, reloadKey]);
 
   const totalsByStage = useMemo<Record<CarbonStageKey, number>>(() => {
-    if (!data) return { ebiomas: 0, epirolisis: 0, euse: 0, etransporte: 0 };
+    if (!data) return { eBiomas: 0, epirolisis: 0, euse: 0, etransporte: 0 };
     return {
-      ebiomas: data.totals.ebiomas,
+      eBiomas: data.totals.eBiomas,
       epirolisis: data.totals.epirolisis,
       euse: data.totals.euse,
       etransporte: data.totals.etransporte,
@@ -299,7 +299,7 @@ export function useCarbonoTotal(): UseCarbonoTotalResult {
     return data.monthly.map((m) => ({
       month: m.month,
       label: m.label,
-      ebiomas: enabledStages.ebiomas ? m.ebiomas : 0,
+      eBiomas: enabledStages.eBiomas ? m.eBiomas : 0,
       epirolisis: enabledStages.epirolisis ? m.epirolisis : 0,
       euse: enabledStages.euse ? m.euse : 0,
       etransporte: enabledStages.etransporte ? m.etransporte : 0,

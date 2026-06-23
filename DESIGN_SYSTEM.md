@@ -351,7 +351,7 @@ from-blue-500/20   to-blue-600/10   border-blue-400/30
           }}
           formatter={(value) => [`${formatTon(Number(value))} tCO₂eq`, '']}
         />
-        <Bar dataKey="ebiomas"     stackId="total" fill="#3B6D11" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="eBiomas"     stackId="total" fill="#3B6D11" radius={[4, 4, 0, 0]} />
         <Bar dataKey="epirolisis"  stackId="total" fill="#854F0B" radius={[4, 4, 0, 0]} />
         <Bar dataKey="euse"        stackId="total" fill="#185FA5" radius={[4, 4, 0, 0]} />
         <Bar dataKey="etransporte" stackId="total" fill="#533AB7" radius={[4, 4, 0, 0]} />

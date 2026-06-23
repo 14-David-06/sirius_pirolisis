@@ -1,4 +1,4 @@
-// POST /api/carbon/ebiomas/preview
+// POST /api/carbon/eBiomas/preview
 // Preview del cálculo sin guardar — para mostrar en tiempo real en la UI
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const useCase = Container.getPreviewEBiomasUseCase();
+    const useCase = Container.getPrevieweBiomasUseCase();
     const resultado = await useCase.ejecutar(fecha_inicio, fecha_fin, turno_id || null);
 
     return NextResponse.json({
@@ -43,6 +43,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: unknown) {
-    return handleApiError(error, 'POST /api/carbon/ebiomas/preview');
+    return handleApiError(error, 'POST /api/carbon/eBiomas/preview');
   }
 }

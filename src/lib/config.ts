@@ -158,7 +158,7 @@ export const config = {
       bachePirolisis: process.env.AIRTABLE_DETALLE_BACHE_PIROLISIS_FIELD_ID
     },
     // Calculadora de Carbono — Table IDs
-    carbonEbiomasViajesBiomasaTableId: process.env.CARBON_EBIOMAS_VIAJES_BIOMASA_TABLE_ID,
+    carboneBiomasViajesBiomasaTableId: process.env.CARBON_eBiomas_VIAJES_BIOMASA_TABLE_ID,
     carbonEpirolisisTurnoTableId: process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID,
     carbonEpirolisisBalancesMasaTableId: process.env.CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID,
     carbonEpirolisisManejoResiduosTableId: process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID,
@@ -274,8 +274,8 @@ export function validateEnvVars() {
     'AIRTABLE_REMISIONES_BACHE_PIROLISIS_ALTERADO_FIELD_ID',
     'AIRTABLE_REMISIONES_DETALLE_CANTIDADES_FIELD_ID',
     // Calculadora de Carbono — Table IDs
-    'CARBON_EBIOMAS_VIAJES_BIOMASA_TABLE_ID',
-    'CARBON_EBIOMAS_RESULTADOS_TABLE_ID',
+    'CARBON_eBiomas_VIAJES_BIOMASA_TABLE_ID',
+    'CARBON_eBiomas_RESULTADOS_TABLE_ID',
     'CARBON_EPIROLISIS_TURNO_TABLE_ID',
     'CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID',
     'CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID',

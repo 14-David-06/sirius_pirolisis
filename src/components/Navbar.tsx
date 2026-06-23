@@ -131,6 +131,7 @@ export default function Navbar() {
         ]
       },
       {
+
         title: "Recursos",
         icon: "",
         items: [
@@ -178,12 +179,12 @@ export default function Navbar() {
       {/* Navbar para Desktop - Oculto en móviles */}
       <header className="w-full px-6 py-4 relative z-30 bg-transparent backdrop-blur-sm hidden lg:block">
         <nav className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="px-10">
-            <Link href="/" className="flex items-center space-x-2">
+          <div className="px-10 shrink-0">
+            <Link href="/" className="flex items-center space-x-2 shrink-0">
               <img
                 src="/logo-sirius.png"
                 alt="Sirius Logo"
-                className="!h-[52px] !w-auto transition-transform duration-300 hover:scale-105 cursor-pointer object-contain shrink-0"
+                className="!h-[52px] !w-auto !min-w-[117px] transition-transform duration-300 hover:scale-105 cursor-pointer object-contain shrink-0"
               />
             </Link>
           </div>
