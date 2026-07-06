@@ -9,8 +9,7 @@ import { config } from '../../../../../../../lib/config';
 // sumando registros de Movimientos_Inventario en Sirius Inventario Production Core
 // con:
 //   - tipo_movimiento = 'Entrada'
-//   - motivo          = 'Producción'
-//   - producto_id     = SIRIUS-PRODUCT-0016 (Biochar Blend)
+//   - product_id      = SIRIUS-PRODUCT-0016 (Biochar Blend)
 //   - ubicacion_destino_id = ID Pedido Core (SIRIUS-PED-XXXX)
 //
 // Respuesta: { completa, kg_producido, kg_solicitado, falta, id_pedido_core }
@@ -95,7 +94,9 @@ export async function GET(
     // 3. Sumar entradas en Movimientos_Inventario (Inventario Production Core)
     const safeCode = biocharCode.replace(/'/g, "\\'");
     const safePed = idPedidoCore.replace(/'/g, "\\'");
-    const movFormula = `AND({tipo_movimiento}='Entrada',{motivo}='Producción',{producto_id}='${safeCode}',{ubicacion_destino_id}='${safePed}')`;
+    // Movimientos_Inventario usa el campo `product_id` (Stock_Actual usa `producto_id`).
+    // La producción se atribuye al pedido vía ubicacion_destino_id = SIRIUS-PED-XXXX.
+    const movFormula = `AND({tipo_movimiento}='Entrada',{product_id}='${safeCode}',{ubicacion_destino_id}='${safePed}')`;
     let kgProducido = 0;
     let movOffset: string | undefined;
     do {

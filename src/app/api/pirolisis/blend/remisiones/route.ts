@@ -154,33 +154,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'baches_ids debe ser un arreglo con al menos un ID' }, { status: 400 });
     }
 
-    // Verificar que el pedido exista y esté en estado aprobable
-    const pedidoRes = await fetch(
-      `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.blendPedidosTableId}/${pedido_id}`,
-      { headers: airtableHeaders() }
-    );
-    const pedidoData = await pedidoRes.json();
-    if (!pedidoRes.ok) {
-      if (pedidoRes.status === 404) return NextResponse.json({ error: 'Pedido no encontrado', details: pedido_id }, { status: 404 });
-      return NextResponse.json({ error: pedidoData?.error || 'Airtable error', details: pedidoData }, { status: pedidoRes.status });
-    }
-
-    const estadoPedido: string = pedidoData.fields?.['Estado'] ?? '';
-    const estadosValidos = ['Aprobado', 'En Producción', 'En Produccion', 'Listo Despacho'];
-    if (!estadosValidos.includes(estadoPedido)) {
-      return NextResponse.json({
-        error: 'El pedido no está en un estado válido para crear una remisión',
-        details: `Estado actual: "${estadoPedido}". Válidos: ${estadosValidos.join(', ')}`,
-        estado_actual: estadoPedido,
-      }, { status: 409 });
+    // El pedido vive en Sirius Pedidos Core (pedido_id = record id de Core).
+    const coreBaseId = config.airtable.pedidosCoreBaseId;
+    const coreTable = config.airtable.pedidosCorePedidosTable;
+    const coreToken = config.airtable.pedidosCoreToken;
+    if (coreBaseId && coreTable && coreToken) {
+      const pedidoRes = await fetch(
+        `https://api.airtable.com/v0/${coreBaseId}/${coreTable}/${pedido_id}`,
+        { headers: { Authorization: `Bearer ${coreToken}` } }
+      );
+      const pedidoData = await pedidoRes.json();
+      if (!pedidoRes.ok) {
+        const msg = typeof pedidoData?.error === 'string' ? pedidoData.error : pedidoData?.error?.message;
+        if (pedidoRes.status === 404) return NextResponse.json({ error: 'Pedido no encontrado en Pedidos Core', details: pedido_id }, { status: 404 });
+        return NextResponse.json({ error: msg || 'Error consultando el pedido en Core' }, { status: pedidoRes.status });
+      }
+      const estadoPedido = String(pedidoData.fields?.['Estado'] ?? '');
+      if (['Cancelado', 'Completado'].includes(estadoPedido)) {
+        return NextResponse.json({
+          error: `El pedido está "${estadoPedido}" y no admite nuevas remisiones`,
+          estado_actual: estadoPedido,
+        }, { status: 409 });
+      }
     }
 
     // Calcular totales y CO2 secuestrado
     const kg_total = kg_biochar_puro + kg_abono_4g + kg_agua + kg_biologicos;
     const co2_secuestrado_kg = +(kg_biochar_puro * config.carbon.factorSecuestroCo2).toFixed(4);
 
-    // Resolución del nombre del cliente (del pedido si no viene en el body)
-    const clienteFinal: string = cliente?.trim() || pedidoData.fields?.['Cliente'] || '';
+    // Nombre del cliente (lo envía el form, ya enriquecido desde Clients Core)
+    const clienteFinal: string = cliente?.trim() || '';
     if (!clienteFinal) {
       return NextResponse.json({ error: 'No se pudo determinar el nombre del cliente' }, { status: 400 });
     }
@@ -201,7 +204,8 @@ export async function POST(request: NextRequest) {
       'CO2 Secuestrado KG': co2_secuestrado_kg,
       'Responsable Entrega': responsable_entrega,
       'Num Doc Entrega': num_doc_entrega,
-      'Pedido Origen': [pedido_id!],
+      // Nota: no se enlaza 'Pedido Origen' (apunta a la tabla local blend_pedidos y
+      // pedido_id es de Pedidos Core). La trazabilidad al pedido va vía la producción.
       'Produccion Origen': [produccion_id!],
       'Baches Utilizados': baches_ids,
     };

@@ -90,6 +90,22 @@ function drawRect(
   });
 }
 
+// Las fuentes estándar de pdf-lib usan codificación WinAnsi, que no puede
+// codificar caracteres como el subíndice ₂ o el check ✓. Se reemplazan por
+// equivalentes ASCII antes de dibujar.
+function sanitizeWinAnsi(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (c) => String('₀₁₂₃₄₅₆₇₈₉'.indexOf(c)))
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => String('⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(c)))
+    .replace(/[✓✔]/g, 'OK')
+    .replace(/→/g, '->')
+    .replace(/←/g, '<-')
+    .replace(/≥/g, '>=')
+    .replace(/≤/g, '<=')
+    .replace(/•/g, '-');
+}
+
 function drawText(
   page: PDFPage,
   text: string,
@@ -98,7 +114,13 @@ function drawText(
   size: number,
   color: ReturnType<typeof rgb> = COLOR_GRIS_TEXTO
 ) {
-  page.drawText(text, { x, y, font, size, color });
+  const safe = sanitizeWinAnsi(text);
+  try {
+    page.drawText(safe, { x, y, font, size, color });
+  } catch {
+    // Fallback: cualquier carácter que aún no codifique WinAnsi → '?'
+    page.drawText(safe.replace(/[^\x20-\xFF]/g, '?'), { x, y, font, size, color });
+  }
 }
 
 function drawLabel(

@@ -92,6 +92,7 @@ export const config = {
     blendPedidosTableId: process.env.AIRTABLE_BLEND_PEDIDOS_TABLE_ID,
     blendProduccionTableId: process.env.AIRTABLE_BLEND_PRODUCCION_TABLE_ID,
     blendRemisionesTableId: process.env.AIRTABLE_BLEND_REMISIONES_TABLE_ID,
+    blendDetalleInsumosTableId: process.env.AIRTABLE_BLEND_DETALLE_INSUMOS_TABLE_ID,
     // Sirius Product Core (catálogo de productos)
     productsBaseId: process.env.AIRTABLE_PRODUCTS_BASE_ID,
     productsTableId: process.env.AIRTABLE_PRODUCTS_TABLE_ID,
@@ -101,6 +102,11 @@ export const config = {
     pedidosCorePedidosTable: process.env.AIRTABLE_PEDIDOS_CORE_PEDIDOS_TABLE,
     pedidosCoreDetallesTable: process.env.AIRTABLE_PEDIDOS_CORE_DETALLES_TABLE,
     pedidosCoreToken: process.env.AIRTABLE_PEDIDOS_CORE_TOKEN,
+    // Sirius Remisiones Core (remisiones centralizadas)
+    remisionesCoreBaseId: process.env.AIRTABLE_BASE_ID_SIRIUS_REMISIONES_CORE,
+    remisionesCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_REMISIONES_CORE,
+    remisionesCoreRemisionesTable: process.env.AIRTABLE_TABLE_REMISIONES,
+    remisionesCoreProductosTable: process.env.AIRTABLE_TABLE_PRODUCTOS_REMITIDOS,
     // Sirius Inventario Production Core (inventario de productos finales)
     inventarioProdCoreBaseId: process.env.AIRTABLE_BASE_SIRIUS_INVENTARIO,
     inventarioProdCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_INVENTARIO,
@@ -200,6 +206,18 @@ export const config = {
     transporteFeUpstream: process.env.CARBON_TRANSPORTE_FE_UPSTREAM,
     // Blend Remisiones — Factor de secuestro de CO2 por kg de Biochar Puro
     factorSecuestroCo2: parseFloat(process.env.FACTOR_SECUESTRO_CO2 || '2.5'),
+  },
+  // Fórmula de composición del Biochar Blend (proporciones por KG total).
+  // Centralizadas para que verificación de stock y auto-deducción NUNCA diverjan.
+  // ⚠️ Decisión abierta Fase 0: biológicos 0.007 (0.7%) hasta que DataLab confirme
+  //    si es 0.01 (1.0%). Cambiar solo la env var BLEND_PCT_BIOLOGICOS.
+  blend: {
+    pctBiochar: parseFloat(process.env.BLEND_PCT_BIOCHAR || '0.20'),
+    pctAbono: parseFloat(process.env.BLEND_PCT_ABONO || '0.74'),
+    pctAgua: parseFloat(process.env.BLEND_PCT_AGUA || '0.05'),
+    pctBiologicos: parseFloat(process.env.BLEND_PCT_BIOLOGICOS || '0.007'),
+    // Peso por Big Bag de biochar (solo referencia de UI; la deducción usa KG reales).
+    bigBagKg: parseFloat(process.env.BLEND_BIG_BAG_KG || '1000'),
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {

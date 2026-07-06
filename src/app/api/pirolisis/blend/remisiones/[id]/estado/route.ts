@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../../../../lib/config';
+import { syncRemisionDispatch, remisionInputFromRecord, type SyncStep } from '../../../../../../../lib/blend-core-sync';
 
 
 // Transiciones permitidas: de → [a...]
@@ -131,11 +132,21 @@ export async function PATCH(
       }
     }
 
+    // Sincronización aditiva a Core al despachar (Salida de inventario + espejo
+    // de remisión). Idempotente y best-effort: nunca rompe la transición local.
+    let coreSync: SyncStep[] | undefined;
+    if (estadoNuevo === 'En Transito' || estadoNuevo === 'Entregada') {
+      const rem = remisionInputFromRecord(id, patchData.fields ?? getData.fields ?? {});
+      coreSync = await syncRemisionDispatch(rem);
+      console.log(`🔄 Core sync (${id}):`, coreSync.map((s) => `${s.step}=${s.skipped ? 'skip' : s.ok ? 'ok' : 'err'}`).join(', '));
+    }
+
     return NextResponse.json({
       success: true,
       record: patchData,
       transicion: { de: estadoActual, a: estadoNuevo },
       ...(pedidoActualizado ? { pedido_actualizado: pedidoActualizado } : {}),
+      ...(coreSync ? { core_sync: coreSync } : {}),
     }, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

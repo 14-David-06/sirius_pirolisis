@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../../../../lib/config';
+import { runBlendDeduction } from '../../../../../../../lib/blend-deduction';
 
 // POST /api/pirolisis/blend/pedidos/[id]/iniciar-produccion
 //
@@ -13,11 +14,16 @@ import { config } from '../../../../../../../lib/config';
 //   4a. Si insuficiente → PATCH pedido a "Pendiente Stock" y retorna 409 con detalle del faltante
 //        y mensaje guía: "Registra la entrada en Sirius Inventario Production Core...".
 //   4b. Si suficiente →
-//        - Crea registro en blend_produccion local (sin link al pedido — usamos texto plano).
-//        - PATCH pedido en Core a "En Produccion".
-//        - Retorna 200.
+//        - PATCH pedido en Core a "Procesando" (LOCK de idempotencia: re-invocar
+//          devuelve 409 porque el estado ya no es "Recibido" → no hay doble deducción).
+//        - Crea registro en blend_produccion local.
+//        - Auto-deducción (Paso 5) vía runBlendDeduction: descuenta biochar de los
+//          baches seleccionados + Abono/Biológicos de insumos + registra Entrada en
+//          Inventario Production Core + puebla links de la producción.
+//        - Retorna 200 (o 207 si la deducción falló en algún paso crítico).
 //
-// Importante: NO descuenta inventario aquí (lo hace otro proceso al despachar).
+// Requiere en el body: { baches: string[] } — record IDs de los baches que el
+// operador seleccionó para cubrir el biochar (Paso 3). El sistema reparte los KG.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -56,6 +62,41 @@ export async function POST(
 
   const { id } = await params;
   const pedidoCoreUrl = `https://api.airtable.com/v0/${coreBaseId}/${pedidosTable}/${id}`;
+
+  // Baches seleccionados (Paso 3). Acepta:
+  //   - baches: string[]                         → reparto automático por orden
+  //   - baches: [{ id|bacheId, kg }]             → reparto explícito por bache
+  const body = await request.json().catch(() => ({} as Record<string, unknown>));
+  const rawBaches = (body as any)?.baches ?? (body as any)?.bacheIds;
+  let bacheIds: string[] = [];
+  let bacheAllocations: { bacheId: string; kg: number }[] | undefined;
+  if (Array.isArray(rawBaches) && rawBaches.length) {
+    if (typeof rawBaches[0] === 'object' && rawBaches[0] !== null) {
+      bacheAllocations = rawBaches
+        .map((b: any) => ({ bacheId: String(b.id ?? b.bacheId ?? ''), kg: Number(b.kg ?? 0) }))
+        .filter((b: { bacheId: string; kg: number }) => b.bacheId && b.kg > 0);
+      bacheIds = bacheAllocations.map((b) => b.bacheId);
+    } else {
+      bacheIds = rawBaches.map((x: any) => String(x));
+    }
+  }
+  const realizaRegistro = String((body as any)?.realizaRegistro || 'Sistema');
+
+  if (!blendProduccionTableId) {
+    return NextResponse.json(
+      { error: 'AIRTABLE_BLEND_PRODUCCION_TABLE_ID no configurado' },
+      { status: 500 }
+    );
+  }
+  if (!bacheIds.length) {
+    return NextResponse.json(
+      {
+        error: 'Debes seleccionar al menos un bache para el biochar',
+        details: 'El body debe incluir { baches: [recordId, ...] } con los baches que cubren el 20% de biochar.',
+      },
+      { status: 400 }
+    );
+  }
 
   try {
     // 1. Leer pedido en Core
@@ -177,45 +218,66 @@ export async function POST(
       );
     }
 
-    // PATCH exitoso → ahora crear registro local blend_produccion
-    let produccionRecordId = '';
-    if (blendProduccionTableId) {
-      const produccionFields: Record<string, unknown> = {
-        'KG Total Blend': kgSolicitados,
-        'Cliente': idClienteCore || 'N/A',
-        'Empaque': empaque || 'N/A',
-        'Estado': 'En Proceso',
-        'Realiza Registro': 'Sistema',
-      };
+    // PATCH exitoso (pedido bloqueado en Procesando) → crear registro blend_produccion.
+    const produccionFields: Record<string, unknown> = {
+      'KG Total Blend': kgSolicitados,
+      'Cliente': idClienteCore || 'N/A',
+      'Empaque': empaque || 'N/A',
+      'Estado': 'En Proceso',
+      'Realiza Registro': realizaRegistro,
+    };
 
-      const prodRes = await fetch(
-        `https://api.airtable.com/v0/${localBaseId}/${blendProduccionTableId}`,
-        {
-          method: 'POST',
-          headers: localHeaders,
-          body: JSON.stringify({ records: [{ fields: produccionFields }] }),
-        }
-      );
-      const prodData = await prodRes.json();
-      if (!prodRes.ok) {
-        console.warn('⚠️ No se pudo crear registro local de producción (no crítico):', prodData);
-      } else {
-        produccionRecordId = prodData.records?.[0]?.id ?? '';
-        console.log('✅ blend_produccion creado:', produccionRecordId);
+    const prodRes = await fetch(
+      `https://api.airtable.com/v0/${localBaseId}/${blendProduccionTableId}`,
+      {
+        method: 'POST',
+        headers: localHeaders,
+        body: JSON.stringify({ records: [{ fields: produccionFields }] }),
       }
+    );
+    const prodData = await prodRes.json();
+    if (!prodRes.ok) {
+      console.error('❌ No se pudo crear registro de producción:', prodData);
+      return NextResponse.json(
+        {
+          error: 'No se pudo crear el registro de producción',
+          details: prodData,
+          aviso: 'El pedido ya quedó en Procesando en Core; no se aplicó ninguna deducción.',
+        },
+        { status: 502 }
+      );
     }
+    const produccionRecordId: string = prodData.records?.[0]?.id ?? '';
+    const produccionCodigo: string = prodData.records?.[0]?.fields?.['ID'] ?? produccionRecordId;
+    console.log('✅ blend_produccion creado:', produccionRecordId, produccionCodigo);
 
-    console.log(`✅ Pedido ${idPedidoCore} → En Produccion (producción local ${produccionRecordId || 'no creada'})`);
+    // Auto-deducción de inventario (Paso 5)
+    const deduccion = await runBlendDeduction({
+      produccionRecordId,
+      produccionCodigo,
+      kgTotal: kgSolicitados,
+      bacheIds,
+      bacheAllocations,
+      cliente: idClienteCore || 'N/A',
+      pedidoSimbolico: idPedidoCore,
+      realizaRegistro,
+    });
+
+    console.log(`✅ Pedido ${idPedidoCore} → En Produccion (${produccionCodigo}). Deducción ok=${deduccion.ok}`);
     return NextResponse.json(
       {
-        success: true,
-        message: 'Producción iniciada exitosamente',
+        success: deduccion.ok,
+        message: deduccion.ok
+          ? 'Producción iniciada y inventario descontado exitosamente'
+          : 'Producción creada, pero la deducción de inventario falló en un paso crítico. Revisa los detalles.',
         estado_actual: 'En Produccion',
         id_pedido_core: idPedidoCore,
         produccion_record_id: produccionRecordId,
+        produccion_codigo: produccionCodigo,
         kg_total: kgSolicitados,
+        deduccion,
       },
-      { status: 200 }
+      { status: deduccion.ok ? 200 : 207 }
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

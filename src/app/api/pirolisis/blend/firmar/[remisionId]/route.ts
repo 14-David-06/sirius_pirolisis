@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../../../lib/config';
+import { syncRemisionDispatch, remisionInputFromRecord } from '../../../../../../lib/blend-core-sync';
 import { getS3Client } from '../../../../../../lib/aws-config.server';
 import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -191,6 +192,17 @@ export async function POST(
       } catch (pedidoErr) {
         console.warn('⚠️ No se pudo actualizar estado del pedido (no crítico):', pedidoErr);
       }
+    }
+
+    // Sincronización aditiva a Core (la firma lleva la remisión a "Entregada"):
+    // Salida de inventario + espejo de remisión. Idempotente y best-effort.
+    try {
+      const rem = remisionInputFromRecord(remisionId, f);
+      rem.estado = 'Entregada';
+      const coreSync = await syncRemisionDispatch(rem);
+      console.log(`🔄 Core sync firma (${remisionId}):`, coreSync.map((s) => `${s.step}=${s.skipped ? 'skip' : s.ok ? 'ok' : 'err'}`).join(', '));
+    } catch (syncErr) {
+      console.warn('⚠️ Core sync tras firma falló (no crítico):', syncErr);
     }
 
     return NextResponse.json({ success: true, remision_id: remisionId, timestamp }, { status: 200 });

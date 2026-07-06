@@ -65,9 +65,12 @@ export async function GET(request: NextRequest) {
     const stockAbono4g: number = d1.fields?.[FIELD_TOTAL_STOCK] ?? 0;
     const stockBiologicos: number = d2.fields?.[FIELD_TOTAL_STOCK] ?? 0;
 
-    // Proporciones de la mezcla Biochar Blend
-    const abono_necesario = kgTotal * 0.74;
-    const biologicos_necesario = kgTotal * 0.007;
+    // Proporciones de la mezcla Biochar Blend (centralizadas en config.blend
+    // para que verificación de stock y auto-deducción nunca diverjan)
+    const pctAbono = config.blend.pctAbono;
+    const pctBiologicos = config.blend.pctBiologicos;
+    const abono_necesario = kgTotal * pctAbono;
+    const biologicos_necesario = kgTotal * pctBiologicos;
 
     // suficiente: true solo si AMBOS insumos cubren su proporción individualmente
     const abono_suficiente = stockAbono4g >= abono_necesario;
@@ -80,8 +83,8 @@ export async function GET(request: NextRequest) {
       kg_total_solicitado: kgTotal,
       suficiente,
       proporciones: {
-        abono_4g: { proporcion: 0.74, kg_necesario: abono_necesario, stock_actual: stockAbono4g, suficiente: abono_suficiente },
-        biologicos_datalab: { proporcion: 0.007, kg_necesario: biologicos_necesario, stock_actual: stockBiologicos, suficiente: biologicos_suficiente },
+        abono_4g: { proporcion: pctAbono, kg_necesario: abono_necesario, stock_actual: stockAbono4g, suficiente: abono_suficiente },
+        biologicos_datalab: { proporcion: pctBiologicos, kg_necesario: biologicos_necesario, stock_actual: stockBiologicos, suficiente: biologicos_suficiente },
       },
       stock: {
         abono_4g: {

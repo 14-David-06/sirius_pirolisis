@@ -41,7 +41,7 @@ interface Producto {
 }
 
 const BG_IMAGE =
-  "https://res.cloudinary.com/dk0k0bfet/image/upload/v1748114941/ChatGPT_Image_May_20_2025_01_34_17_AM_phafxp.png";
+  "https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg";
 
 const ESTADOS = [
   "Todos",
@@ -109,6 +109,13 @@ export default function AdminPedidosBlendPage() {
   const [accionando, setAccionando] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "err"; texto: string } | null>(null);
   const [modalPedido, setModalPedido] = useState<Pedido | null>(null);
+  // Selección de baches para iniciar producción (Paso 3). Guarda el pedidoId activo.
+  const [prodBachesModal, setProdBachesModal] = useState<string | null>(null);
+  const [prodBachesIds, setProdBachesIds] = useState<string[]>([]);
+  // KG de biochar a tomar de cada bache (bacheId → kg como string editable).
+  const [prodBachesKg, setProdBachesKg] = useState<Record<string, string>>({});
+  // Acción en curso sobre una remisión (despacho/pdf/link).
+  const [remisionAccionId, setRemisionAccionId] = useState<string | null>(null);
 
   // ── Modal stock insuficiente ──────────────────────────────────────────────
   interface InsumoStock { necesario: number; stock: number; faltante: number; }
@@ -149,7 +156,7 @@ export default function AdminPedidosBlendPage() {
     responsableEntrega: "",
     numDocEntrega: "",
     telefonoEntrega: "",
-    emailEntrega: "",
+    emailEntrega: "adm@siriusregenerative.com",
     responsableRecibe: "",
     numDocRecibe: "",
     telefonoRecibe: "",
@@ -369,20 +376,146 @@ export default function AdminPedidosBlendPage() {
     setTimeout(() => setMensaje(null), 4000);
   };
 
-  // ── Iniciar Producción (verifica stock LOCAL y, si OK, marca pedido en Core como "En Produccion") ──
-  const iniciarProduccion = async (pedidoId: string) => {
+  // ── Acciones sobre una remisión (despacho / PDF / link de firma) ──────────
+  // El avance de estado a "En Transito"/"Entregada" dispara el sync a Core
+  // (Salida de inventario + espejo en Remisiones Core).
+  const SIGUIENTE_ESTADO_REM: Record<string, string> = {
+    "Borrador": "Pendiente Firma",
+    "Pendiente Firma": "En Transito",
+    "En Transito": "Entregada",
+  };
+  const LABEL_SIGUIENTE_REM: Record<string, string> = {
+    "Borrador": "Enviar a firma",
+    "Pendiente Firma": "🚚 Despachar",
+    "En Transito": "✅ Entregada",
+  };
+
+  const avanzarEstadoRemision = async (remId: string, estadoActual: string) => {
+    const nuevo = SIGUIENTE_ESTADO_REM[estadoActual];
+    if (!nuevo) return;
+    setRemisionAccionId(remId);
+    try {
+      const res = await fetch(`/api/pirolisis/blend/remisiones/${remId}/estado`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: nuevo }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const sync = Array.isArray(data.core_sync)
+          ? ` · Core: ${data.core_sync.map((s: any) => `${s.step}=${s.skipped ? "skip" : s.ok ? "ok" : "err"}`).join(", ")}`
+          : "";
+        mostrarMensaje("ok", `✅ Remisión → ${nuevo}${sync}`);
+        fetchRemisiones();
+      } else {
+        mostrarMensaje("err", data.error ? String(data.error) : "No se pudo cambiar el estado");
+      }
+    } catch (err) {
+      mostrarMensaje("err", err instanceof Error ? err.message : "Error de red");
+    } finally {
+      setRemisionAccionId(null);
+    }
+  };
+
+  const generarPdfRemision = async (remId: string) => {
+    setRemisionAccionId(remId);
+    try {
+      const res = await fetch(`/api/pirolisis/blend/remisiones/${remId}/generar-pdf`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.pdf_url) {
+        window.open(data.pdf_url, "_blank");
+        mostrarMensaje("ok", "✅ PDF generado");
+        fetchRemisiones();
+      } else {
+        mostrarMensaje("err", data.error ? String(data.error) : "No se pudo generar el PDF");
+      }
+    } catch (err) {
+      mostrarMensaje("err", err instanceof Error ? err.message : "Error de red");
+    } finally {
+      setRemisionAccionId(null);
+    }
+  };
+
+  const copiarLinkFirma = async (remId: string) => {
+    const url = `${window.location.origin}/pirolisis/blend/firmar/${remId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      mostrarMensaje("ok", "🔗 Link de firma copiado al portapapeles");
+    } catch {
+      mostrarMensaje("ok", url);
+    }
+  };
+
+  // Biochar requerido (20%) para el pedido activo en el modal de producción.
+  const biocharRequeridoProd = (pedidoId: string | null) => {
+    const p = pedidos.find(x => x.id === pedidoId);
+    const kg = Number(p?.fields?.["KG Solicitados"] ?? p?.fields?.["KG Total Pedido"] ?? 0);
+    return kg * PCT_BIOCHAR;
+  };
+
+  const toggleProdBache = (id: string) => {
+    if (prodBachesIds.includes(id)) {
+      // Quitar: solo elimina este bache, sin tocar los KG de los demás.
+      setProdBachesIds(prev => prev.filter(b => b !== id));
+      setProdBachesKg(prev => { const n = { ...prev }; delete n[id]; return n; });
+      return;
+    }
+    // Agregar: sugiere solo lo que falta por asignar (sin pisar lo ya escrito),
+    // limitado al stock disponible del bache. El operador puede ajustarlo.
+    const requerido = biocharRequeridoProd(prodBachesModal);
+    const yaAsignado = prodBachesIds.reduce((s, bid) => s + (parseFloat(prodBachesKg[bid] || "0") || 0), 0);
+    const restante = Math.max(0, requerido - yaAsignado);
+    const b = baches.find(x => x.id === id);
+    const disp = Number(b?.fields?.["Total Cantidad Actual Biochar Seco"] ?? 0);
+    const sugerido = Math.min(restante, disp);
+    setProdBachesIds(prev => [...prev, id]);
+    setProdBachesKg(prev => ({ ...prev, [id]: sugerido > 0 ? sugerido.toFixed(2) : "0" }));
+  };
+
+  const setBacheKg = (id: string, val: string) => setProdBachesKg(prev => ({ ...prev, [id]: val }));
+
+  // Payload de baches con su reparto de KG para enviar al backend.
+  const buildProdBachesPayload = () =>
+    prodBachesIds
+      .map(id => ({ id, kg: parseFloat(prodBachesKg[id] || "0") || 0 }))
+      .filter(b => b.kg > 0);
+
+  // Abre el modal de selección de baches antes de iniciar producción.
+  const abrirSeleccionBaches = (pedidoId: string) => {
+    setProdBachesIds([]);
+    setProdBachesKg({});
+    setProdBachesModal(pedidoId);
+  };
+
+  // ── Iniciar Producción (verifica stock LOCAL, descuenta inventario y marca pedido en Core como "En Produccion") ──
+  // bacheIds: baches seleccionados por el operador para cubrir el biochar (Paso 3).
+  const iniciarProduccion = async (
+    pedidoId: string,
+    baches: { id: string; kg: number }[] = buildProdBachesPayload()
+  ) => {
     setAccionando(pedidoId);
     try {
       const res = await fetch(`/api/pirolisis/blend/pedidos/${pedidoId}/iniciar-produccion`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baches }),
       });
       const data = await res.json();
       if (res.ok) {
-        mostrarMensaje("ok", `✅ Producción iniciada — ${data.kg_total ?? ""} kg`);
+        mostrarMensaje("ok", `✅ Producción iniciada — ${data.kg_total ?? ""} kg (biochar de ${baches.length} bache(s))`);
+        setProdBachesModal(null);
         fetchPedidos(filtroEstado);
         setModalPedido(null);
+      } else if (res.status === 207) {
+        // Producción creada pero la deducción falló en un paso crítico.
+        const fallidos = (data.deduccion?.steps ?? []).filter((s: any) => !s.ok).map((s: any) => `${s.step}: ${s.error}`);
+        mostrarMensaje("err", `⚠️ Producción creada pero la deducción falló — ${fallidos.join(" | ") || "revisa el detalle"}`);
+        setProdBachesModal(null);
+        fetchPedidos(filtroEstado);
       } else if (res.status === 409 && data.insumos) {
         // insumos = stockData.proporciones: { abono_4g: { kg_necesario, stock_actual }, biologicos_datalab: { ... } }
+        // Cerramos el modal de baches (la selección persiste en prodBachesIds para el reintento).
+        setProdBachesModal(null);
         const p = data.insumos;
         const mkInsumo = (key: string) => {
           const d = p?.[key] ?? {};
@@ -556,12 +689,19 @@ export default function AdminPedidosBlendPage() {
     );
   }, [pedidos]);
 
-  // Auto-rellenar realizaRegistro en form remision
+  // Auto-rellenar datos del usuario (registro + responsable de entrega) en form remision
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem("userSession") || "{}");
       const nombre = s?.user?.Nombre || "";
-      if (nombre) setRemisionFormData(prev => ({ ...prev, realizaRegistro: nombre }));
+      const cedula = s?.user?.Cedula || "";
+      if (nombre || cedula) {
+        setRemisionFormData(prev => ({
+          ...prev,
+          ...(nombre ? { realizaRegistro: nombre, responsableEntrega: nombre } : {}),
+          ...(cedula ? { numDocEntrega: cedula } : {}),
+        }));
+      }
     } catch { /* sin sesión */ }
   }, []);
 
@@ -579,21 +719,46 @@ export default function AdminPedidosBlendPage() {
       .finally(() => setLoadingPersonal(false));
   }, [selectedClienteIdRem]);
 
-  const handlePedidoRemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handlePedidoRemChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const pedidoId = e.target.value;
     setSelectedPedidoIdRem(pedidoId);
     setSelectedClienteIdRem("");
     setRemisionFormData(prev => ({ ...prev, produccionId: "", cliente: "", nitCcCliente: "" }));
     if (!pedidoId) return;
     const pedido = pedidosValidos.find(p => p.id === pedidoId);
-    if (pedido) {
-      const produccionOrigen = pedido.fields["Produccion Origen"];
-      setRemisionFormData(prev => ({
-        ...prev,
-        produccionId: Array.isArray(produccionOrigen) ? (produccionOrigen[0] as string) : "",
-        cliente: String(pedido.fields["Cliente"] ?? ""),
-        nitCcCliente: String(pedido.fields["NIT/CC Cliente"] ?? pedido.fields["Nit"] ?? ""),
-      }));
+    if (!pedido) return;
+
+    setRemisionFormData(prev => ({
+      ...prev,
+      cliente: String(pedido.fields["Cliente"] ?? ""),
+      nitCcCliente: String(pedido.fields["NIT/CC Cliente"] ?? pedido.fields["Nit"] ?? pedido.fields["NIT Cliente"] ?? ""),
+    }));
+
+    // La producción se vincula por FK simbólica (Pedido Origen = SIRIUS-PED-XXXX),
+    // no por linked-record en el pedido (que vive en Pedidos Core).
+    const pedidoSimbolico = String(pedido.fields["ID Pedido Core"] ?? "");
+    if (!pedidoSimbolico) return;
+    try {
+      const res = await fetch(`/api/pirolisis/blend/produccion/by-pedido?pedido=${encodeURIComponent(pedidoSimbolico)}`);
+      const data = await res.json();
+      const prod = data?.produccion;
+      if (prod?.id) {
+        setRemisionFormData(prev => ({
+          ...prev,
+          produccionId: prod.id,
+          // Autocompletar KG por componente desde la producción (editables).
+          kgBiocharPuro: prod.kg_biochar_puro ? String(prod.kg_biochar_puro) : prev.kgBiocharPuro,
+          kgAbono4g: prod.kg_abono_4g ? String(prod.kg_abono_4g) : prev.kgAbono4g,
+          kgAgua: prod.kg_agua ? String(prod.kg_agua) : prev.kgAgua,
+          kgBiologicos: prod.kg_biologicos ? String(prod.kg_biologicos) : prev.kgBiologicos,
+        }));
+        // Heredar los baches de la producción (los KG por bache ya se fijaron al producir).
+        if (Array.isArray(prod.baches) && prod.baches.length) {
+          setSelectedBachesIds(prod.baches);
+        }
+      }
+    } catch (err) {
+      console.error("Error resolviendo producción del pedido:", err);
     }
   };
 
@@ -621,12 +786,22 @@ export default function AdminPedidosBlendPage() {
     setSelectedBachesIds(prev => prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]);
   };
 
+  // Suma el biochar seco disponible de los baches seleccionados.
+  const sumaBiocharBaches = (ids: string[]) =>
+    ids.reduce((s, id) => {
+      const b = baches.find(x => x.id === id);
+      return s + Number(b?.fields?.["Total Cantidad Actual Biochar Seco"] ?? 0);
+    }, 0);
+
+  // Fracción de biochar en la mezcla (para mostrar el requerido en la UI).
+  const PCT_BIOCHAR = 0.20;
+
   const resetRemisionForm = () => {
     setRemisionFormData({
       produccionId: "", cliente: "", nitCcCliente: "",
       fechaEvento: new Date().toISOString().split("T")[0],
       realizaRegistro: remisionFormData.realizaRegistro,
-      responsableEntrega: "", numDocEntrega: "", telefonoEntrega: "", emailEntrega: "",
+      responsableEntrega: "", numDocEntrega: "", telefonoEntrega: "", emailEntrega: "adm@siriusregenerative.com",
       responsableRecibe: "", numDocRecibe: "", telefonoRecibe: "", emailRecibe: "",
       kgBiocharPuro: "", kgAbono4g: "", kgAgua: "", kgBiologicos: "", observaciones: "",
     });
@@ -659,7 +834,15 @@ export default function AdminPedidosBlendPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(postBody),
       });
       const createData = await createRes.json();
-      if (!createRes.ok) { setSubmitRemisionError(createData.error || createData.details || "Error al crear la remisión"); return; }
+      if (!createRes.ok) {
+        const errMsg = typeof createData.error === "string"
+          ? createData.error
+          : createData.error?.message
+            || (typeof createData.details === "string" ? createData.details : "")
+            || "Error al crear la remisión";
+        setSubmitRemisionError(errMsg);
+        return;
+      }
 
       const remisionId: string = createData.record?.id;
       if (remisionId && remisionFormData.responsableRecibe && remisionFormData.numDocRecibe) {
@@ -688,11 +871,11 @@ export default function AdminPedidosBlendPage() {
         className="min-h-screen bg-cover bg-center bg-no-repeat relative"
         style={{ backgroundImage: `url('${BG_IMAGE}')` }}
       >
-        <div className="absolute inset-0 bg-black/60 z-0" />
+        <div className="absolute inset-0 bg-black/50 z-0" />
         <div className="relative z-10 flex flex-col min-h-screen">
           <Navbar />
 
-          <main className="flex-1 px-4 py-8 max-w-7xl mx-auto w-full">
+          <main className="container mx-auto px-6 py-8 max-w-7xl">
             {/* Encabezado */}
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
@@ -757,7 +940,7 @@ export default function AdminPedidosBlendPage() {
 
             {/* ── Formulario Agendar Pedido ─────────────────────────────── */}
             {showForm && (
-              <div className="bg-black/40 backdrop-blur-md rounded-xl shadow-lg p-8 border border-white/10 mb-6">
+              <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-lg p-8 border border-white/30 mb-6">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-white drop-shadow-lg">📋 Nuevo Pedido de Biochar Blend</h2>
                   <button onClick={resetForm} className="text-white/70 hover:text-white text-2xl font-bold transition-colors">✕</button>
@@ -765,7 +948,7 @@ export default function AdminPedidosBlendPage() {
                 <form onSubmit={handleSubmit} className="space-y-6">
 
                   {/* Cliente */}
-                  <div className="bg-black/30 backdrop-blur-sm p-6 rounded-xl border border-white/10">
+                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20">
                     <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">👤 Cliente</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
@@ -809,7 +992,7 @@ export default function AdminPedidosBlendPage() {
                   </div>
 
                   {/* Producto */}
-                  <div className="bg-black/30 backdrop-blur-sm p-6 rounded-xl border border-white/10">
+                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20">
                     <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">🌿 Producto</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
@@ -852,7 +1035,7 @@ export default function AdminPedidosBlendPage() {
                   </div>
 
                   {/* Detalles del Pedido */}
-                  <div className="bg-black/30 backdrop-blur-sm p-6 rounded-xl border border-white/10">
+                  <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl border border-white/20">
                     <h3 className="text-lg font-semibold text-white mb-4 drop-shadow">📦 Detalles del Pedido</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
@@ -1023,7 +1206,7 @@ export default function AdminPedidosBlendPage() {
                 <p>No hay pedidos para mostrar</p>
               </div>
             ) : (
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden">
+              <div className="bg-white/20 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -1109,7 +1292,7 @@ export default function AdminPedidosBlendPage() {
                                 {puedeIniciar && (
                                   <button
                                     disabled={isActualizando}
-                                    onClick={() => iniciarProduccion(pedido.id)}
+                                    onClick={() => abrirSeleccionBaches(pedido.id)}
                                     className="px-3 py-1.5 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-xs border border-green-500/50 transition-all disabled:opacity-50"
                                   >
                                     {isActualizando ? "…" : "Iniciar Producción"}
@@ -1156,7 +1339,7 @@ export default function AdminPedidosBlendPage() {
 
               {/* Formulario nueva remisión */}
               {showRemisionForm && (
-                <div className="bg-black/40 backdrop-blur-md rounded-xl shadow-lg p-8 border border-white/10 mb-6">
+                <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-lg p-8 border border-white/30 mb-6">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-white drop-shadow-lg">📦 Nueva Remisión de Biochar Blend</h2>
                     <button onClick={resetRemisionForm} className="text-white/70 hover:text-white text-2xl font-bold transition-colors">✕</button>
@@ -1164,7 +1347,7 @@ export default function AdminPedidosBlendPage() {
                   <form onSubmit={handleRemisionSubmit} className="space-y-5">
 
                     {/* Pedido origen */}
-                    <div className="bg-black/30 backdrop-blur-sm p-5 rounded-xl border border-white/10">
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-xl border border-white/20">
                       <h3 className="text-base font-semibold text-white mb-3">📋 Pedido origen</h3>
                       <select
                         value={selectedPedidoIdRem}
@@ -1187,9 +1370,9 @@ export default function AdminPedidosBlendPage() {
                       )}
                     </div>
 
-                    {/* Cliente receptor */}
-                    <div className="bg-black/30 backdrop-blur-sm p-5 rounded-xl border border-white/10">
-                      <h3 className="text-base font-semibold text-white mb-3">👤 Cliente receptor</h3>
+                    {/* Cliente */}
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-xl border border-white/20">
+                      <h3 className="text-base font-semibold text-white mb-3">👤 Cliente</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-white/90 mb-1">Confirmar / cambiar cliente</label>
@@ -1206,29 +1389,12 @@ export default function AdminPedidosBlendPage() {
                           <label className="block text-sm font-medium text-white/90 mb-1">NIT / CC Cliente</label>
                           <input type="text" value={remisionFormData.nitCcCliente} onChange={e => setRemisionFormData(prev => ({ ...prev, nitCcCliente: e.target.value }))} placeholder="Auto-rellena al seleccionar cliente" className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500/40" />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-white/90 mb-1">
-                            Responsable Recibe
-                            {loadingPersonal && <span className="text-white/40 ml-2 text-xs">cargando...</span>}
-                          </label>
-                          <select value={selectedPersonaRecibeId} onChange={handlePersonaRecibeChange} disabled={!selectedClienteIdRem || loadingPersonal} className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500/40 disabled:opacity-50" style={{ colorScheme: "dark" }}>
-                            <option value="" className="bg-gray-900">{!selectedClienteIdRem ? "— Selecciona un cliente primero —" : personal.length === 0 && !loadingPersonal ? "Sin personal registrado" : "— Seleccionar quien recibe —"}</option>
-                            {personal.map(p => <option key={p.recordId} value={p.recordId} className="bg-gray-900">{p.nombre}{p.cargo ? ` (${p.cargo})` : ""}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-white/90 mb-1">Num Doc Recibe</label>
-                          <input type="text" value={remisionFormData.numDocRecibe} onChange={e => setRemisionFormData(prev => ({ ...prev, numDocRecibe: e.target.value }))} placeholder="Auto-rellena al seleccionar persona" className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500/40" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-white/90 mb-1">Teléfono Recibe</label>
-                          <input type="text" value={remisionFormData.telefonoRecibe} onChange={e => setRemisionFormData(prev => ({ ...prev, telefonoRecibe: e.target.value }))} className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500/40" />
-                        </div>
                       </div>
+                      <p className="text-xs text-white/40 mt-3">Los datos de quién recibe se capturan al momento de la recepción/firma, no aquí.</p>
                     </div>
 
                     {/* Responsable entrega (Sirius) */}
-                    <div className="bg-black/30 backdrop-blur-sm p-5 rounded-xl border border-white/10">
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-xl border border-white/20">
                       <h3 className="text-base font-semibold text-white mb-3">🚚 Responsable de entrega (Sirius)</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -1240,10 +1406,6 @@ export default function AdminPedidosBlendPage() {
                           <input type="text" value={remisionFormData.numDocEntrega} onChange={e => setRemisionFormData(prev => ({ ...prev, numDocEntrega: e.target.value }))} required placeholder="Cédula del responsable" className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500/40" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-white/90 mb-1">Teléfono Entrega</label>
-                          <input type="text" value={remisionFormData.telefonoEntrega} onChange={e => setRemisionFormData(prev => ({ ...prev, telefonoEntrega: e.target.value }))} className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500/40" />
-                        </div>
-                        <div>
                           <label className="block text-sm font-medium text-white/90 mb-1">Email Entrega</label>
                           <input type="email" value={remisionFormData.emailEntrega} onChange={e => setRemisionFormData(prev => ({ ...prev, emailEntrega: e.target.value }))} className="w-full px-3 py-2 bg-black/40 border border-white/15 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500/40" />
                         </div>
@@ -1251,7 +1413,7 @@ export default function AdminPedidosBlendPage() {
                     </div>
 
                     {/* Composición (KG) */}
-                    <div className="bg-black/30 backdrop-blur-sm p-5 rounded-xl border border-white/10">
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-xl border border-white/20">
                       <h3 className="text-base font-semibold text-white mb-3">⚖️ Composición del despacho (kg)</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {(["kgBiocharPuro", "kgAbono4g", "kgAgua", "kgBiologicos"] as const).map((field, i) => (
@@ -1270,8 +1432,9 @@ export default function AdminPedidosBlendPage() {
                     </div>
 
                     {/* Baches */}
-                    <div className="bg-black/30 backdrop-blur-sm p-5 rounded-xl border border-white/10">
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-xl border border-white/20">
                       <h3 className="text-base font-semibold text-white mb-3">🗂️ Baches utilizados <span className="text-red-400">*</span></h3>
+                      <p className="text-xs text-white/50 mb-3">Heredados de la producción seleccionada. Los KG por bache ya se definieron al iniciar la producción — aquí solo confirmas la trazabilidad.</p>
                       {baches.length === 0 ? (
                         <p className="text-sm text-white/40">Sin baches disponibles</p>
                       ) : (
@@ -1290,7 +1453,25 @@ export default function AdminPedidosBlendPage() {
                           })}
                         </div>
                       )}
-                      {selectedBachesIds.length > 0 && <p className="text-xs text-green-400 mt-2">✓ {selectedBachesIds.length} bache(s) seleccionado(s)</p>}
+                      {(() => {
+                        const requerido = parseFloat(remisionFormData.kgBiocharPuro || "0");
+                        const seleccionado = sumaBiocharBaches(selectedBachesIds);
+                        const cubre = requerido > 0 && seleccionado + 1e-6 >= requerido;
+                        const falta = Math.max(0, requerido - seleccionado);
+                        return (
+                          <div className="mt-2 text-xs space-y-0.5">
+                            <p className="text-white/60">
+                              Biochar requerido: <span className="font-semibold text-white">{requerido.toFixed(2)} kg</span>
+                              {" · "}seleccionado disponible: <span className="font-semibold text-white">{seleccionado.toFixed(2)} kg</span>
+                            </p>
+                            {requerido > 0 && (
+                              cubre
+                                ? <p className="text-green-400">✓ Cobertura suficiente ({selectedBachesIds.length} bache(s))</p>
+                                : <p className="text-amber-400">⚠️ Faltan {falta.toFixed(2)} kg de biochar — selecciona más baches</p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Campos adicionales */}
@@ -1328,7 +1509,7 @@ export default function AdminPedidosBlendPage() {
               )}
 
               {/* Lista de remisiones */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden">
+              <div className="bg-white/20 backdrop-blur-md rounded-2xl border border-white/30 overflow-hidden">
                 <div className="p-4 border-b border-white/20 flex items-center justify-between">
                   <h2 className="text-white font-semibold">Remisiones registradas</h2>
                   <button onClick={fetchRemisiones} className="text-white/50 hover:text-white text-xs border border-white/20 px-3 py-1 rounded-lg transition-colors">🔄 Actualizar</button>
@@ -1351,6 +1532,7 @@ export default function AdminPedidosBlendPage() {
                           <th className="px-4 py-3 text-right">CO₂ (kg)</th>
                           <th className="px-4 py-3 text-left">Estado</th>
                           <th className="px-4 py-3 text-left">Responsable</th>
+                          <th className="px-4 py-3 text-center">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1368,6 +1550,42 @@ export default function AdminPedidosBlendPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-white/70 text-xs">{String(rem.fields["Responsable Entrega"] ?? "—")}</td>
+                            <td className="px-4 py-3">
+                              {(() => {
+                                const estadoRem = String(rem.fields["Estado"] ?? "");
+                                const enProceso = remisionAccionId === rem.id;
+                                const siguiente = SIGUIENTE_ESTADO_REM[estadoRem];
+                                return (
+                                  <div className="flex gap-1.5 justify-center flex-wrap">
+                                    {siguiente && (
+                                      <button
+                                        disabled={enProceso}
+                                        onClick={() => avanzarEstadoRemision(rem.id, estadoRem)}
+                                        className="px-2.5 py-1 rounded-lg bg-cyan-600/80 hover:bg-cyan-600 text-white text-xs border border-cyan-500/50 transition-all disabled:opacity-50"
+                                      >
+                                        {enProceso ? "…" : LABEL_SIGUIENTE_REM[estadoRem]}
+                                      </button>
+                                    )}
+                                    <button
+                                      disabled={enProceso}
+                                      onClick={() => copiarLinkFirma(rem.id)}
+                                      title="Copiar link público de firma"
+                                      className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs border border-white/20 transition-all disabled:opacity-50"
+                                    >
+                                      🔗 Firma
+                                    </button>
+                                    <button
+                                      disabled={enProceso}
+                                      onClick={() => generarPdfRemision(rem.id)}
+                                      title="Generar / regenerar PDF"
+                                      className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs border border-white/20 transition-all disabled:opacity-50"
+                                    >
+                                      📄 PDF
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1388,6 +1606,102 @@ export default function AdminPedidosBlendPage() {
       </div>
 
       {/* Modal de detalle */}
+      {/* Modal: selección de baches para iniciar producción (Paso 3) */}
+      {prodBachesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-white/20 rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-white mb-1">🗂️ Selecciona los baches de Biochar</h3>
+            <p className="text-white/50 text-xs mb-4">
+              Marca los baches y escribe cuántos KG de biochar tomar de cada uno. Deben sumar
+              exactamente el biochar requerido (puedes repartir entre varios baches).
+            </p>
+            {baches.length === 0 ? (
+              <p className="text-sm text-white/40">Sin baches disponibles en bodega.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto mb-4">
+                {baches.map(bache => {
+                  const codigo = String(bache.fields["Codigo Bache"] ?? bache.id.slice(-6));
+                  const disp = Number(bache.fields["Total Cantidad Actual Biochar Seco"] ?? 0);
+                  const checked = prodBachesIds.includes(bache.id);
+                  const asignado = parseFloat(prodBachesKg[bache.id] || "0") || 0;
+                  const excede = asignado > disp + 1e-6;
+                  return (
+                    <div key={bache.id} className={`flex items-center gap-2 p-2 rounded-lg border text-sm transition-colors ${checked ? (excede ? "border-red-400 bg-red-900/20" : "border-green-400 bg-green-900/20") : "border-white/20 hover:bg-white/5"}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleProdBache(bache.id)} className="rounded text-green-600 focus:ring-green-500 cursor-pointer" />
+                      <span className="font-medium text-white">{codigo}</span>
+                      <span className="text-white/40 text-xs">/ {disp.toFixed(0)} kg</span>
+                      {checked && (
+                        <input
+                          type="number" min="0" step="0.01"
+                          value={prodBachesKg[bache.id] ?? ""}
+                          onChange={e => setBacheKg(bache.id, e.target.value)}
+                          placeholder="kg"
+                          className="ml-auto w-20 px-2 py-1 bg-black/40 border border-white/15 rounded text-white text-xs text-right focus:outline-none focus:ring-1 focus:ring-green-500/40"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {(() => {
+              const pedidoProd = pedidos.find(p => p.id === prodBachesModal);
+              const kgPedido = Number(pedidoProd?.fields?.["KG Solicitados"] ?? pedidoProd?.fields?.["KG Total Pedido"] ?? 0);
+              const requerido = kgPedido * PCT_BIOCHAR;
+              const asignado = prodBachesIds.reduce((s, id) => s + (parseFloat(prodBachesKg[id] || "0") || 0), 0);
+              const algunoExcede = prodBachesIds.some(id => {
+                const b = baches.find(x => x.id === id);
+                const d = Number(b?.fields?.["Total Cantidad Actual Biochar Seco"] ?? 0);
+                return (parseFloat(prodBachesKg[id] || "0") || 0) > d + 1e-6;
+              });
+              const diff = requerido - asignado;
+              const cubre = requerido > 0 && Math.abs(diff) <= 0.5 && !algunoExcede && prodBachesIds.length > 0;
+              const procesando = accionando === prodBachesModal;
+              return (
+                <>
+                  <div className="mb-3 text-xs space-y-0.5 bg-white/5 rounded-lg p-3 border border-white/10">
+                    <p className="text-white/70">
+                      Pedido: <span className="font-semibold text-white">{kgPedido.toFixed(2)} kg</span> de Blend
+                      {" → "}biochar requerido (20%): <span className="font-semibold text-white">{requerido.toFixed(2)} kg</span>
+                    </p>
+                    <p className="text-white/70">
+                      Asignado: <span className="font-semibold text-white">{asignado.toFixed(2)} kg</span>
+                      {" "}({prodBachesIds.length} bache(s))
+                    </p>
+                    {requerido > 0 && (
+                      algunoExcede
+                        ? <p className="text-red-400">⚠️ Un bache tiene más KG asignados que su stock disponible</p>
+                        : cubre
+                        ? <p className="text-green-400">✓ Reparto correcto — suma {requerido.toFixed(2)} kg</p>
+                        : Math.abs(diff) > 0.5
+                        ? <p className="text-amber-400">⚠️ {diff > 0 ? `Faltan ${diff.toFixed(2)} kg por asignar` : `Sobran ${(-diff).toFixed(2)} kg asignados`}</p>
+                        : null
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setProdBachesModal(null)}
+                      disabled={procesando}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm border border-white/20 transition-all disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => iniciarProduccion(prodBachesModal)}
+                      disabled={!cubre || procesando}
+                      title={!cubre ? "El reparto por bache debe sumar el biochar requerido" : ""}
+                      className="flex-1 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold border border-green-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {procesando ? "Procesando…" : "🚀 Confirmar producción"}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {modalPedido && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70" onClick={() => setModalPedido(null)} />
@@ -1453,7 +1767,7 @@ export default function AdminPedidosBlendPage() {
                     {puedeIniciar && (
                       <button
                         disabled={isActualizando}
-                        onClick={() => iniciarProduccion(modalPedido.id)}
+                        onClick={() => abrirSeleccionBaches(modalPedido.id)}
                         className="px-4 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm border border-green-500/50 transition-all disabled:opacity-50"
                       >
                         {isActualizando ? "Procesando…" : "🚀 Iniciar Producción"}
