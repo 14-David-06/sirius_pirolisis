@@ -13,15 +13,20 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
-    
+
     if (!audioFile) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No se proporcionó archivo de audio' 
+      return NextResponse.json({
+        success: false,
+        error: 'No se proporcionó archivo de audio'
       }, { status: 400 });
     }
 
-    console.log('🎤 Procesando archivo de audio:', audioFile.name, audioFile.size, 'bytes');
+    console.log('🎤 Procesando archivo de audio:', {
+      name: audioFile.name,
+      size: audioFile.size,
+      type: audioFile.type,
+      timestamp: new Date().toISOString()
+    });
 
     // Transcribir el audio usando Whisper de OpenAI
     const transcriptionFormData = new FormData();

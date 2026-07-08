@@ -14,21 +14,39 @@ export default function VoiceRecorder({ onTemperaturesExtracted, isLoading }: Vo
   const [transcript, setTranscript] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const fileExtensionRef = useRef<string>('webm');
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
-        } 
+        }
       });
-      
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+
+      // Detectar formato de audio soportado (iOS Safari requiere MP4/AAC)
+      let mimeType = 'audio/webm;codecs=opus';
+      fileExtensionRef.current = 'webm';
+
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+        fileExtensionRef.current = 'mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+        mimeType = 'audio/aac';
+        fileExtensionRef.current = 'aac';
+      } else if (!MediaRecorder.isTypeSupported(mimeType)) {
+        // Fallback: dejar que el navegador elija el formato por defecto
+        mimeType = '';
+        fileExtensionRef.current = 'webm';
+      }
+
+      console.log('🎤 Formato de audio detectado:', mimeType || 'default');
+
+      const options = mimeType ? { mimeType } : {};
+      const mediaRecorder = new MediaRecorder(stream, options);
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -40,9 +58,9 @@ export default function VoiceRecorder({ onTemperaturesExtracted, isLoading }: Vo
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await processAudio(audioBlob);
-        
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
+        await processAudio(audioBlob, fileExtensionRef.current);
+
         // Detener todas las pistas del stream
         stream.getTracks().forEach(track => track.stop());
       };
@@ -67,10 +85,10 @@ export default function VoiceRecorder({ onTemperaturesExtracted, isLoading }: Vo
     }
   };
 
-  const processAudio = async (audioBlob: Blob) => {
+  const processAudio = async (audioBlob: Blob, extension: string) => {
     try {
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
+      formData.append('audio', audioBlob, `recording.${extension}`);
 
       const response = await fetch('/api/voice-to-temperatures', {
         method: 'POST',

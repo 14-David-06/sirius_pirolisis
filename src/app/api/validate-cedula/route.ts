@@ -13,7 +13,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (!NOMINA_BASE_ID || !NOMINA_TOKEN || !NOMINA_TABLE) {
-      return NextResponse.json({ message: 'Error de configuración del servidor' }, { status: 500 });
+      console.error('❌ [validate-cedula] Variables de entorno faltantes:', {
+        hasBaseId: !!NOMINA_BASE_ID,
+        hasToken: !!NOMINA_TOKEN,
+        hasTable: !!NOMINA_TABLE
+      });
+      return NextResponse.json({
+        message: 'Error de configuración del servidor',
+        details: process.env.NODE_ENV === 'development'
+          ? 'Faltan variables de entorno de Airtable Nómina'
+          : undefined
+      }, { status: 500 });
     }
 
     const tableEncoded = encodeURIComponent(NOMINA_TABLE);
@@ -28,7 +38,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ message: 'Error al conectar con la base de datos' }, { status: 500 });
+      const errorText = await response.text();
+      console.error('❌ [validate-cedula] Error de Airtable:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      return NextResponse.json({
+        message: 'Error al conectar con la base de datos',
+        details: process.env.NODE_ENV === 'development' ? errorText : undefined
+      }, { status: 500 });
     }
 
     const data = await response.json();
