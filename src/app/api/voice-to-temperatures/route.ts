@@ -65,34 +65,33 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
-            content: `Eres un asistente especializado en extraer datos de temperaturas de equipos de pirólisis. 
-            Analiza el texto transcrito y extrae ÚNICAMENTE los valores numéricos de temperatura para cada equipo.
-            
-            Equipos disponibles:
-            - Reactor R1, R2, R3 (requeridos)
-            - Horno H1, H2, H3, H4 (opcionales)
-            - Ducto G9 (opcional)
-            
-            Responde ÚNICAMENTE con un objeto JSON válido con los valores encontrados. 
-            Si no encuentras un valor para un equipo, no lo incluyas en la respuesta.
-            Los valores deben ser números (sin texto adicional).
-            
-            Ejemplo de respuesta:
-            {
-              "temperaturaR1": 399.5,
-              "temperaturaR2": 412.0,
-              "temperaturaR3": 413.2,
-              "temperaturaH1": 321.0,
-              "temperaturaH2": 820.5
-            }`
+            content: `Eres un asistente especializado en extraer temperaturas de equipos de pirólisis.
+Tu respuesta DEBE ser un objeto JSON válido. NO incluyas explicaciones, solo el JSON.
+
+Extrae las temperaturas para estos equipos (usa solo si se mencionan):
+- Reactor R1, R2, R3 → claves: temperaturaR1, temperaturaR2, temperaturaR3
+- Horno H1, H2, H3, H4 → claves: temperaturaH1, temperaturaH2, temperaturaH3, temperaturaH4
+- Ducto G9 → clave: temperaturaG9
+
+Si un equipo no se menciona, NO lo incluyas en el JSON.
+Los valores deben ser números decimales.
+
+Formato de salida esperado:
+{
+  "temperaturaR1": 399.5,
+  "temperaturaR2": 412.0,
+  "temperaturaR3": 413.2,
+  "temperaturaH1": 321.0
+}`
           },
           {
             role: 'user',
-            content: `Extrae las temperaturas del siguiente texto: "${transcript}"`
+            content: `Texto transcrito: "${transcript}"\n\nExtrae las temperaturas en formato JSON.`
           }
         ],
         temperature: 0.1,
@@ -111,17 +110,41 @@ export async function POST(request: NextRequest) {
 
     const completionResult = await completionResponse.json();
     const gptResponse = completionResult.choices[0].message.content;
-    
+
     console.log('🤖 Respuesta de GPT:', gptResponse);
 
     try {
       // Intentar parsear la respuesta JSON
-      const temperaturas = JSON.parse(gptResponse);
-      
+      let temperaturas;
+
+      // Limpiar respuesta si GPT agregó markdown o texto extra
+      const cleanedResponse = gptResponse.trim()
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      try {
+        temperaturas = JSON.parse(cleanedResponse);
+      } catch (firstParseError) {
+        // Intentar extraer JSON del texto si está mezclado
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          temperaturas = JSON.parse(jsonMatch[0]);
+        } else {
+          throw firstParseError;
+        }
+      }
+
+      // Validar que se extrajo al menos una temperatura
+      if (!temperaturas || typeof temperaturas !== 'object' || Object.keys(temperaturas).length === 0) {
+        throw new Error('No se pudo extraer ninguna temperatura válida');
+      }
+
       console.log('✅ Temperaturas extraídas:', temperaturas);
 
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         transcript,
         temperaturas,
         message: 'Audio procesado exitosamente'
@@ -129,11 +152,14 @@ export async function POST(request: NextRequest) {
 
     } catch (parseError) {
       console.error('❌ Error parseando JSON de GPT:', parseError);
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Error al interpretar las temperaturas del audio',
+      console.error('📄 Respuesta completa:', gptResponse);
+
+      return NextResponse.json({
+        success: false,
+        error: 'No se pudo extraer temperaturas del audio. Por favor, dicte de nuevo más claramente.',
         transcript,
-        rawResponse: gptResponse
+        rawResponse: gptResponse.substring(0, 200), // Solo primeros 200 chars para debugging
+        hint: 'Intente decir: "Reactor R1: 399 grados, Reactor R2: 412 grados"'
       }, { status: 422 });
     }
 

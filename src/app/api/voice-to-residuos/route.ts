@@ -71,42 +71,33 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
             content: `Eres un asistente especializado en extraer información sobre manejo de residuos.
-            Analiza el texto transcrito y extrae la siguiente información:
-            
-            Campos requeridos (todos los valores numéricos deben ser números, no texto):
-            - subtiposAprovechables: array de objetos con subtipo y cantidad para residuos aprovechables
-            - subtiposOrganicos: array de objetos con subtipo y cantidad para residuos orgánicos
-            - subtiposPeligrosos: array de objetos con subtipo y cantidad para residuos peligrosos
-            - subtiposNoAprovechables: array de objetos con subtipo y cantidad para residuos no aprovechables
-            
-            Campos opcionales:
-            - entregadoA: nombre de la empresa o entidad a la que se entregaron los residuos
-            - observaciones: cualquier observación o comentario adicional
-            
-            Responde ÚNICAMENTE con un objeto JSON válido con los valores encontrados.
-            Si no encuentras un valor para un campo opcional, no lo incluyas en la respuesta.
-            
-            Ejemplo de respuesta:
-            {
-              "subtiposAprovechables": [
-                {"subtipo": "Papel", "cantidad": 2},
-                {"subtipo": "Cartón", "cantidad": 3}
-              ],
-              "subtiposOrganicos": [
-                {"subtipo": "Restos de comida", "cantidad": 4}
-              ],
-              "entregadoA": "Empresa XYZ",
-              "observaciones": "residuos separados correctamente"
-            }`
+Tu respuesta DEBE ser un objeto JSON válido. NO incluyas explicaciones, solo el JSON.
+
+Analiza el texto y extrae:
+- subtiposAprovechables: array de objetos {subtipo: string, cantidad: number}
+- subtiposOrganicos: array de objetos {subtipo: string, cantidad: number}
+- subtiposPeligrosos: array de objetos {subtipo: string, cantidad: number}
+- subtiposNoAprovechables: array de objetos {subtipo: string, cantidad: number}
+- entregadoA: string (opcional)
+- observaciones: string (opcional)
+
+Ejemplo:
+{
+  "subtiposAprovechables": [{"subtipo": "Papel", "cantidad": 2}],
+  "subtiposOrganicos": [{"subtipo": "Restos de comida", "cantidad": 4}],
+  "entregadoA": "Empresa XYZ",
+  "observaciones": "residuos separados correctamente"
+}`
           },
           {
             role: 'user',
-            content: `Extrae la información de manejo de residuos del siguiente texto: "${transcript}"`
+            content: `Texto: "${transcript}"\n\nExtrae la información en formato JSON.`
           }
         ],
         temperature: 0.1,
@@ -124,7 +115,40 @@ export async function POST(req: NextRequest) {
     }
 
     const completionResult = await completionResponse.json();
-    const extractedData = JSON.parse(completionResult.choices[0].message.content);
+    const gptResponse = completionResult.choices[0].message.content;
+
+    console.log('🤖 Respuesta de GPT:', gptResponse);
+
+    let extractedData;
+    try {
+      // Limpiar respuesta si GPT agregó markdown o texto extra
+      const cleanedResponse = gptResponse.trim()
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      try {
+        extractedData = JSON.parse(cleanedResponse);
+      } catch (firstParseError) {
+        // Intentar extraer JSON del texto si está mezclado
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          extractedData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw firstParseError;
+        }
+      }
+    } catch (parseError) {
+      console.error('❌ Error parseando JSON de GPT:', parseError);
+      console.error('📄 Respuesta completa:', gptResponse);
+      return NextResponse.json({
+        success: false,
+        error: 'No se pudo extraer información de residuos del audio. Por favor, dicte de nuevo más claramente.',
+        transcript,
+        rawResponse: gptResponse.substring(0, 200)
+      }, { status: 422 });
+    }
 
     // Verificar que todos los field IDs requeridos estén presentes
     if (!Object.values(FIELD_IDS).every(id => id)) {

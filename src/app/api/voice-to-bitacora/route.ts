@@ -68,11 +68,12 @@ RESPONDE SOLO CON UN JSON EN ESTE FORMATO:
 `;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: "system",
-          content: "Eres un asistente especializado en documentación industrial. Extrae información de eventos de bitácora de plantas de pirólisis. Responde SOLO con JSON válido."
+          content: "Eres un asistente especializado en documentación industrial. Extrae información de eventos de bitácora de plantas de pirólisis. Tu respuesta DEBE ser un objeto JSON válido, sin texto adicional."
         },
         {
           role: "user",
@@ -93,9 +94,27 @@ RESPONDE SOLO CON UN JSON EN ESTE FORMATO:
     // Parsear la respuesta JSON
     let eventData;
     try {
-      eventData = JSON.parse(gptResponse);
+      // Limpiar respuesta si GPT agregó markdown o texto extra
+      const cleanedResponse = gptResponse.trim()
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      try {
+        eventData = JSON.parse(cleanedResponse);
+      } catch (firstParseError) {
+        // Intentar extraer JSON del texto si está mezclado
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          eventData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw firstParseError;
+        }
+      }
     } catch (parseError) {
       console.error('❌ Error parseando JSON de GPT-4:', parseError);
+      console.error('📄 Respuesta completa:', gptResponse);
       // Fallback: usar transcripción completa
       eventData = {
         evento: "Evento registrado por voz",
