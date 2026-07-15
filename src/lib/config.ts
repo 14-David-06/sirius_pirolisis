@@ -1,12 +1,23 @@
 // src/lib/config.ts
 // Configuración centralizada y segura de variables de entorno
 
-// src/lib/config.ts
-// Configuración centralizada y segura de variables de entorno
+// ═══════════════════════════════════════════════════════════════════════════
+// TOKEN GLOBAL — Consolidación de múltiples tokens en uno solo
+// ═══════════════════════════════════════════════════════════════════════════
+// Variable: AIRTABLE_GLOBAL_TOKEN
+// Propósito: Un solo token con acceso a todas las bases de Airtable necesarias
+// Ventajas:
+//   ✅ Simplifica gestión (8 tokens → 1 token)
+//   ✅ Rotación simple (cambiar 1 variable en 1 lugar)
+//   ✅ Backward compatible (si existe token específico, lo usa primero)
+//   ✅ Fallback automático (si no hay token específico, usa el global)
+// ═══════════════════════════════════════════════════════════════════════════
+const GLOBAL_TOKEN = process.env.AIRTABLE_GLOBAL_TOKEN;
 
 export const config = {
   airtable: {
-    token: process.env.AIRTABLE_TOKEN,
+    // Token principal para base PiroliApp (con fallback a global)
+    token: process.env.AIRTABLE_TOKEN || GLOBAL_TOKEN,
     baseId: process.env.AIRTABLE_BASE_ID,
     tableName: process.env.AIRTABLE_TABLE_NAME,
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
@@ -93,35 +104,39 @@ export const config = {
     blendProduccionTableId: process.env.AIRTABLE_BLEND_PRODUCCION_TABLE_ID,
     blendRemisionesTableId: process.env.AIRTABLE_BLEND_REMISIONES_TABLE_ID,
     blendDetalleInsumosTableId: process.env.AIRTABLE_BLEND_DETALLE_INSUMOS_TABLE_ID,
-    // Sirius Product Core (catálogo de productos)
+    // Sirius Product Core (catálogo de productos) — Blend
     productsBaseId: process.env.AIRTABLE_PRODUCTS_BASE_ID,
     productsTableId: process.env.AIRTABLE_PRODUCTS_TABLE_ID,
-    productsToken: process.env.AIRTABLE_PRODUCTS_TOKEN,
-    // Sirius Pedidos Core (pedidos centralizados)
+    productsToken: process.env.AIRTABLE_PRODUCTS_TOKEN || GLOBAL_TOKEN,
+    // Sirius Clients Core (clientes) — Blend + eUse
+    clientesBaseId: process.env.AIRTABLE_CLIENTES_BASE_ID,
+    clientesTableId: process.env.AIRTABLE_CLIENTES_TABLE_ID,
+    clientesToken: process.env.AIRTABLE_CLIENTES_TOKEN || GLOBAL_TOKEN,
+    // Sirius Pedidos Core (pedidos centralizados) — Blend
     pedidosCoreBaseId: process.env.AIRTABLE_PEDIDOS_CORE_BASE_ID,
     pedidosCorePedidosTable: process.env.AIRTABLE_PEDIDOS_CORE_PEDIDOS_TABLE,
     pedidosCoreDetallesTable: process.env.AIRTABLE_PEDIDOS_CORE_DETALLES_TABLE,
-    pedidosCoreToken: process.env.AIRTABLE_PEDIDOS_CORE_TOKEN,
-    // Sirius Remisiones Core (remisiones centralizadas)
+    pedidosCoreToken: process.env.AIRTABLE_PEDIDOS_CORE_TOKEN || GLOBAL_TOKEN,
+    // Sirius Remisiones Core (remisiones centralizadas) — Blend
     remisionesCoreBaseId: process.env.AIRTABLE_BASE_ID_SIRIUS_REMISIONES_CORE,
-    remisionesCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_REMISIONES_CORE,
+    remisionesCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_REMISIONES_CORE || GLOBAL_TOKEN,
     remisionesCoreRemisionesTable: process.env.AIRTABLE_TABLE_REMISIONES,
     remisionesCoreProductosTable: process.env.AIRTABLE_TABLE_PRODUCTOS_REMITIDOS,
-    // Sirius Inventario Production Core (inventario de productos finales)
+    // Sirius Inventario Production Core (inventario de productos finales) — Blend
     inventarioProdCoreBaseId: process.env.AIRTABLE_BASE_SIRIUS_INVENTARIO,
-    inventarioProdCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_INVENTARIO,
+    inventarioProdCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_INVENTARIO || GLOBAL_TOKEN,
     inventarioProdCoreMovimientosTable: process.env.AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS,
     inventarioProdCoreStockTable: process.env.AIRTABLE_TABLE_SIRIUS_INVENTARIO_STOCK,
     inventarioProdCoreBiocharBlendProductId: process.env.AIRTABLE_INVENTARIO_BIOCHAR_BLEND_PRODUCT_ID,
-    // Sirius Nomina Core (personal, áreas, sistemas)
+    // Sirius Nomina Core (personal, áreas, sistemas) — OPCIONAL (solo login)
     nominaCoreBaseId: process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE,
-    nominaCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE,
+    nominaCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE || GLOBAL_TOKEN,
     nominaCorePersonalTable: process.env.AIRTABLE_TABLE_NOMINA_PERSONAL,
     nominaCoreAreasTable: process.env.AIRTABLE_TABLE_NOMINA_AREAS,
     nominaCoreSistemasTable: process.env.AIRTABLE_TABLE_NOMINA_SISTEMAS_APLICACIONES,
-    // Novedades Nomina (appnRVYZMd4EAQoRF)
+    // Novedades Nomina (appnRVYZMd4EAQoRF) — OPCIONAL (módulo solicitudes ROTO)
     novedadesNominaBaseId: process.env.AIRTABLE_BASE_ID_NOVEDADES_NOMINA,
-    novedadesNominaToken: process.env.AIRTABLE_API_KEY_NOVEDADES_NOMINA,
+    novedadesNominaToken: process.env.AIRTABLE_API_KEY_NOVEDADES_NOMINA || GLOBAL_TOKEN,
     novedadesNominaReportesTable: process.env.AIRTABLE_TABLE_NOVEDADES_REPORTES,
     novedadesNominaPermisosTable: process.env.AIRTABLE_TABLE_NOVEDADES_PERMISOS,
     novedadesNominaVacacionesTable: process.env.AIRTABLE_TABLE_NOVEDADES_VACACIONES,
