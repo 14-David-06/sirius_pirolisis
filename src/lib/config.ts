@@ -246,8 +246,24 @@ export const config = {
 
 // Validación de variables de entorno requeridas
 export function validateEnvVars() {
+  // Validar que exista al menos AIRTABLE_TOKEN o AIRTABLE_GLOBAL_TOKEN
+  const hasAirtableAuth = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_GLOBAL_TOKEN;
+  if (!hasAirtableAuth) {
+    const errorMessage =
+      `❌ Se requiere al menos una de estas variables de entorno:\n` +
+      `   - AIRTABLE_TOKEN (token específico para base principal)\n` +
+      `   - AIRTABLE_GLOBAL_TOKEN (token único para todas las bases)\n` +
+      `💡 Asegúrate de tener un archivo .env.local con al menos una de estas variables.\n` +
+      `📝 Consulta .env.example o docs/90-dias/pirolisis/03-guia-deploy-token-global.md`;
+
+    console.error(errorMessage);
+    if (process.env.NODE_ENV !== 'production') {
+      throw new Error(errorMessage);
+    }
+    return false;
+  }
+
   const requiredVars = [
-    'AIRTABLE_TOKEN',
     'AIRTABLE_BASE_ID',
     'AIRTABLE_TABLE_NAME',
     'AIRTABLE_BACHES_TABLE_ID',
