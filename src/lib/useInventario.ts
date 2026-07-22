@@ -2,25 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import { config } from './config';
+import type {
+  InventarioRecord,
+  InventarioData,
+  InventarioFilters,
+  PaqueteLonasData,
+} from '@/types/inventario';
 
 // ✅ BUENA PRÁCTICA: Field IDs obtenidos de variables de entorno
 // Los valores reales se configuran en .env.local para evitar hardcodear
 // IDs sensibles en el código fuente
 const FIELD_IDS = config.airtable.inventarioFields;
 
-interface InventarioRecord {
-  id: string;
-  fields: {
-    [key: string]: any;
-  };
-  createdTime: string;
+/**
+ * Helper genérico para obtener valores de campos con fallbacks
+ * Reduce duplicación de código y centraliza la lógica de acceso a campos
+ */
+function getFieldValue<T = string>(
+  record: InventarioRecord,
+  fieldNames: Array<string | undefined | null>,
+  defaultValue: T
+): T {
+  for (const fieldName of fieldNames) {
+    if (!fieldName) continue;
+    const value = record.fields[fieldName];
+    if (value !== undefined && value !== null) {
+      return value as T;
+    }
+  }
+  return defaultValue;
 }
 
-interface InventarioData {
-  records: InventarioRecord[];
-}
-
-export function useInventario(filters?: { categoria?: string; estado?: string }) {
+export function useInventario(filters?: InventarioFilters) {
   const [data, setData] = useState<InventarioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,87 +81,80 @@ export function useInventario(filters?: { categoria?: string; estado?: string })
     fetchInventario();
   }, [filters?.categoria, filters?.estado]);
 
-  // Función helper para obtener el nombre del item
+  // ============================================================================
+  // GETTERS SIMPLIFICADOS - Usan función genérica con fallbacks
+  // ============================================================================
+
   const getItemName = (record: InventarioRecord): string => {
-    return record.fields['Insumo'] || // Campo principal según documentación
-           (FIELD_IDS.insumo ? record.fields[FIELD_IDS.insumo] : undefined) || // Field ID si está configurado
-           record.fields['Nombre del Insumo'] ||
-           record.fields['Nombre'] ||
-           record.fields['Name'] ||
-           'Sin nombre';
+    return getFieldValue(
+      record,
+      ['Insumo', FIELD_IDS.insumo || '', 'Nombre del Insumo', 'Nombre', 'Name'],
+      'Sin nombre'
+    );
   };
 
-  // Función helper para obtener la categoría del item
   const getItemCategory = (record: InventarioRecord): string => {
-    return record.fields['Categoría'] || // Campo principal según documentación
-           (FIELD_IDS.categoria ? record.fields[FIELD_IDS.categoria] : undefined) || // Field ID si está configurado
-           record.fields['Categoria'] ||
-           record.fields['Category'] ||
-           'General';
+    return getFieldValue(
+      record,
+      ['Categoría', FIELD_IDS.categoria || '', 'Categoria', 'Category'],
+      'General'
+    );
   };
 
-  // Función helper para obtener la cantidad/stock del item
   const getItemQuantity = (record: InventarioRecord): number => {
-    return record.fields['Cantidad Presentacion Insumo'] ??
-           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ??
-           record.fields['Cantidad Actual'] ??
-           record.fields['Cantidad'] ??
-           record.fields['Stock'] ??
-           0;
+    return getFieldValue(
+      record,
+      ['Cantidad Presentacion Insumo', FIELD_IDS.cantidadPresentacionInsumo || '', 'Cantidad Actual', 'Cantidad', 'Stock'],
+      0
+    );
   };
 
-  // Función helper para obtener la unidad del item
   const getItemUnit = (record: InventarioRecord): string => {
-    return record.fields['Presentacion Insumo'] ||
-           (FIELD_IDS.presentacionInsumo ? record.fields[FIELD_IDS.presentacionInsumo] : undefined) ||
-           record.fields['Unidad'] ||
-           record.fields['Unit'] ||
-           'unidades';
+    return getFieldValue(
+      record,
+      ['Presentacion Insumo', FIELD_IDS.presentacionInsumo || '', 'Unidad', 'Unit'],
+      'unidades'
+    );
   };
 
-  // Función helper para obtener la descripción del item
   const getItemDescription = (record: InventarioRecord): string => {
-    return record.fields['Realiza Registro'] || // Campo principal según documentación
-           (FIELD_IDS.realizaRegistro ? record.fields[FIELD_IDS.realizaRegistro] : undefined) || // Field ID si está configurado
-           record.fields['Descripción'] ||
-           record.fields['Notas'] ||
-           record.fields['Notes'] ||
-           '';
+    return getFieldValue(
+      record,
+      ['Realiza Registro', FIELD_IDS.realizaRegistro || '', 'Descripción', 'Notas', 'Notes'],
+      ''
+    );
   };
 
-  // Función helper para obtener las entradas del item
   const getItemEntradas = (record: InventarioRecord): string[] => {
-    return record.fields['Entrada Insumos Pirolisis'] || [];
+    return getFieldValue(record, ['Entrada Insumos Pirolisis'], []);
   };
 
-  // Función helper para obtener las salidas del item
   const getItemSalidas = (record: InventarioRecord): string[] => {
-    return record.fields['Salida Insumos Pirolisis'] || [];
+    return getFieldValue(record, ['Salida Insumos Pirolisis'], []);
   };
 
-  // Función helper para obtener la presentación del item
   const getItemPresentacion = (record: InventarioRecord): string => {
-    return record.fields['Presentacion Insumo'] || '';
+    return getFieldValue(record, ['Presentacion Insumo'], '');
   };
 
-  // Función helper para obtener la cantidad de presentación del item
   const getItemCantidadPresentacion = (record: InventarioRecord): number => {
-    return record.fields['Cantidad Presentacion Insumo'] ??
-           (FIELD_IDS.cantidadPresentacionInsumo ? record.fields[FIELD_IDS.cantidadPresentacionInsumo] : undefined) ??
-           0;
+    return getFieldValue(
+      record,
+      ['Cantidad Presentacion Insumo', FIELD_IDS.cantidadPresentacionInsumo || ''],
+      0
+    );
   };
 
-  // Función helper para obtener el stock total del item
   const getItemStockTotal = (record: InventarioRecord): number => {
-    return record.fields['Total Cantidad Stock'] ??
-           (FIELD_IDS.totalCantidadStock ? record.fields[FIELD_IDS.totalCantidadStock] : undefined) ??
-           0;
+    return getFieldValue(
+      record,
+      ['Total Cantidad Stock', FIELD_IDS.totalCantidadStock || ''],
+      0
+    );
   };
 
-  // Función helper para obtener el stock mínimo del item
   const getMinStock = (record: InventarioRecord): number => {
-    const minStock = record.fields['Stock Minimo'] ||
-                     record.fields['Min Stock'];
+    const minStock = getFieldValue(record, ['Stock Minimo', 'Min Stock'], 0);
     return typeof minStock === 'number' ? minStock : parseInt(String(minStock)) || 0;
   };
 
@@ -190,9 +196,7 @@ export function useInventario(filters?: { categoria?: string; estado?: string })
     if (!data?.records) return [];
 
     return data.records.filter(record => {
-      const itemStatus = record.fields['Estado'] ||
-                        record.fields['Status'] ||
-                        '';
+      const itemStatus = getItemEstado(record);
       return itemStatus.toLowerCase() === status.toLowerCase();
     });
   };
@@ -214,25 +218,28 @@ export function useInventario(filters?: { categoria?: string; estado?: string })
 
   // --- Nuevos getters para trazabilidad productiva ---
 
-  // Función helper para obtener la categoría de insumo (campo nuevo)
   const getItemCategoriaInsumo = (record: InventarioRecord): string => {
-    return record.fields['Categoria Insumo'] ||
-           (FIELD_IDS.categoriaInsumo ? record.fields[FIELD_IDS.categoriaInsumo] : undefined) ||
-           '';
+    return getFieldValue(
+      record,
+      ['Categoria Insumo', FIELD_IDS.categoriaInsumo],
+      ''
+    );
   };
 
-  // Función helper para obtener el estado del item (campo nuevo)
   const getItemEstado = (record: InventarioRecord): string => {
-    return record.fields['Estado'] ||
-           (FIELD_IDS.estado ? record.fields[FIELD_IDS.estado] : undefined) ||
-           'disponible';
+    return getFieldValue(
+      record,
+      ['Estado', FIELD_IDS.estado],
+      'disponible'
+    );
   };
 
-  // Función helper para obtener la fecha de vencimiento
   const getItemFechaVencimiento = (record: InventarioRecord): string | null => {
-    return record.fields['Fecha Vencimiento'] ||
-           (FIELD_IDS.fechaVencimiento ? record.fields[FIELD_IDS.fechaVencimiento] : undefined) ||
-           null;
+    return getFieldValue<string | null>(
+      record,
+      ['Fecha Vencimiento', FIELD_IDS.fechaVencimiento],
+      null
+    );
   };
 
   // Función para filtrar items por Categoria Insumo (campo nuevo)
