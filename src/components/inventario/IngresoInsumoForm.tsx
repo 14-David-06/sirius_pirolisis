@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { InventarioRecord, IngresoInsumoFormData } from '@/types/inventario';
 
 interface IngresoInsumoFormProps {
@@ -13,9 +13,11 @@ interface IngresoInsumoFormProps {
   onSuccess: () => void;
   onCancel: () => void;
   getCurrentUserName: () => string;
+  getCurrentUserIdCore?: () => string;
   getItemName: (record: InventarioRecord) => string;
   getItemCategory: (record: InventarioRecord) => string;
   getItemStockTotal: (record: InventarioRecord) => number;
+  getItemUnit: (record: InventarioRecord) => string;
 }
 
 export default function IngresoInsumoForm({
@@ -23,9 +25,11 @@ export default function IngresoInsumoForm({
   onSuccess,
   onCancel,
   getCurrentUserName,
+  getCurrentUserIdCore,
   getItemName,
   getItemCategory,
   getItemStockTotal,
+  getItemUnit,
 }: IngresoInsumoFormProps) {
   const [formData, setFormData] = useState<IngresoInsumoFormData>({
     selectedItemId: '',
@@ -33,6 +37,35 @@ export default function IngresoInsumoForm({
     notas: ''
   });
   const [creating, setCreating] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar sugerencias al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filtrar insumos por nombre o categoría
+  const filteredRecords = records.filter(item => {
+    const name = String(getItemName(item) || '').toLowerCase();
+    const category = String(getItemCategory(item) || '').toLowerCase();
+    const search = searchText.toLowerCase();
+    return name.includes(search) || category.includes(search);
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +83,7 @@ export default function IngresoInsumoForm({
         cantidad: parseFloat(formData.cantidad),
         notas: formData.notas,
         'Realiza Registro': getCurrentUserName(),
+        'ID Responsable Core': getCurrentUserIdCore?.() || getCurrentUserName(),
         tipo: 'entrada' // Para diferenciar de salidas
       };
 
@@ -77,33 +111,106 @@ export default function IngresoInsumoForm({
 
   const selectedItem = records.find(r => r.id === formData.selectedItemId);
 
+  const handleSelectItem = (item: InventarioRecord) => {
+    setFormData({...formData, selectedItemId: item.id});
+    setSearchText(getItemName(item));
+    setShowSuggestions(false);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchText(e.target.value);
+    setShowSuggestions(true);
+    // Limpiar selección si el usuario está escribiendo
+    if (formData.selectedItemId) {
+      setFormData({...formData, selectedItemId: ''});
+    }
+  };
+
+  const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const itemId = e.target.value;
+    setFormData({...formData, selectedItemId: itemId});
+    if (itemId) {
+      const item = records.find(r => r.id === itemId);
+      if (item) {
+        setSearchText(getItemName(item));
+      }
+    } else {
+      setSearchText('');
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="p-6">
       <div className="space-y-6">
-        {/* Seleccionar Insumo */}
-        <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+        {/* Seleccionar Insumo con búsqueda */}
+        <div className="bg-white/5 rounded-lg p-4 border border-white/10 relative">
           <label className="block text-sm font-semibold mb-2 text-white drop-shadow">
             Seleccionar Insumo *
           </label>
-          <select
-            value={formData.selectedItemId}
-            onChange={(e) => setFormData({...formData, selectedItemId: e.target.value})}
-            className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
-            required
-          >
-            <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
-            {records.map((item) => (
-              <option key={item.id} value={item.id} className="bg-gray-800">
-                {getItemName(item)} — {getItemCategory(item)} (Stock: {getItemStockTotal(item)} kg)
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchText}
+              onChange={handleSearchChange}
+              onFocus={() => setShowSuggestions(true)}
+              className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
+              placeholder="🔍 Buscar insumo por nombre..."
+              required={!formData.selectedItemId}
+            />
+
+            {/* Lista de sugerencias */}
+            {showSuggestions && searchText && (
+              <div
+                ref={suggestionsRef}
+                className="absolute z-50 w-full mt-1 bg-gray-900 border border-white/20 rounded-lg shadow-xl max-h-60 overflow-y-auto backdrop-blur-md"
+              >
+                {filteredRecords.length > 0 ? (
+                  filteredRecords.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleSelectItem(item)}
+                      className="w-full text-left p-3 hover:bg-blue-600/30 transition-colors border-b border-white/10 last:border-b-0"
+                    >
+                      <p className="text-sm text-white font-semibold">{getItemName(item)}</p>
+                      <p className="text-xs text-white/60">
+                        {String(getItemCategory(item) || 'Sin categoría')} • Stock: {getItemStockTotal(item)} {getItemUnit(item)}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-3 text-center text-white/60 text-sm">
+                    No se encontraron insumos
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Dropdown tradicional (alternativa al campo de búsqueda) */}
+          <div className="mt-3">
+            <label className="block text-xs text-white/60 mb-1">O selecciona de la lista completa:</label>
+            <select
+              value={formData.selectedItemId}
+              onChange={handleDropdownChange}
+              className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
+            >
+              <option value="" className="bg-gray-800">-- Seleccionar de la lista --</option>
+              {records.map((item) => (
+                <option key={item.id} value={item.id} className="bg-gray-800">
+                  {getItemName(item)} — {String(getItemCategory(item) || 'Sin categoría')} (Stock: {getItemStockTotal(item)} {getItemUnit(item)})
+                </option>
+              ))}
+            </select>
+          </div>
+
           {selectedItem && (
             <div className="mt-3 p-3 bg-blue-500/10 border border-blue-400/20 rounded-lg">
               <p className="text-sm text-blue-200 font-semibold">{getItemName(selectedItem)}</p>
-              <p className="text-xs text-white/60 mt-1">Categoría: {getItemCategory(selectedItem)}</p>
+              <p className="text-xs text-white/60 mt-1">Categoría: {String(getItemCategory(selectedItem) || 'Sin categoría')}</p>
               <p className="text-xs text-blue-300 mt-1">
-                📊 Stock actual: <span className="font-bold">{getItemStockTotal(selectedItem)} kg</span>
+                📊 Stock actual: <span className="font-bold">{getItemStockTotal(selectedItem)} {getItemUnit(selectedItem)}</span>
               </p>
             </div>
           )}
@@ -112,7 +219,7 @@ export default function IngresoInsumoForm({
         {/* Cantidad a Agregar */}
         <div className="bg-white/5 rounded-lg p-4 border border-white/10">
           <label className="block text-sm font-semibold mb-2 text-white drop-shadow">
-            Cantidad a Agregar <span className="text-blue-300 font-bold">(kg)</span> *
+            Cantidad a Agregar {selectedItem && <span className="text-blue-300 font-bold">({getItemUnit(selectedItem)})</span>} *
           </label>
           <div className="relative">
             <input
@@ -120,17 +227,24 @@ export default function IngresoInsumoForm({
               value={formData.cantidad}
               onChange={(e) => setFormData({...formData, cantidad: e.target.value})}
               onWheel={(e) => e.currentTarget.blur()}
-              className="w-full p-3 pr-14 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
+              className="w-full p-3 pr-20 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent backdrop-blur-sm"
               placeholder="Ej: 25.5"
               min="0"
               step="0.01"
               required
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300 font-bold text-sm pointer-events-none">
-              kg
-            </span>
+            {selectedItem && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300 font-bold text-sm pointer-events-none">
+                {getItemUnit(selectedItem)}
+              </span>
+            )}
           </div>
-          <p className="text-xs text-white/50 mt-1">Ingresa siempre en kilogramos (kg)</p>
+          <p className="text-xs text-white/50 mt-1">
+            {selectedItem
+              ? `Ingresa la cantidad en ${getItemUnit(selectedItem)}`
+              : 'Selecciona un insumo para ver su unidad de medida'
+            }
+          </p>
         </div>
 
         {/* Registrado por */}

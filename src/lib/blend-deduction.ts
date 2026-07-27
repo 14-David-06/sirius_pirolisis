@@ -8,8 +8,8 @@
 //     `Detalle Cantidades Remision Pirolisis` (único mecanismo que alimenta la
 //     fórmula `Total Cantidad Actual Biochar Seco` del bache).
 //   - Abono 4G (pctAbono) y Biológicos (pctBiologicos): vía `Salida Insumos
-//     Pirolisis`, enlazando el insumo al campo correcto (salidasFields.inventarioInsumos
-//     = fldlAlnHDCz7mrnVq), NO al link de turno. Esto alimenta `Total Cantidad Stock`.
+//     Pirolisis`, enlazando el insumo a `salidasFields.inventarioInsumos` y NO al
+//     link de turno. Esto es lo que alimenta `Total Cantidad Stock`.
 //   - Registra la ENTRADA de producto terminado en Sirius Inventario Production Core
 //     (best-effort: se omite si faltan credenciales).
 //   - Crea el detalle en `blend_detalle_insumos` y puebla los links de la producción.
@@ -21,6 +21,7 @@
 // links son best-effort (no revierten la deducción ya aplicada, pero se reportan).
 
 import { config } from './config';
+import { appendMovimientoToStock, findStockByInsumo, getStockActual } from './stock-insumos';
 
 const AT = 'https://api.airtable.com/v0';
 
@@ -233,8 +234,11 @@ async function deductBaches(input: DeductionInput, allocations: BacheAllocation[
 }
 
 /**
- * Crea una `Salida Insumos Pirolisis` para un insumo, enlazándolo al campo
- * correcto (inventarioInsumos), lo que dispara la fórmula de stock. Valida stock.
+ * Crea un movimiento de salida en Sirius Insumos Core para un insumo Blend.
+ * Valida stock y actualiza Stock Insumos.
+ *
+ * MIGRADO (2026-07-27): Antes creaba en Salida Insumos Pirolisis (local).
+ * Ahora crea Movimiento Insumos (tipo="Salida") en el Core.
  */
 async function deductInsumo(
   insumoRecordId: string,
@@ -242,22 +246,28 @@ async function deductInsumo(
   nombre: string,
   input: DeductionInput
 ): Promise<StepResult & { insumoRecordId: string; presentacion?: string }> {
-  const base = config.airtable.baseId!;
-  const inventarioTable = config.airtable.inventarioTableId;
-  const salidasTable = config.airtable.salidasTableId;
-  const sf = config.airtable.salidasFields;
+  const coreBaseId = config.airtable.insumosCoreBaseId!;
+  const token = config.airtable.insumosCoreToken!;
+  const movimientosTableId = config.airtable.movimientosInsumosTableId;
+  const stockInsumosTableId = config.airtable.stockInsumosTableId;
+  const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
+  const movFields = config.airtable.movimientoFields;
 
-  if (!inventarioTable || !salidasTable || !sf.inventarioInsumos) {
-    return { step: `insumo:${nombre}`, ok: false, error: 'Config de salidas/inventario incompleta', insumoRecordId };
+  if (!movimientosTableId || !stockInsumosTableId) {
+    return { step: `insumo:${nombre}`, ok: false, error: 'Config de Core incompleta', insumoRecordId };
   }
 
-  // Leer presentación + stock disponible
-  const itemRes = await atFetch(`${AT}/${base}/${inventarioTable}/${insumoRecordId}`, { headers: localHeaders() });
-  if (!itemRes.ok) {
-    return { step: `insumo:${nombre}`, ok: false, error: `No se pudo leer el insumo ${nombre}`, insumoRecordId };
+  const headers = () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
+
+  // Leer stock disponible desde Stock Insumos
+  // NOTA: No filtramos por área porque el campo "Area" no existe
+  // NOTA 2: Insumo ID es multipleRecordLinks; el match se hace en JS sobre los
+  //         record IDs. Ver src/lib/stock-insumos.ts
+  const { record: stockRecord } = await findStockByInsumo(insumoRecordId);
+  if (!stockRecord) {
+    return { step: `insumo:${nombre}`, ok: false, error: `No se pudo leer stock de ${nombre}`, insumoRecordId };
   }
-  const presentacion = itemRes.data.fields?.['Presentacion Insumo'] ?? itemRes.data.fields?.['Presentación'] ?? 'Unidades';
-  const stockDisponible = Number(itemRes.data.fields?.['Total Cantidad Stock'] ?? 0);
+  const stockDisponible = getStockActual(stockRecord);
   if (cantidad > stockDisponible + 1e-6) {
     return {
       step: `insumo:${nombre}`,
@@ -267,30 +277,40 @@ async function deductInsumo(
     };
   }
 
+  // Crear movimiento de salida en Core
   const fields: Record<string, unknown> = {};
-  fields[sf.cantidadSale || 'Cantidad Sale'] = cantidad;
-  fields[sf.presentacionInsumo || 'Presentacion Insumo'] = presentacion;
-  fields[sf.inventarioInsumos] = [insumoRecordId]; // ← campo correcto (fldlAlnHDCz7mrnVq)
-  fields[sf.tipoSalida || 'Tipo de Salida'] = 'balance_de_masa';
-  if (sf.tipoUso) fields[sf.tipoUso] = 'balance_de_masa';
-  if (sf.esProductivo) fields[sf.esProductivo] = true;
-  if (sf.realizaRegistro) fields[sf.realizaRegistro] = input.realizaRegistro;
-  if (sf.observaciones) fields[sf.observaciones] = `Consumo producción Biochar Blend ${input.produccionCodigo}`;
+  fields[movFields.insumo!] = [insumoRecordId];
+  fields[movFields.cantidad!] = cantidad;
+  fields[movFields.tipoMovimiento!] = 'Salida';
+  fields[movFields.idAreaOrigen!] = pirolisisAreaCode;
+  fields[movFields.idResponsable!] = input.realizaRegistro;
+  fields[movFields.notas!] = `Consumo producción Biochar Blend ${input.produccionCodigo}\nTipo uso: balance_de_masa (productivo)`;
 
-  const salidaRes = await atFetch(`${AT}/${base}/${salidasTable}`, {
+  const movRes = await atFetch(`${AT}/${coreBaseId}/${movimientosTableId}`, {
     method: 'POST',
-    headers: localHeaders(),
+    headers: headers(),
     body: JSON.stringify({ records: [{ fields }] }),
   });
-  if (!salidaRes.ok) {
-    return { step: `insumo:${nombre}`, ok: false, error: `Error creando salida de ${nombre}: ${JSON.stringify(salidaRes.data)}`, insumoRecordId };
+  if (!movRes.ok) {
+    return { step: `insumo:${nombre}`, ok: false, error: `Error creando movimiento de ${nombre}: ${JSON.stringify(movRes.data)}`, insumoRecordId };
   }
+
+  const movimientoId = movRes.data.records?.[0]?.id;
+
+  // Actualizar Stock Insumos agregando el movimiento.
+  // Preserva los ya vinculados: el PATCH de un campo link reemplaza el array.
+  try {
+    await appendMovimientoToStock(stockRecord.id, movimientoId);
+  } catch (linkErr) {
+    console.warn(`⚠️ Movimiento creado pero faltó vincular al stock de ${nombre}:`, linkErr);
+  }
+
   return {
     step: `insumo:${nombre}`,
     ok: true,
-    detail: { salidaId: salidaRes.data.records?.[0]?.id, cantidad },
+    detail: { movimientoId, cantidad },
     insumoRecordId,
-    presentacion: String(presentacion),
+    presentacion: 'kg',  // Unidades estándar del Core
   };
 }
 

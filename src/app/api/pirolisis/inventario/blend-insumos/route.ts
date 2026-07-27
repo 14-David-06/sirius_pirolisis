@@ -1,69 +1,101 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../../lib/config';
 
-// Campo fórmula: la REST API de Airtable lo devuelve con el nombre como clave
-const FIELD_TOTAL_STOCK = 'Total Cantidad Stock';
-
+/**
+ * GET /api/pirolisis/inventario/blend-insumos
+ *
+ * Obtiene el stock actual de los insumos Blend (Abono 4G y Biológicos DataLab).
+ *
+ * MIGRADO (2026-07-27): Antes leía de Inventario Insumos Pirolisis (local).
+ * Ahora lee de Insumo + Stock Insumos del Core.
+ *
+ * Los record IDs usados son los del Core:
+ * - Abono 4G (SIRIUS-INS-0064): AIRTABLE_BLEND_ABONO_4G_RECORD_ID
+ * - Biológicos DataLab (SIRIUS-INS-0065): AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID
+ */
 export async function GET() {
-  if (!config.airtable.inventarioTableId) {
-    console.warn('⚠️ AIRTABLE_INVENTARIO_TABLE_ID no está configurado en .env.local');
+  // Validar configuración
+  if (!config.airtable.insumosCoreBaseId || !config.airtable.insumosTableId) {
+    console.warn('⚠️ Configuración de Sirius Insumos Core incompleta');
     return NextResponse.json({
-      error: 'AIRTABLE_INVENTARIO_TABLE_ID no está configurado. Revisa tu archivo .env.local',
-      details: 'Para activar el módulo de inventario, configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local',
+      error: 'Configuración de Sirius Insumos Core incompleta',
+      details: 'Faltan AIRTABLE_INSUMOS_CORE_BASE_ID o AIRTABLE_INSUMOS_TABLE_ID',
     }, { status: 400 });
   }
 
   try {
-    if (!config.airtable.token || !config.airtable.baseId) {
+    const token = config.airtable.insumosCoreToken;
+    const coreBaseId = config.airtable.insumosCoreBaseId;
+    const insumosTableId = config.airtable.insumosTableId;
+    const stockInsumosTableId = config.airtable.stockInsumosTableId;
+    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
+
+    if (!token) {
       return NextResponse.json({
-        error: 'Configuración de Airtable incompleta',
-        details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID',
+        error: 'Token de Airtable no configurado',
+        details: 'Falta AIRTABLE_GLOBAL_TOKEN',
       }, { status: 500 });
     }
 
-    const baseUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.inventarioTableId}`;
+    if (!config.airtable.blendAbono4gRecordId || !config.airtable.blendBiologicosRecordId) {
+      return NextResponse.json({
+        error: 'Record IDs de insumos Blend no configurados',
+        details: 'Faltan AIRTABLE_BLEND_ABONO_4G_RECORD_ID o AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID',
+      }, { status: 500 });
+    }
+
     const headers = {
-      'Authorization': `Bearer ${config.airtable.token}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     };
 
-    // Fetch ambos records en paralelo
-    const [r1, r2] = await Promise.all([
-      fetch(`${baseUrl}/${config.airtable.blendAbono4gRecordId}`, { headers }),
-      fetch(`${baseUrl}/${config.airtable.blendBiologicosRecordId}`, { headers }),
+    // Helper para obtener insumo + su stock
+    const fetchInsumoConStock = async (insumoRecordId: string) => {
+      // 1. Leer insumo del catálogo
+      const insumoUrl = `https://api.airtable.com/v0/${coreBaseId}/${insumosTableId}/${insumoRecordId}`;
+      const insumoRes = await fetch(insumoUrl, { headers });
+      const insumoData = await insumoRes.json();
+
+      if (!insumoRes.ok) {
+        throw new Error(`Error al leer insumo ${insumoRecordId}: ${JSON.stringify(insumoData)}`);
+      }
+
+      // 2. Buscar su stock en Stock Insumos
+      // NOTA: Campo {Area} no existe en Stock Insumos
+      // NOTA 2: Insumo ID es multipleRecordLinks, usamos FIND() para buscar el ID
+      const stockFilter = encodeURIComponent(
+        `SEARCH("${insumoRecordId}", {Insumo ID})`
+      );
+      const stockUrl = `https://api.airtable.com/v0/${coreBaseId}/${stockInsumosTableId}?filterByFormula=${stockFilter}`;
+      const stockRes = await fetch(stockUrl, { headers });
+      const stockData = await stockRes.json();
+
+      const stockActual = stockData.records?.[0]?.fields?.stock_actual ?? 0;
+
+      return {
+        id: insumoData.id,
+        insumo: insumoData.fields?.['Nombre'] ?? null,
+        categoria: insumoData.fields?.['Categoria'] ?? null,  // Es un link, no texto
+        presentacion: insumoData.fields?.['Unidad Base'] ?? null,  // Es un link, no texto
+        stock_actual: stockActual,
+      };
+    };
+
+    // Fetch ambos insumos en paralelo
+    const [abono4g, biologicos] = await Promise.all([
+      fetchInsumoConStock(config.airtable.blendAbono4gRecordId),
+      fetchInsumoConStock(config.airtable.blendBiologicosRecordId),
     ]);
 
-    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    const insumos = [abono4g, biologicos];
 
-    if (!r1.ok) {
-      console.error('❌ Error al obtener Abono 4G:', d1);
-      return NextResponse.json({ error: d1?.error || 'Airtable error', details: d1 }, { status: r1.status });
-    }
-    if (!r2.ok) {
-      console.error('❌ Error al obtener Biologicos DataLab:', d2);
-      return NextResponse.json({ error: d2?.error || 'Airtable error', details: d2 }, { status: r2.status });
-    }
-
-    const insumos = [
-      {
-        id: d1.id,
-        insumo: d1.fields?.['Insumo'] ?? null,
-        categoria: d1.fields?.['Categoria Insumo'] ?? null,
-        presentacion: d1.fields?.['Presentacion Insumo'] ?? null,
-        stock_actual: d1.fields?.[FIELD_TOTAL_STOCK] ?? 0,
-      },
-      {
-        id: d2.id,
-        insumo: d2.fields?.['Insumo'] ?? null,
-        categoria: d2.fields?.['Categoria Insumo'] ?? null,
-        presentacion: d2.fields?.['Presentacion Insumo'] ?? null,
-        stock_actual: d2.fields?.[FIELD_TOTAL_STOCK] ?? 0,
-      },
-    ];
-
-    console.log('📊 Insumos Blend obtenidos:', insumos.map(i => `${i.insumo}: ${i.stock_actual}`).join(', '));
+    console.log(
+      '📊 Insumos Blend obtenidos:',
+      insumos.map(i => `${i.insumo}: ${i.stock_actual}`).join(', ')
+    );
 
     return NextResponse.json({ insumos }, { status: 200 });
+
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en GET blend-insumos:', message);

@@ -1,43 +1,59 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 
-// Usar el ID de la tabla de Inventario Pirolisis desde variables de entorno
-const TABLE_ID = config.airtable.inventarioTableId;
-
-// ✅ BUENA PRÁCTICA: Los field IDs se obtienen de variables de entorno
-// Los valores reales se configuran en .env.local para evitar hardcodear
-// IDs sensibles en el código fuente, facilitando el mantenimiento
-
+/**
+ * POST /api/inventario/create
+ *
+ * Crea un nuevo insumo en Sirius Insumos Core y su registro de stock inicial.
+ *
+ * MIGRADO (2026-07-27): Antes creaba en Inventario Insumos Pirolisis (local).
+ * Ahora crea en Insumo + Stock Insumos del Core.
+ *
+ * Body esperado:
+ * - Nombre del Insumo (string, requerido)
+ * - Categoría (string, requerido)
+ * - Presentación (string, opcional)
+ * - Cantidad Presentacion Insumo (number, opcional)
+ * - Realiza Registro (string, opcional)
+ * - Ficha Seguridad URL (string, opcional - solo para químicos)
+ */
 export async function POST(request: Request) {
-  // Verificar si la variable de entorno está configurada
-  if (!TABLE_ID) {
-    console.warn('⚠️ AIRTABLE_INVENTARIO_TABLE_ID no está configurado en .env.local');
+  // Validar configuración
+  if (!config.airtable.insumosCoreBaseId || !config.airtable.insumosTableId) {
+    console.warn('⚠️ Configuración de Sirius Insumos Core incompleta');
     return NextResponse.json({
-      error: 'AIRTABLE_INVENTARIO_TABLE_ID no está configurado. Revisa tu archivo .env.local',
-      details: 'Para activar el módulo de inventario, configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local'
+      error: 'Configuración de Sirius Insumos Core incompleta',
+      details: 'Faltan AIRTABLE_INSUMOS_CORE_BASE_ID o AIRTABLE_INSUMOS_TABLE_ID'
     }, { status: 400 });
   }
 
   try {
-    if (!config.airtable.token || !config.airtable.baseId) {
+    const token = config.airtable.insumosCoreToken;
+    const coreBaseId = config.airtable.insumosCoreBaseId;
+    const insumosTableId = config.airtable.insumosTableId;
+    const stockInsumosTableId = config.airtable.stockInsumosTableId;
+    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
+    const insumoFields = config.airtable.insumoFields;
+    const stockFields = config.airtable.stockFields;
+
+    if (!token) {
       return NextResponse.json({
-        error: 'Configuración de Airtable incompleta',
-        details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID'
+        error: 'Token de Airtable no configurado',
+        details: 'Falta AIRTABLE_GLOBAL_TOKEN'
       }, { status: 500 });
     }
 
-    // Validar que los field IDs requeridos estén configurados
-    // Por ahora usamos nombres de campos, no field IDs
-    // if (!config.airtable.inventarioFields.insumo || !config.airtable.inventarioFields.categoria) {
-    //   return NextResponse.json({
-    //     error: 'Configuración de field IDs incompleta',
-    //     details: 'Faltan field IDs requeridos para inventario. Revisa AIRTABLE_INVENTARIO_*_FIELD_ID en .env.local'
-    //   }, { status: 500 });
-    // }
-
     const body = await request.json();
-    console.log('📥 Datos recibidos en API:', body);
-    const { 'Nombre del Insumo': nombreInsumo, 'Categoría': categoria, 'Realiza Registro': realizaRegistro, 'Presentación': presentacion, 'Cantidad Presentacion Insumo': cantidadPresentacion, 'Ficha Seguridad URL': fichaSeguridadUrl, 'Ficha Seguridad S3 Path': fichaSeguridadS3Path } = body;
+    console.log('📥 Datos recibidos en API create:', body);
+
+    const {
+      'Nombre del Insumo': nombreInsumo,
+      'Categoría': categoria,
+      'Presentación': presentacion,
+      'Cantidad Presentacion Insumo': cantidadPresentacion,
+      'Realiza Registro': realizaRegistro,
+      'Ficha Seguridad URL': fichaSeguridadUrl,
+    } = body;
 
     // Validar campos requeridos
     if (!nombreInsumo || !categoria) {
@@ -47,65 +63,138 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Preparar los campos para Airtable usando nombres de campos (por simplicidad)
-    const fields: any = {};
-    fields['Insumo'] = nombreInsumo;
-    fields['Categoría'] = categoria;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 1: Crear el insumo en Sirius Insumos Core
+    // ═══════════════════════════════════════════════════════════════════════════
+    const fields: Record<string, any> = {};
 
-    if (realizaRegistro) {
-      fields['Realiza Registro'] = realizaRegistro;
-    }
-    
-    if (presentacion) {
-      fields['Presentacion Insumo'] = presentacion;
-    }
-    
-    if (cantidadPresentacion !== undefined && cantidadPresentacion !== '') {
-      fields['Cantidad Presentacion Insumo'] = parseFloat(cantidadPresentacion) || 0;
+    // Nombre del insumo
+    if (insumoFields.nombre) {
+      fields[insumoFields.nombre] = nombreInsumo;
     }
 
-    // Ficha de seguridad (solo para químicos)
-    if (fichaSeguridadUrl && categoria === 'Químicos') {
-      // Extraer el nombre del archivo del S3 path (última parte después del último '/')
-      const fileName = fichaSeguridadS3Path ? fichaSeguridadS3Path.split('/').pop() : `ficha-seguridad-${nombreInsumo.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
-      fields['Ficha Seguridad'] = [
-        {
-          url: fichaSeguridadUrl,
-          filename: fileName
-        }
-      ];
+    // Área de origen (Pirólisis)
+    if (insumoFields.idAreaOrigen) {
+      fields[insumoFields.idAreaOrigen] = pirolisisAreaCode;
     }
 
-    console.log('📤 Campos a enviar a Airtable:', fields);
-    console.log('🔗 Field IDs usados:', {
-      insumo: config.airtable.inventarioFields.insumo,
-      categoria: config.airtable.inventarioFields.categoria,
-      fichaSeguridad: config.airtable.inventarioFields.fichaSeguridad
-    });
-
-    const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${TABLE_ID}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        records: [{
-          fields
-        }]
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('❌ Error de Airtable al crear:', data);
-      return NextResponse.json({ error: data?.error || 'Airtable error', details: data }, { status: response.status });
+    // Responsable/Creador del insumo
+    if (insumoFields.idResponsableCore && realizaRegistro) {
+      fields[insumoFields.idResponsableCore] = realizaRegistro;
     }
 
-    return NextResponse.json(data, { status: 201 });
+    // Stock mínimo (0 por defecto)
+    if (insumoFields.stockMinimo) {
+      fields[insumoFields.stockMinimo] = 0;
+    }
+
+    // Categoría: buscar record ID en Categoria Insumo por nombre
+    // TODO: Implementar búsqueda de categoría
+    // Por ahora dejamos el campo vacío y se debe asignar manualmente en Airtable
+    // if (insumoFields.categoria) {
+    //   // Buscar categoría por nombre
+    //   fields[insumoFields.categoria] = [categoriaRecordId];
+    // }
+
+    // Presentación/Unidad: buscar record ID en Unidades de Medida
+    // TODO: Implementar búsqueda de unidad
+    // Por ahora dejamos el campo vacío
+    // if (insumoFields.unidadBase && presentacion) {
+    //   fields[insumoFields.unidadBase] = [unidadRecordId];
+    // }
+
+    // Ficha de seguridad (solo URL como texto, no attachment)
+    if (fichaSeguridadUrl && insumoFields.fichaTecnica) {
+      fields[insumoFields.fichaTecnica] = `Ficha de seguridad: ${fichaSeguridadUrl}`;
+    }
+
+    console.log('📤 Creando insumo en Core con campos:', fields);
+
+    const createInsumoResponse = await fetch(
+      `https://api.airtable.com/v0/${coreBaseId}/${insumosTableId}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          records: [{
+            fields
+          }]
+        }),
+      }
+    );
+
+    const insumoData = await createInsumoResponse.json();
+
+    if (!createInsumoResponse.ok) {
+      console.error('❌ Error al crear insumo en Core:', insumoData);
+      return NextResponse.json({
+        error: insumoData?.error || 'Error al crear insumo',
+        details: insumoData
+      }, { status: createInsumoResponse.status });
+    }
+
+    const nuevoInsumoId = insumoData.records[0].id;
+    console.log(`✅ Insumo creado en Core: ${nuevoInsumoId}`);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 2: Crear registro de Stock Insumos con stock inicial = 0
+    // ═══════════════════════════════════════════════════════════════════════════
+    const newStockFields: Record<string, any> = {};
+
+    // Link al insumo recién creado
+    if (stockFields.insumoId) {
+      newStockFields[stockFields.insumoId] = [nuevoInsumoId];
+    }
+
+    // NOTA: NO se llena campo "Area" porque no existe en Stock Insumos.
+    // El área viene del Insumo vinculado (campo ID Area Origen).
+
+    // stock_actual NO se escribe (es fórmula que se calcula sola)
+
+    console.log('📤 Creando Stock Insumos con campos:', newStockFields);
+
+    const createStockResponse = await fetch(
+      `https://api.airtable.com/v0/${coreBaseId}/${stockInsumosTableId}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          records: [{
+            fields: newStockFields
+          }]
+        }),
+      }
+    );
+
+    const stockData = await createStockResponse.json();
+
+    if (!createStockResponse.ok) {
+      console.warn('⚠️ Error al crear Stock Insumos (insumo creado pero sin stock):', stockData);
+      // No falla el endpoint, pero advertimos
+      return NextResponse.json({
+        ...insumoData,
+        warning: 'Insumo creado pero faltó crear su registro de stock',
+        stockError: stockData
+      }, { status: 201 });
+    }
+
+    console.log(`✅ Stock Insumos creado: ${stockData.records[0].id}`);
+
+    return NextResponse.json({
+      ...insumoData,
+      stock: stockData.records[0]
+    }, { status: 201 });
+
   } catch (err: any) {
-    console.error('❌ Error en API crear inventario:', err);
-    return NextResponse.json({ error: String(err.message || err) }, { status: 500 });
+    console.error('❌ Error en API create inventario:', err);
+    return NextResponse.json({
+      error: String(err.message || err)
+    }, { status: 500 });
   }
 }

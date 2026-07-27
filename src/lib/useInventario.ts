@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { config } from './config';
+import { normalizeEstado, type EstadoStock } from './inventario.format';
 import type {
   InventarioRecord,
   InventarioData,
   InventarioFilters,
-  PaqueteLonasData,
 } from '@/types/inventario';
 
 // ✅ BUENA PRÁCTICA: Field IDs obtenidos de variables de entorno
@@ -33,231 +33,231 @@ function getFieldValue<T = string>(
   return defaultValue;
 }
 
+/** Normaliza texto para búsquedas: minúsculas y sin tildes. */
+function normalizarTexto(valor: string): string {
+  return valor
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, ''); // marcas diacríticas combinantes
+}
+
 export function useInventario(filters?: InventarioFilters) {
   const [data, setData] = useState<InventarioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchInventario = async () => {
+  // El endpoint devuelve los ~26 insumos del área en una sola llamada; los
+  // filtros se aplican en memoria para que cambiarlos sea instantáneo y no
+  // dispare una consulta a Airtable por cada pulsación.
+  const fetchInventario = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const params = new URLSearchParams();
-      if (filters?.categoria) params.set('categoria', filters.categoria);
-      if (filters?.estado) params.set('estado', filters.estado);
-      const qs = params.toString();
-      const url = `/api/inventario/list${qs ? `?${qs}` : ''}`;
-
-      const response = await fetch(url);
+      const response = await fetch('/api/inventario/list');
       const result = await response.json();
 
       if (!response.ok) {
-        // Si es un error de configuración, mostrar mensaje específico
-        if (response.status === 400 && result.error?.includes('AIRTABLE_INVENTARIO_TABLE_ID')) {
-          throw new Error('Tabla de inventario no configurada. Configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local');
+        if (response.status === 400 && result.error?.includes('AIRTABLE_INSUMOS_CORE_BASE_ID')) {
+          throw new Error('Inventario Core no configurado. Revisa AIRTABLE_INSUMOS_CORE_BASE_ID en .env.local');
         }
-        if (response.status === 403 && result.error?.type === 'INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND') {
-          throw new Error('Tabla de inventario no encontrada. Verifica que la tabla existe en Airtable y que el ID es correcto');
+        if (response.status === 403) {
+          throw new Error('Sin permisos sobre Sirius Insumos Core. Verifica el token de Airtable.');
         }
         throw new Error(result.error || 'Error al obtener datos del inventario');
       }
 
       setData(result);
 
-      // Si la tabla existe pero está vacía, mostrar mensaje informativo
       if (result.records && result.records.length === 0) {
-        console.info('📦 Tabla de inventario encontrada pero está vacía');
+        console.info('📦 Sirius Insumos Core respondió sin insumos para el área');
       }
-    } catch (err: any) {
-      console.error('❌ Error al cargar inventario:', err);
-      setError(err.message || 'Error desconocido al cargar inventario');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('❌ Error al cargar inventario:', message);
+      setError(message || 'Error desconocido al cargar inventario');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchInventario();
-  }, [filters?.categoria, filters?.estado]);
+  }, [fetchInventario]);
 
   // ============================================================================
-  // GETTERS SIMPLIFICADOS - Usan función genérica con fallbacks
+  // GETTERS — leen los campos normalizados que expone /api/inventario/list
   // ============================================================================
 
-  const getItemName = (record: InventarioRecord): string => {
-    return getFieldValue(
-      record,
-      ['Insumo', FIELD_IDS.insumo || '', 'Nombre del Insumo', 'Nombre', 'Name'],
-      'Sin nombre'
-    );
+  const getItemName = (record: InventarioRecord): string =>
+    getFieldValue(record, ['Nombre', 'Insumo', FIELD_IDS.insumo || '', 'Nombre del Insumo', 'Name'], 'Sin nombre');
+
+  const getItemCodigo = (record: InventarioRecord): string =>
+    getFieldValue(record, ['codigo', 'Código SIRIUS-INS'], '');
+
+  /**
+   * Categorías legibles del insumo.
+   * ⚠️ El campo `Categoria` del Core es un array de record IDs; leerlo directo
+   * pinta los record IDs crudos ("rec…") en pantalla. El endpoint las resuelve
+   * a nombres en `categorias`.
+   */
+  const getItemCategories = (record: InventarioRecord): string[] => {
+    const categorias = record.fields?.categorias;
+    if (Array.isArray(categorias)) {
+      return categorias.filter((c): c is string => typeof c === 'string' && c.length > 0);
+    }
+    const legible = record.fields?.['Categoria Insumo'];
+    if (typeof legible === 'string' && legible) {
+      return legible.split(',').map((c) => c.trim()).filter(Boolean);
+    }
+    return [];
   };
 
-  const getItemCategory = (record: InventarioRecord): string => {
-    return getFieldValue(
-      record,
-      ['Categoría', FIELD_IDS.categoria || '', 'Categoria', 'Category'],
-      'General'
-    );
-  };
+  /** Categoría principal, para agrupar y filtrar. */
+  const getItemCategory = (record: InventarioRecord): string =>
+    getItemCategories(record)[0] || 'Sin categoría';
 
-  const getItemQuantity = (record: InventarioRecord): number => {
-    return getFieldValue(
-      record,
-      ['Cantidad Presentacion Insumo', FIELD_IDS.cantidadPresentacionInsumo || '', 'Cantidad Actual', 'Cantidad', 'Stock'],
-      0
-    );
-  };
+  const getItemCategoriaInsumo = (record: InventarioRecord): string =>
+    getItemCategories(record).join(', ');
 
+  /** Símbolo de la unidad base del insumo: "und", "kg", "L". */
   const getItemUnit = (record: InventarioRecord): string => {
-    return getFieldValue(
-      record,
-      ['Presentacion Insumo', FIELD_IDS.presentacionInsumo || '', 'Unidad', 'Unit'],
-      'unidades'
-    );
+    const unidad = record.fields?.unidad ?? record.fields?.['Unidad Base'];
+    if (typeof unidad === 'string' && unidad) return unidad;
+    if (Array.isArray(unidad) && unidad.length > 0) {
+      const primera = unidad[0];
+      if (typeof primera === 'string') return primera;
+      if (primera && typeof primera === 'object' && 'name' in primera) {
+        return String((primera as { name: unknown }).name);
+      }
+    }
+    return getFieldValue(record, ['Unidad Medida', 'Unidad', 'Unit'], 'und');
   };
 
-  const getItemDescription = (record: InventarioRecord): string => {
-    return getFieldValue(
-      record,
-      ['Realiza Registro', FIELD_IDS.realizaRegistro || '', 'Descripción', 'Notas', 'Notes'],
-      ''
-    );
-  };
+  const getItemUnitNombre = (record: InventarioRecord): string =>
+    getFieldValue(record, ['unidad_nombre', 'Unidad Medida'], getItemUnit(record));
 
-  const getItemEntradas = (record: InventarioRecord): string[] => {
-    return getFieldValue(record, ['Entrada Insumos Pirolisis'], []);
-  };
-
-  const getItemSalidas = (record: InventarioRecord): string[] => {
-    return getFieldValue(record, ['Salida Insumos Pirolisis'], []);
-  };
-
-  const getItemPresentacion = (record: InventarioRecord): string => {
-    return getFieldValue(record, ['Presentacion Insumo'], '');
-  };
-
-  const getItemCantidadPresentacion = (record: InventarioRecord): number => {
-    return getFieldValue(
-      record,
-      ['Cantidad Presentacion Insumo', FIELD_IDS.cantidadPresentacionInsumo || ''],
-      0
-    );
-  };
-
+  /** Stock real, calculado por el Core a partir de los movimientos. */
   const getItemStockTotal = (record: InventarioRecord): number => {
-    return getFieldValue(
-      record,
-      ['Total Cantidad Stock', FIELD_IDS.totalCantidadStock || ''],
-      0
-    );
+    const stock = getFieldValue<unknown>(record, ['stock_actual', 'Total Cantidad Stock', FIELD_IDS.totalCantidadStock || ''], 0);
+    const n = Number(stock);
+    return Number.isFinite(n) ? n : 0;
   };
+
+  /** Alias: en el Core el stock del insumo ES la cantidad disponible. */
+  const getItemQuantity = getItemStockTotal;
 
   const getMinStock = (record: InventarioRecord): number => {
-    const minStock = getFieldValue(record, ['Stock Minimo', 'Min Stock'], 0);
-    return typeof minStock === 'number' ? minStock : parseInt(String(minStock)) || 0;
+    const min = getFieldValue<unknown>(record, ['stock_minimo', 'Stock Minimo', 'Min Stock'], 0);
+    const n = Number(min);
+    return Number.isFinite(n) ? n : 0;
   };
 
-  // Función para obtener el total de items
-  const getTotalItems = (): number => {
-    return data?.records?.length || 0;
-  };
+  /** Estado derivado del stock: 'disponible' | 'por_agotarse' | 'agotado'. */
+  const getItemEstado = (record: InventarioRecord): EstadoStock =>
+    normalizeEstado(getFieldValue<string>(record, ['estado_calculado'], 'disponible'));
 
-  // Función para obtener items agrupados por categoría
-  const getItemsByCategory = (): Record<string, InventarioRecord[]> => {
-    if (!data?.records) return {};
+  const getItemDescription = (record: InventarioRecord): string =>
+    getFieldValue(record, ['Referencia Comercial Texto', 'Descripción', 'Notas', 'Notes'], '');
 
-    const categories: Record<string, InventarioRecord[]> = {};
+  /** Movimientos (entradas + salidas) vinculados al insumo en el Core. */
+  const getItemMovimientos = (record: InventarioRecord): string[] =>
+    getFieldValue<string[]>(record, ['Movimientos Insumos'], []);
 
-    data.records.forEach(record => {
-      const category = getItemCategory(record);
-      if (!categories[category]) {
-        categories[category] = [];
+  const getItemFechaVencimiento = (record: InventarioRecord): string | null =>
+    getFieldValue<string | null>(record, ['Fecha Vencimiento', FIELD_IDS.fechaVencimiento], null);
+
+  // ============================================================================
+  // DERIVADOS — filtrado, agrupación y métricas en memoria
+  // ============================================================================
+
+  const registros = useMemo(() => data?.records ?? [], [data]);
+
+  /** Todas las categorías presentes en los datos, ordenadas. Alimenta el filtro. */
+  const categoriasDisponibles = useMemo(() => {
+    const nombres = new Set<string>();
+    registros.forEach((record) => getItemCategories(record).forEach((c) => nombres.add(c)));
+    return [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [registros]);
+
+  /** Registros que pasan los filtros activos (categoría, estado, búsqueda). */
+  const registrosFiltrados = useMemo(() => {
+    const busqueda = filters?.busqueda ? normalizarTexto(filters.busqueda) : '';
+
+    return registros.filter((record) => {
+      if (filters?.categoria && !getItemCategories(record).includes(filters.categoria)) {
+        return false;
       }
-      categories[category].push(record);
+      if (filters?.estado && getItemEstado(record) !== filters.estado) {
+        return false;
+      }
+      if (busqueda) {
+        const heno = normalizarTexto(
+          `${getItemName(record)} ${getItemCodigo(record)} ${getItemCategories(record).join(' ')}`
+        );
+        if (!heno.includes(busqueda)) return false;
+      }
+      return true;
     });
+  }, [registros, filters?.categoria, filters?.estado, filters?.busqueda]);
 
-    return categories;
+  const getTotalItems = (): number => registros.length;
+
+  /**
+   * Insumos agrupados por categoría, ordenados alfabéticamente (categorías y
+   * insumos). Un insumo con varias categorías aparece en su categoría principal.
+   */
+  const getItemsByCategory = (): Record<string, InventarioRecord[]> => {
+    const grupos = new Map<string, InventarioRecord[]>();
+
+    for (const record of registrosFiltrados) {
+      const categoria = getItemCategory(record);
+      const grupo = grupos.get(categoria) ?? [];
+      grupo.push(record);
+      grupos.set(categoria, grupo);
+    }
+
+    return Object.fromEntries(
+      [...grupos.entries()]
+        .sort(([a], [b]) => a.localeCompare(b, 'es'))
+        .map(([categoria, items]) => [
+          categoria,
+          items.sort((a, b) => getItemName(a).localeCompare(getItemName(b), 'es')),
+        ])
+    );
   };
 
-  // Función para obtener items con stock bajo
-  const getLowStockItems = (): InventarioRecord[] => {
-    if (!data?.records) return [];
-
-    return data.records.filter(record => {
-      const quantity = getItemQuantity(record);
-      const minStock = getMinStock(record);
-      return quantity <= minStock && minStock > 0;
+  /**
+   * Insumos por agotarse: stock por debajo (o en) su mínimo definido.
+   * Requiere `Stock Minimo > 0`; sin umbral no hay alerta posible.
+   */
+  const getLowStockItems = (): InventarioRecord[] =>
+    registros.filter((record) => {
+      const minimo = getMinStock(record);
+      const stock = getItemStockTotal(record);
+      return minimo > 0 && stock > 0 && stock <= minimo;
     });
-  };
 
-  // Función para obtener items por estado
-  const getItemsByStatus = (status: string): InventarioRecord[] => {
-    if (!data?.records) return [];
+  /** Insumos agotados (stock ≤ 0). */
+  const getSinStockItems = (): InventarioRecord[] =>
+    registros.filter((record) => getItemStockTotal(record) <= 0);
 
-    return data.records.filter(record => {
-      const itemStatus = getItemEstado(record);
-      return itemStatus.toLowerCase() === status.toLowerCase();
-    });
-  };
+  const getItemsByStatus = (status: EstadoStock): InventarioRecord[] =>
+    registros.filter((record) => getItemEstado(record) === status);
 
-  // Función para buscar items por nombre
   const searchItems = (query: string): InventarioRecord[] => {
-    if (!data?.records) return [];
-
-    const searchTerm = query.toLowerCase();
-    return data.records.filter(record => {
-      const name = getItemName(record).toLowerCase();
-      const category = getItemCategory(record).toLowerCase();
-      return name.includes(searchTerm) || category.includes(searchTerm);
-    });
-  };
-
-  // Función para refrescar los datos
-  const refreshInventario = () => fetchInventario();
-
-  // --- Nuevos getters para trazabilidad productiva ---
-
-  const getItemCategoriaInsumo = (record: InventarioRecord): string => {
-    return getFieldValue(
-      record,
-      ['Categoria Insumo', FIELD_IDS.categoriaInsumo],
-      ''
+    const busqueda = normalizarTexto(query);
+    if (!busqueda) return registros;
+    return registros.filter((record) =>
+      normalizarTexto(`${getItemName(record)} ${getItemCodigo(record)}`).includes(busqueda)
     );
   };
 
-  const getItemEstado = (record: InventarioRecord): string => {
-    return getFieldValue(
-      record,
-      ['Estado', FIELD_IDS.estado],
-      'disponible'
-    );
-  };
-
-  const getItemFechaVencimiento = (record: InventarioRecord): string | null => {
-    return getFieldValue<string | null>(
-      record,
-      ['Fecha Vencimiento', FIELD_IDS.fechaVencimiento],
-      null
-    );
-  };
-
-  // Función para filtrar items por Categoria Insumo (campo nuevo)
-  const getItemsByCategoriaInsumo = (categoria: string): InventarioRecord[] => {
-    if (!data?.records) return [];
-    return data.records.filter(record => {
-      const cat = getItemCategoriaInsumo(record);
-      return cat.toLowerCase() === categoria.toLowerCase();
-    });
-  };
-
-  // Función para obtener items con fecha de vencimiento próxima
   const getVencimientosProximos = (dias: number): InventarioRecord[] => {
-    if (!data?.records) return [];
     const hoy = new Date();
     const limite = new Date(hoy.getTime() + dias * 24 * 60 * 60 * 1000);
 
-    return data.records.filter(record => {
+    return registros.filter((record) => {
       const fechaStr = getItemFechaVencimiento(record);
       if (!fechaStr) return false;
       const fecha = new Date(fechaStr);
@@ -269,29 +269,38 @@ export function useInventario(filters?: InventarioFilters) {
     data,
     loading,
     error,
-    refreshInventario,
+    refreshInventario: fetchInventario,
+
+    // Datos derivados
+    registros,
+    registrosFiltrados,
+    categoriasDisponibles,
+
+    // Conteos
     getTotalItems,
     getItemsByCategory,
     getLowStockItems,
+    getSinStockItems,
     getItemsByStatus,
     searchItems,
+    getVencimientosProximos,
+
+    // Getters por registro
     getItemName,
+    getItemCodigo,
     getItemCategory,
+    getItemCategories,
+    getItemCategoriaInsumo,
     getItemQuantity,
     getItemUnit,
+    getItemUnitNombre,
     getItemDescription,
-    getItemEntradas,
-    getItemSalidas,
-    getItemPresentacion,
-    getItemCantidadPresentacion,
+    getItemMovimientos,
     getItemStockTotal,
     getMinStock,
-    // Nuevos getters — trazabilidad productiva
-    getItemCategoriaInsumo,
     getItemEstado,
     getItemFechaVencimiento,
-    getItemsByCategoriaInsumo,
-    getVencimientosProximos,
+
     // Paquete de lonas activo
     getPaqueteLonasActivo: async () => {
       try {

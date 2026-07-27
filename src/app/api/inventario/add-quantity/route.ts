@@ -1,31 +1,58 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
+import {
+  appendMovimientoToStock,
+  getOrCreateStockForInsumo,
+} from '../../../../lib/stock-insumos';
 
-// Usar el ID de la tabla de Entradas de Insumos desde variables de entorno
-// Si no está configurado, usar el nombre de la tabla
-const ENTRADAS_TABLE_ID = config.airtable.entradasTableId || 'Entrada Insumos Pirolisis';
-
+/**
+ * POST /api/inventario/add-quantity
+ *
+ * Registra una entrada de insumo en Sirius Insumos Core.
+ *
+ * MIGRADO (2026-07-27): Antes creaba en Entrada Insumos Pirolisis (local).
+ * Ahora crea Movimiento Insumos (tipo="Entrada") y actualiza Stock Insumos del Core.
+ *
+ * Body esperado:
+ * - itemId (string, requerido): record ID del insumo en Sirius Insumos Core
+ * - cantidad (number, requerido): cantidad a ingresar
+ * - Realiza Registro (string, opcional): quién registra
+ * - notas (string, opcional): observaciones
+ */
 export async function POST(request: Request) {
-  // Verificar si la variable de entorno está configurada
-  if (!config.airtable.inventarioTableId) {
-    console.warn('⚠️ AIRTABLE_INVENTARIO_TABLE_ID no está configurado en .env.local');
+  // Validar configuración
+  if (!config.airtable.insumosCoreBaseId || !config.airtable.movimientosInsumosTableId) {
+    console.warn('⚠️ Configuración de Sirius Insumos Core incompleta');
     return NextResponse.json({
-      error: 'AIRTABLE_INVENTARIO_TABLE_ID no está configurado. Revisa tu archivo .env.local',
-      details: 'Para activar el módulo de inventario, configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local'
+      error: 'Configuración de Sirius Insumos Core incompleta',
+      details: 'Faltan AIRTABLE_INSUMOS_CORE_BASE_ID o AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID'
     }, { status: 400 });
   }
 
   try {
-    if (!config.airtable.token || !config.airtable.baseId) {
+    const token = config.airtable.insumosCoreToken;
+    const coreBaseId = config.airtable.insumosCoreBaseId;
+    const movimientosTableId = config.airtable.movimientosInsumosTableId;
+    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
+    const movFields = config.airtable.movimientoFields;
+
+    if (!token) {
       return NextResponse.json({
-        error: 'Configuración de Airtable incompleta',
-        details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID'
+        error: 'Token de Airtable no configurado',
+        details: 'Falta AIRTABLE_GLOBAL_TOKEN'
       }, { status: 500 });
     }
 
     const body = await request.json();
     console.log('📥 Datos recibidos en API add-quantity:', body);
-    const { itemId, cantidad, notas, 'Realiza Registro': realizaRegistro, tipo } = body;
+
+    const {
+      itemId,
+      cantidad,
+      notas,
+      'Realiza Registro': realizaRegistro,
+      'ID Responsable Core': idResponsableCore,
+    } = body;
 
     // Validar campos requeridos
     if (!itemId || !cantidad) {
@@ -43,11 +70,9 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Obtener el turno actual abierto (sin filtrar por usuario específico).
-    // Asociar el turno es OPCIONAL: si la consulta falla (p.ej. self-fetch en
-    // producción), continuamos sin vincular el turno en lugar de romper la
-    // operación completa.
-    console.log('🔍 Obteniendo turno actual abierto...');
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OPCIONAL: Obtener turno actual abierto (para guardarlo en Notas)
+    // ═══════════════════════════════════════════════════════════════════════════
     let turnoActual: { id: string } | null = null;
     try {
       const baseUrl =
@@ -62,65 +87,154 @@ export async function POST(request: Request) {
         const turnoData = await turnoResponse.json();
         if (turnoData.hasTurnoAbierto && turnoData.turnoAbierto) {
           turnoActual = turnoData.turnoAbierto;
-          console.log('⚠️ Turno abierto encontrado:', turnoActual?.id);
-        } else {
-          console.log('ℹ️ No hay turno abierto actualmente');
+          console.log('📋 Turno abierto encontrado:', turnoActual?.id);
         }
-      } else {
-        console.log('⚠️ No se pudo obtener información del turno (status):', turnoResponse.status);
       }
     } catch (turnoErr) {
-      console.warn('⚠️ Error consultando turno (no crítico, se continúa sin vinculación):', turnoErr);
+      console.warn('⚠️ Error consultando turno (no crítico):', turnoErr);
     }
 
-    // Preparar los campos para crear el registro de entrada
-    const fields: any = {};
-    fields[config.airtable.entradasFields.cantidadIngresa || 'Cantidad Ingresada'] = cantidadNumerica;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 0 (CRÍTICO): Verificar/crear Stock Insumos ANTES de crear movimiento
+    // Esto previene movimientos huérfanos si el Stock no existe
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Estrategia: Obtener TODOS los stocks (paginados) y filtrar en JS.
+    // Ver src/lib/stock-insumos.ts: el match NO puede hacerse con
+    // filterByFormula ni leyendo `fields` por field ID.
+    console.log(`🔍 Buscando Stock existente para insumo: ${itemId}`);
 
-    if (realizaRegistro) {
-      fields[config.airtable.entradasFields.realizaRegistro || 'Realiza Registro'] = realizaRegistro;
+    let stockInsumoId: string;
+
+    try {
+      const { stockId, created } = await getOrCreateStockForInsumo(itemId);
+      stockInsumoId = stockId;
+
+      if (created) {
+        console.warn(`⚠️ Stock Insumos NO existía para ${itemId}, creado: ${stockInsumoId}`);
+      } else {
+        console.log(`📦 Stock Insumos encontrado: ${stockInsumoId}`);
+      }
+    } catch (stockErr: any) {
+      console.error('❌ Error al resolver Stock Insumos:', stockErr);
+      return NextResponse.json({
+        error: 'No se pudo resolver el registro de Stock para este insumo',
+        details: String(stockErr?.message || stockErr)
+      }, { status: 500 });
     }
 
-    // Link al item del inventario
-    fields[config.airtable.entradasFields.inventarioInsumos || 'Inventario Insumos Pirolisis'] = [itemId];
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 1: Crear movimiento de entrada en Movimientos Insumos
+    // ═══════════════════════════════════════════════════════════════════════════
+    const movimientoFields: Record<string, any> = {};
 
-    // Link al turno actual si existe
-    if (turnoActual) {
-      fields[config.airtable.entradasFields.turnoPirolisis || 'Turno Pirolisis'] = [turnoActual.id];
+    // Link al insumo
+    if (movFields.insumo) {
+      movimientoFields[movFields.insumo] = [itemId];
     }
 
-    console.log('📤 Campos a crear en tabla de entradas:', fields);
-    console.log('🔗 Tabla de entradas:', ENTRADAS_TABLE_ID);
-
-    // Crear el registro de entrada en Airtable
-    const response = await fetch(`https://api.airtable.com/v0/${config.airtable.baseId}/${ENTRADAS_TABLE_ID}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        records: [{
-          fields
-        }]
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('❌ Error de Airtable al crear entrada:', data);
-      return NextResponse.json({ error: data?.error || 'Airtable error', details: data }, { status: response.status });
+    // Cantidad
+    if (movFields.cantidad) {
+      movimientoFields[movFields.cantidad] = cantidadNumerica;
     }
+
+    // Tipo movimiento = "Entrada"
+    if (movFields.tipoMovimiento) {
+      movimientoFields[movFields.tipoMovimiento] = 'Entrada';
+    }
+
+    // Subtipo: DEJAR VACÍO (campo existe pero no está en uso)
+    // if (movFields.subtipo) {
+    //   movimientoFields[movFields.subtipo] = '';
+    // }
+
+    // Área destino = Pirólisis
+    if (movFields.idAreaDestino) {
+      movimientoFields[movFields.idAreaDestino] = pirolisisAreaCode;
+    }
+
+    // Responsable (usar ID Core si está disponible, sino el nombre)
+    if (movFields.idResponsable) {
+      movimientoFields[movFields.idResponsable] = idResponsableCore || realizaRegistro;
+    }
+
+    // Notas: concatenar notas del usuario + referencia a turno (si hay)
+    if (movFields.notas) {
+      let notasCompletas = '';
+      if (notas) {
+        notasCompletas += notas;
+      }
+      if (turnoActual) {
+        if (notasCompletas) notasCompletas += '\n';
+        notasCompletas += `Entrada vinculada a Turno ${turnoActual.id}`;
+      }
+      if (notasCompletas) {
+        movimientoFields[movFields.notas] = notasCompletas;
+      }
+    }
+
+    console.log('📤 Creando movimiento de entrada en Core:', movimientoFields);
+
+    const createMovResponse = await fetch(
+      `https://api.airtable.com/v0/${coreBaseId}/${movimientosTableId}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          records: [{
+            fields: movimientoFields
+          }]
+        }),
+      }
+    );
+
+    const movimientoData = await createMovResponse.json();
+
+    if (!createMovResponse.ok) {
+      console.error('❌ Error al crear movimiento en Core:', movimientoData);
+      return NextResponse.json({
+        error: movimientoData?.error || 'Error al crear movimiento',
+        details: movimientoData
+      }, { status: createMovResponse.status });
+    }
+
+    const nuevoMovimientoId = movimientoData.records[0].id;
+    console.log(`✅ Movimiento de entrada creado: ${nuevoMovimientoId}`);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 2: Vincular movimiento al Stock Insumos (ya garantizado que existe)
+    // ═══════════════════════════════════════════════════════════════════════════
+    console.log(`🔗 Vinculando movimiento ${nuevoMovimientoId} al stock ${stockInsumoId}`);
+
+    try {
+      // Preserva los movimientos ya vinculados: el PATCH de un campo link
+      // reemplaza el array completo.
+      await appendMovimientoToStock(stockInsumoId, nuevoMovimientoId);
+    } catch (linkErr: any) {
+      console.error('❌ Error al actualizar Stock Insumos:', linkErr);
+      return NextResponse.json({
+        error: 'Movimiento creado pero faltó vincular al stock',
+        details: String(linkErr?.message || linkErr)
+      }, { status: 500 });
+    }
+
+    console.log(`✅ Stock Insumos actualizado con nuevo movimiento`);
 
     return NextResponse.json({
       success: true,
       message: `Entrada registrada exitosamente. Cantidad: ${cantidadNumerica}`,
-      data: data
+      data: {
+        movimiento: movimientoData.records[0],
+        stockInsumoId
+      }
     }, { status: 201 });
 
   } catch (err: any) {
     console.error('❌ Error en API add-quantity:', err);
-    return NextResponse.json({ error: String(err.message || err) }, { status: 500 });
+    return NextResponse.json({
+      error: String(err.message || err)
+    }, { status: 500 });
   }
 }

@@ -26,29 +26,42 @@ export interface AirtableRecord<T = Record<string, unknown>> {
  * Campos del registro de inventario en Airtable
  */
 export interface InventarioFields {
-  // Identificación del insumo
-  'Insumo'?: string;
-  'Nombre del Insumo'?: string;
-  'Categoría'?: string;
-  'Categoria Insumo'?: string;
-
-  // Cantidades y stock
-  'Cantidad Presentacion Insumo'?: number;
-  'Total Cantidad Stock'?: number;
+  // — Campos crudos de Sirius Insumos Core (tabla Insumo) —
+  'Nombre'?: string;
+  'Código SIRIUS-INS'?: string;
+  /** Link: array de record IDs de Categoria Insumo. Usa `categorias` para mostrar. */
+  'Categoria'?: string[];
+  /** Link: array de record IDs de Unidades de Medida. Usa `unidad` para mostrar. */
+  'Unidad Base'?: string[] | string;
+  'Unidad Medida'?: string;
   'Stock Minimo'?: number;
+  'Estado Insumo'?: string;
+  'ID Area Origen'?: string;
+  'Movimientos Insumos'?: string[];
+  'Stock Insumos'?: string[];
 
-  // Presentación
-  'Presentacion Insumo'?: string;
-  'Presentación'?: string;
-  'Presentación Personalizada'?: string;
+  // — Campos normalizados que agrega /api/inventario/list —
+  /** Código legible del insumo: "SIRIUS-INS-0059". */
+  codigo?: string;
+  /** Nombres de TODAS las categorías del insumo, ya resueltos. */
+  categorias?: string[];
+  /** Símbolo de la unidad base: "und", "kg", "L". */
+  unidad?: string;
+  /** Nombre de la unidad base: "Unidad", "Kilogramo", "Litro". */
+  unidad_nombre?: string;
+  /** Stock real calculado por el Core. */
+  stock_actual?: number;
+  stock_minimo?: number;
+  /** Estado derivado del stock (no confundir con `Estado Insumo` del catálogo). */
+  estado_calculado?: 'disponible' | 'por_agotarse' | 'agotado';
+  estado_catalogo?: string;
 
-  // Trazabilidad
-  'Realiza Registro'?: string;
-  'Entrada Insumos Pirolisis'?: string[];
-  'Salida Insumos Pirolisis'?: string[];
+  // — Alias de compatibilidad —
+  'Insumo'?: string;
+  'Categoria Insumo'?: string;
+  'Total Cantidad Stock'?: number;
 
   // Estado y validez
-  'Estado'?: 'disponible' | 'agotado' | 'por_agotarse' | 'vencido';
   'Fecha Vencimiento'?: string;
 
   // Ficha de seguridad (para químicos)
@@ -174,27 +187,30 @@ export interface InventarioFormBaseProps {
 export interface SalidaInsumoFormProps extends InventarioFormBaseProps {
   getItemName: (record: InventarioRecord) => string;
   getItemCategory: (record: InventarioRecord) => string;
-  getItemQuantity: (record: InventarioRecord) => number;
-  getItemPresentacion: (record: InventarioRecord) => string;
+  getItemUnit: (record: InventarioRecord) => string;
   getItemStockTotal: (record: InventarioRecord) => number;
   getCurrentUserName: () => string;
 }
 
 /**
+ * Getters de un insumo, compartidos por las vistas del inventario.
+ */
+export interface InventarioItemGetters {
+  getItemName: (record: InventarioRecord) => string;
+  getItemCodigo: (record: InventarioRecord) => string;
+  getItemCategories: (record: InventarioRecord) => string[];
+  getItemStockTotal: (record: InventarioRecord) => number;
+  getMinStock: (record: InventarioRecord) => number;
+  getItemUnit: (record: InventarioRecord) => string;
+  getItemEstado: (record: InventarioRecord) => EstadoInsumo;
+  getItemMovimientos: (record: InventarioRecord) => string[];
+}
+
+/**
  * Props para ItemCard
  */
-export interface ItemCardProps {
+export interface ItemCardProps extends InventarioItemGetters {
   item: InventarioRecord;
-  getItemName: (record: InventarioRecord) => string;
-  getItemCategory: (record: InventarioRecord) => string;
-  getItemCategoriaInsumo: (record: InventarioRecord) => string;
-  getItemEstado: (record: InventarioRecord) => string;
-  getItemPresentacion: (record: InventarioRecord) => string;
-  getItemCantidadPresentacion: (record: InventarioRecord) => number;
-  getItemStockTotal: (record: InventarioRecord) => number;
-  getItemDescription: (record: InventarioRecord) => string;
-  getItemEntradas: (record: InventarioRecord) => string[];
-  getItemSalidas: (record: InventarioRecord) => string[];
 }
 
 // ============================================================================
@@ -205,28 +221,22 @@ export interface ItemCardProps {
  * Filtros disponibles para el inventario
  */
 export interface InventarioFilters {
+  /** Nombre de categoría tal como viene del Core: "Repuestos y Refacciones". */
   categoria?: string;
-  estado?: string;
+  estado?: EstadoInsumo | '';
+  /** Texto libre: busca en nombre, código y categorías. */
+  busqueda?: string;
 }
 
 /**
- * Categorías de insumos disponibles
- */
-export type CategoriaInsumo =
-  | 'lona'
-  | 'big_bag'
-  | 'quimico'
-  | 'herramienta'
-  | 'consumible';
-
-/**
- * Estados de insumos
+ * Estados de disponibilidad, derivados del stock real.
+ * (El campo `Estado Insumo` del Core —Activo/Inactivo/Stock— describe el ciclo
+ * de vida del catálogo, no la disponibilidad.)
  */
 export type EstadoInsumo =
   | 'disponible'
-  | 'agotado'
   | 'por_agotarse'
-  | 'vencido';
+  | 'agotado';
 
 /**
  * Presentaciones estándar de insumos

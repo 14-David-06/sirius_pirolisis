@@ -1,6 +1,6 @@
 /**
- * Página principal del Sistema de Inventario de Pirolisis
- * Versión refactorizada y simplificada - orquesta componentes sin lógica de negocio
+ * Página principal del Sistema de Inventario de Pirolisis.
+ * Orquesta los componentes del módulo; la lógica de datos vive en useInventario.
  */
 
 "use client";
@@ -20,8 +20,38 @@ import {
   RegistrarInsumoForm,
   IngresoInsumoForm,
 } from '@/components/inventario';
+import {
+  IconAlert,
+  IconArrowDownToBox,
+  IconArrowUpFromBox,
+  IconFactory,
+  IconPlus,
+  IconWrench,
+  IconX,
+} from '@/components/inventario/Icons';
 import { useInventario } from '@/lib/useInventario';
 import { DIAS_ALERTA_VENCIMIENTO } from '@/lib/inventario.constants';
+import type { EstadoInsumo } from '@/types/inventario';
+
+const FONDO =
+  "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')";
+
+type ModalMode = 'ingresar' | 'salida' | 'registrar';
+
+const MODAL_COPY: Record<ModalMode, { titulo: string; descripcion: string }> = {
+  ingresar: {
+    titulo: 'Ingresar cantidades',
+    descripcion: 'Selecciona un insumo existente y registra la cantidad que entra al inventario.',
+  },
+  salida: {
+    titulo: 'Salida de insumos',
+    descripcion: 'Registra la salida con su tipo de uso y la vinculación productiva.',
+  },
+  registrar: {
+    titulo: 'Registrar nuevo insumo',
+    descripcion: 'Crea un insumo en el catálogo de Sirius Insumos Core.',
+  },
+};
 
 // Función helper para obtener el nombre del usuario actual
 const getCurrentUserName = (): string => {
@@ -37,6 +67,23 @@ const getCurrentUserName = (): string => {
   return 'Usuario Desconocido';
 };
 
+// Función helper para obtener el código SIRIUS-PER del usuario actual
+const getCurrentUserIdCore = (): string => {
+  try {
+    const userSession = localStorage.getItem('userSession');
+    if (userSession) {
+      const sessionData = JSON.parse(userSession);
+      // El login guarda el campo "ID Empleado" de Nomina Core como "idPersonalCore"
+      return sessionData.user?.idPersonalCore ||
+             sessionData.user?.['ID Empleado'] ||
+             'SIRIUS-PER-0000';
+    }
+  } catch (error) {
+    console.error('Error obteniendo ID Core de usuario:', error);
+  }
+  return 'SIRIUS-PER-0000';
+};
+
 export default function InventarioPirolisis() {
   return (
     <TurnoProtection requiresTurno={true} allowBitacoraUsers={true}>
@@ -45,255 +92,265 @@ export default function InventarioPirolisis() {
   );
 }
 
+/** Envoltorio de página: fondo, navbar y footer compartidos por todos los estados. */
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="min-h-screen bg-cover bg-center bg-no-repeat bg-fixed relative"
+      style={{ backgroundImage: FONDO }}
+    >
+      <div className="absolute inset-0 bg-slate-950/70" />
+      <div className="relative z-10 flex min-h-screen flex-col">
+        <Navbar />
+        <main className="flex-1 mx-auto w-full max-w-6xl px-4 sm:px-6 py-8">{children}</main>
+        <Footer />
+      </div>
+    </div>
+  );
+}
+
 function InventarioPirolisisContent() {
   const [filtroCategoria, setFiltroCategoria] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'ingresar' | 'registrar' | 'salida'>('ingresar');
+  const [filtroEstado, setFiltroEstado] = useState<EstadoInsumo | ''>('');
+  const [busqueda, setBusqueda] = useState('');
+  const [modalMode, setModalMode] = useState<ModalMode | null>(null);
+
+  const inventario = useInventario({
+    categoria: filtroCategoria || undefined,
+    estado: filtroEstado || undefined,
+    busqueda: busqueda || undefined,
+  });
 
   const {
     data,
     loading,
     error,
     refreshInventario,
+    categoriasDisponibles,
     getTotalItems,
     getItemsByCategory,
     getLowStockItems,
+    getSinStockItems,
     getVencimientosProximos,
     getItemName,
-    getItemDescription,
-    getItemEntradas,
-    getItemSalidas,
-    getItemPresentacion,
-    getItemCantidadPresentacion,
+    getItemCodigo,
     getItemCategory,
-    getItemQuantity,
-    getItemUnit,
+    getItemCategories,
     getItemStockTotal,
-    getItemCategoriaInsumo,
+    getMinStock,
+    getItemUnit,
     getItemEstado,
+    getItemMovimientos,
     getItemFechaVencimiento,
-  } = useInventario({
-    categoria: filtroCategoria || undefined,
-    estado: filtroEstado || undefined,
-  });
+  } = inventario;
 
   const handleModalSuccess = async (successMessage: string) => {
-    setShowModal(false);
+    setModalMode(null);
     await refreshInventario();
     alert(successMessage);
   };
 
-  const handleFilterChange = (categoria: string, estado: string) => {
-    setFiltroCategoria(categoria);
-    setFiltroEstado(estado);
-  };
-
-  // Estados de carga y error
   if (loading) {
     return (
-      <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
-      }}>
-        <div className="absolute inset-0 bg-black/40"></div>
-        <div className="relative z-10 flex items-center justify-center min-h-screen">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-white/30">
-            <div className="text-white text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-              <p className="text-lg">Cargando inventario...</p>
-            </div>
+      <PageShell>
+        <div aria-busy="true" aria-label="Cargando inventario" className="space-y-6">
+          <div className="h-8 w-72 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-[104px] rounded-xl bg-white/5 ring-1 ring-white/10 animate-pulse motion-reduce:animate-none"
+              />
+            ))}
           </div>
+          <div className="h-96 rounded-xl bg-white/5 ring-1 ring-white/10 animate-pulse motion-reduce:animate-none" />
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (error) {
-    const isTableNotConfigured = error.includes('no configurado') || error.includes('AIRTABLE_INVENTARIO_TABLE_ID');
-    const isTableNotFound = error.includes('no encontrada') || error.includes('INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND');
-
     return (
-      <div className="min-h-screen bg-cover bg-center bg-no-repeat relative" style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
-      }}>
-        <div className="absolute inset-0 bg-black/40"></div>
-        <div className="relative z-10 flex items-center justify-center min-h-screen">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-white/30">
-            <div className="text-white text-center">
-              {isTableNotConfigured ? (
-                <>
-                  <div className="text-6xl mb-4">📦</div>
-                  <h2 className="text-2xl font-bold mb-4">Módulo de Inventario</h2>
-                  <p className="text-lg mb-4">El módulo de inventario está listo para usar</p>
-                  <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-yellow-200">
-                      <strong>⚠️ Configuración pendiente:</strong><br />
-                      Para activar este módulo, necesitas:
-                    </p>
-                    <ul className="text-sm text-yellow-200 mt-2 text-left">
-                      <li>• Crear una tabla "Inventario Pirolisis" en Airtable</li>
-                      <li>• Descomentar y configurar <code>AIRTABLE_INVENTARIO_TABLE_ID</code> en .env.local</li>
-                      <li>• Agregar el ID de tu tabla de Airtable</li>
-                    </ul>
-                  </div>
-                </>
-              ) : isTableNotFound ? (
-                <>
-                  <div className="text-6xl mb-4">🔍</div>
-                  <h2 className="text-2xl font-bold mb-4">Tabla No Encontrada</h2>
-                  <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-red-200">
-                      <strong>🔧 Posibles soluciones:</strong>
-                    </p>
-                    <ul className="text-sm text-red-200 mt-2 text-left">
-                      <li>• Verifica que la tabla "Inventario Pirolisis" existe en Airtable</li>
-                      <li>• Confirma que el ID de tabla en .env.local es correcto</li>
-                      <li>• Asegúrate de que tienes permisos de acceso a la tabla</li>
-                    </ul>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-lg mb-4">Error al cargar inventario</p>
-                  <p className="text-sm text-white/70">{error}</p>
-                </>
-              )}
-            </div>
-          </div>
+      <PageShell>
+        <div className="mx-auto max-w-lg rounded-xl bg-rose-500/10 ring-1 ring-rose-400/25 p-6 text-center">
+          <IconAlert className="mx-auto h-10 w-10 text-rose-300" />
+          <h1 className="mt-3 text-lg font-semibold text-white">No se pudo cargar el inventario</h1>
+          <p className="mt-2 text-sm text-white/70">{error}</p>
+          <button
+            type="button"
+            onClick={refreshInventario}
+            className="mt-5 rounded-lg bg-white/10 ring-1 ring-white/20 px-4 py-2 text-sm font-medium text-white transition-colors duration-200 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+          >
+            Reintentar
+          </button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   const totalItems = getTotalItems();
   const lowStockItems = getLowStockItems();
+  const sinStockItems = getSinStockItems();
   const categories = getItemsByCategory();
   const vencimientosProximos = getVencimientosProximos(DIAS_ALERTA_VENCIMIENTO);
-  const isTableEmpty = data && data.records && data.records.length === 0;
+  const isTableEmpty = data?.records?.length === 0;
+
+  const acciones = [
+    {
+      mode: 'ingresar' as const,
+      label: 'Ingresar cantidades',
+      icono: <IconArrowDownToBox className="w-4 h-4" />,
+      clases: 'bg-emerald-600 hover:bg-emerald-500 focus-visible:ring-emerald-300',
+    },
+    {
+      mode: 'salida' as const,
+      label: 'Salida de insumos',
+      icono: <IconArrowUpFromBox className="w-4 h-4" />,
+      clases: 'bg-rose-600 hover:bg-rose-500 focus-visible:ring-rose-300',
+    },
+    {
+      mode: 'registrar' as const,
+      label: 'Nuevo insumo',
+      icono: <IconPlus className="w-4 h-4" />,
+      clases: 'bg-sky-600 hover:bg-sky-500 focus-visible:ring-sky-300',
+    },
+  ];
 
   return (
-    <div
-      className="min-h-screen bg-cover bg-center bg-no-repeat relative"
-      style={{
-        backgroundImage: "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')"
-      }}
-    >
-      <div className="absolute inset-0 bg-black/40"></div>
-
-      <div className="relative z-10">
-        <Navbar />
-        <main className="container mx-auto px-6 py-8">
-          <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-6xl mx-auto border border-white/30">
-            <h1 className="text-3xl font-bold text-white mb-6 text-center drop-shadow-lg">
-              🏭 Sistema de Inventario - Pirolisis
-            </h1>
-            <p className="text-center text-white/90 mb-6 drop-shadow text-lg">
-              Gestión integral del inventario de insumos para procesos de pirólisis industrial
+    <PageShell>
+      {/* Encabezado */}
+      <header className="border-b border-white/10 pb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+              <IconFactory className="w-4 h-4" />
+              Pirólisis
             </p>
-
-            {/* Botones de acciones */}
-            <div className="text-center mb-6">
-              <div className="flex justify-center space-x-4 flex-wrap gap-4">
-                <button
-                  onClick={() => { setModalMode('ingresar'); setShowModal(true); }}
-                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-                >
-                  <span>📦</span>
-                  <span>Ingresar Cantidades</span>
-                </button>
-                <button
-                  onClick={() => { setModalMode('salida'); setShowModal(true); }}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-                >
-                  <span>📤</span>
-                  <span>Salida de Insumos</span>
-                </button>
-                <button
-                  onClick={() => { setModalMode('registrar'); setShowModal(true); }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-                >
-                  <span>📝</span>
-                  <span>Registrar Nuevo Insumo</span>
-                </button>
-              </div>
-            </div>
-
-            {isTableEmpty ? (
-              <div className="bg-blue-500/20 backdrop-blur-md rounded-lg shadow-lg p-8 border border-blue-500/30 text-center">
-                <div className="text-6xl mb-4">📦</div>
-                <h2 className="text-2xl font-bold text-white mb-4">¡Tabla de Inventario Lista!</h2>
-                <p className="text-lg text-white/90 mb-4">
-                  La tabla de inventario está configurada correctamente pero aún no tiene datos.
-                </p>
-              </div>
-            ) : (
-              <>
-                <EstadisticasGenerales
-                  totalItems={totalItems}
-                  totalCategorias={Object.keys(categories).length}
-                  itemsStockBajo={lowStockItems.length}
-                />
-
-                <AlertasInventario
-                  items={lowStockItems}
-                  getItemName={getItemName}
-                  getItemCategory={getItemCategory}
-                  getItemDescription={getItemDescription}
-                  getItemQuantity={getItemQuantity}
-                  getItemUnit={getItemUnit}
-                />
-
-                <VencimientosProximos
-                  items={vencimientosProximos}
-                  diasAlerta={DIAS_ALERTA_VENCIMIENTO}
-                  getItemName={getItemName}
-                  getItemCategoriaInsumo={getItemCategoriaInsumo}
-                  getItemCategory={getItemCategory}
-                  getItemFechaVencimiento={getItemFechaVencimiento}
-                />
-
-                <MetricasSection />
-                <PaqueteLonasCard />
-
-                <InventarioTable
-                  categories={categories}
-                  getItemName={getItemName}
-                  getItemCategory={getItemCategory}
-                  getItemCategoriaInsumo={getItemCategoriaInsumo}
-                  getItemEstado={getItemEstado}
-                  getItemPresentacion={getItemPresentacion}
-                  getItemCantidadPresentacion={getItemCantidadPresentacion}
-                  getItemStockTotal={getItemStockTotal}
-                  getItemDescription={getItemDescription}
-                  getItemEntradas={getItemEntradas}
-                  getItemSalidas={getItemSalidas}
-                  onFilterChange={handleFilterChange}
-                />
-              </>
-            )}
+            <h1 className="mt-1.5 text-2xl sm:text-3xl font-semibold tracking-tight text-white">
+              Inventario de insumos
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-white/60">
+              Insumos consumibles del área, sincronizados con Sirius Insumos Core.
+            </p>
           </div>
-        </main>
-        <Footer />
-      </div>
 
-      {/* Modal para formularios */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl w-full max-w-2xl mx-auto border border-white/20 max-h-[90vh] overflow-y-auto">
-            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 p-6 rounded-t-xl border-b border-white/10">
-              <h2 className="text-2xl font-bold text-white drop-shadow-lg text-center">
-                {modalMode === 'ingresar' ? '📦 Ingresar Cantidades al Inventario'
-                  : modalMode === 'salida' ? '📤 Salida de Insumos — Trazabilidad'
-                  : '📝 Registrar Nuevo Insumo'}
-              </h2>
-              <p className="text-center text-white/80 mt-2 drop-shadow text-sm">
-                {modalMode === 'ingresar'
-                  ? 'Selecciona un insumo existente y agrega cantidades al inventario.'
-                  : modalMode === 'salida'
-                  ? 'Registra la salida con tipo de uso y vinculación productiva.'
-                  : 'Registra un nuevo insumo en el sistema de inventario de pirolisis.'
-                }
-              </p>
+          <a
+            href="/activos-fijos"
+            className="inline-flex items-center gap-2 rounded-lg bg-white/5 ring-1 ring-white/15 px-3 py-2 text-sm text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+          >
+            <IconWrench className="w-4 h-4" />
+            Herramientas y equipos
+          </a>
+        </div>
+
+        {/* Acciones */}
+        <div className="mt-5 flex flex-wrap gap-2">
+          {acciones.map(({ mode, label, icono, clases }) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setModalMode(mode)}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 cursor-pointer ${clases}`}
+            >
+              {icono}
+              {label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {isTableEmpty ? (
+        <div className="mt-8 rounded-xl bg-white/5 ring-1 ring-white/10 p-10 text-center">
+          <h2 className="text-lg font-semibold text-white">Sin insumos registrados</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-white/60">
+            Sirius Insumos Core no tiene insumos asignados al área de Pirólisis. Registra el
+            primero para empezar a controlar el stock.
+          </p>
+          <button
+            type="button"
+            onClick={() => setModalMode('registrar')}
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors duration-200 hover:bg-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 cursor-pointer"
+          >
+            <IconPlus className="w-4 h-4" />
+            Registrar insumo
+          </button>
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <EstadisticasGenerales
+            totalItems={totalItems}
+            totalCategorias={categoriasDisponibles.length}
+            itemsStockBajo={lowStockItems.length}
+            itemsSinStock={sinStockItems.length}
+          />
+
+          <AlertasInventario
+            itemsStockBajo={lowStockItems}
+            itemsSinStock={sinStockItems}
+            getItemName={getItemName}
+            getItemCategories={getItemCategories}
+            getItemStockTotal={getItemStockTotal}
+            getMinStock={getMinStock}
+            getItemUnit={getItemUnit}
+          />
+
+          <VencimientosProximos
+            items={vencimientosProximos}
+            diasAlerta={DIAS_ALERTA_VENCIMIENTO}
+            getItemName={getItemName}
+            getItemCategories={getItemCategories}
+            getItemFechaVencimiento={getItemFechaVencimiento}
+          />
+
+          <PaqueteLonasCard />
+          <MetricasSection />
+
+          <InventarioTable
+            categories={categories}
+            categoriasDisponibles={categoriasDisponibles}
+            filtroCategoria={filtroCategoria}
+            filtroEstado={filtroEstado}
+            busqueda={busqueda}
+            onFiltroCategoriaChange={setFiltroCategoria}
+            onFiltroEstadoChange={setFiltroEstado}
+            onBusquedaChange={setBusqueda}
+            totalSinFiltrar={totalItems}
+            getItemName={getItemName}
+            getItemCodigo={getItemCodigo}
+            getItemCategories={getItemCategories}
+            getItemStockTotal={getItemStockTotal}
+            getMinStock={getMinStock}
+            getItemUnit={getItemUnit}
+            getItemEstado={getItemEstado}
+            getItemMovimientos={getItemMovimientos}
+          />
+        </div>
+      )}
+
+      {/* Modal de formularios */}
+      {modalMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-inventario-titulo"
+        >
+          <div className="my-auto w-full max-w-2xl overflow-hidden rounded-xl bg-slate-900/95 ring-1 ring-white/15 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+              <div>
+                <h2 id="modal-inventario-titulo" className="text-lg font-semibold text-white">
+                  {MODAL_COPY[modalMode].titulo}
+                </h2>
+                <p className="mt-1 text-sm text-white/60">{MODAL_COPY[modalMode].descripcion}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalMode(null)}
+                aria-label="Cerrar"
+                className="shrink-0 rounded-lg p-1.5 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+              >
+                <IconX className="w-5 h-5" />
+              </button>
             </div>
 
             {modalMode === 'salida' ? (
@@ -301,33 +358,34 @@ function InventarioPirolisisContent() {
                 records={data?.records || []}
                 getItemName={getItemName}
                 getItemCategory={getItemCategory}
-                getItemQuantity={getItemQuantity}
-                getItemPresentacion={getItemPresentacion}
+                getItemUnit={getItemUnit}
                 getItemStockTotal={getItemStockTotal}
                 getCurrentUserName={getCurrentUserName}
                 onSuccess={() => handleModalSuccess('Salida de insumo registrada exitosamente')}
-                onCancel={() => setShowModal(false)}
+                onCancel={() => setModalMode(null)}
               />
             ) : modalMode === 'ingresar' ? (
               <IngresoInsumoForm
                 records={data?.records || []}
                 onSuccess={() => handleModalSuccess('Cantidad agregada exitosamente')}
-                onCancel={() => setShowModal(false)}
+                onCancel={() => setModalMode(null)}
                 getCurrentUserName={getCurrentUserName}
+                getCurrentUserIdCore={getCurrentUserIdCore}
                 getItemName={getItemName}
                 getItemCategory={getItemCategory}
                 getItemStockTotal={getItemStockTotal}
+                getItemUnit={getItemUnit}
               />
             ) : (
               <RegistrarInsumoForm
                 onSuccess={() => handleModalSuccess('Insumo registrado exitosamente')}
-                onCancel={() => setShowModal(false)}
+                onCancel={() => setModalMode(null)}
                 getCurrentUserName={getCurrentUserName}
               />
             )}
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

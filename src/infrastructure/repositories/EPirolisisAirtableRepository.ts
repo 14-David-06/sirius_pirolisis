@@ -14,9 +14,11 @@ const TURNO_PIROLISIS_TABLE = process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID!;
 const BALANCES_MASA_TABLE = process.env.CARBON_EPIROLISIS_BALANCES_MASA_TABLE_ID!;
 const MANEJO_RESIDUOS_TABLE = process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABLE_ID!;
 
-// Entradas de inventario (para imputar la huella de lonas en la fecha de ingreso)
-const ENTRADAS_INSUMOS_TABLE = process.env.AIRTABLE_ENTRADAS_TABLE_ID;
-const LONA_INSUMO_ID = process.env.AIRTABLE_LONA_INSUMO_ID;
+// Movimientos de inventario del Core (para imputar la huella de lonas en la fecha de ingreso)
+// MIGRADO (2026-07-27): Antes leía ENTRADAS_INSUMOS_TABLE local, ahora lee del Core
+const MOVIMIENTOS_INSUMOS_CORE_TABLE = process.env.AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID;
+const INSUMOS_CORE_BASE_ID = process.env.AIRTABLE_INSUMOS_CORE_BASE_ID;
+const LONA_INSUMO_ID = process.env.AIRTABLE_LONA_INSUMO_ID;  // Insumo del Core (SIRIUS-INS-0062)
 
 // Table ID (escritura)
 const CARBON_EPIROLISIS_TABLE = process.env.CARBON_EPIROLISIS_RESULTADOS_TABLE_ID!;
@@ -56,36 +58,71 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
 
   /**
    * Suma la cantidad de lonas ingresadas al inventario en un período.
-   * Filtra la tabla de Entradas de Insumos por:
-   *   - Insumo vinculado = LONA_INSUMO_ID
+   *
+   * MIGRADO (2026-07-27): Antes filtraba Entrada Insumos Pirolisis (local).
+   * Ahora filtra Movimientos Insumos del Core por:
+   *   - Insumo vinculado = LONA_INSUMO_ID (nuevo ID del Core)
+   *   - Tipo Movimiento = "Entrada"
    *   - CREATED_TIME() dentro del rango [fechaInicio, fechaFin]
    *
    * Devuelve 0 si la tabla o el ID de lona no están configurados (no rompe el cálculo).
    */
   private async sumarLonasIngresadas(fechaInicio: string, fechaFin: string): Promise<number> {
-    if (!ENTRADAS_INSUMOS_TABLE || !LONA_INSUMO_ID) {
-      console.warn('⚠️ AIRTABLE_ENTRADAS_TABLE_ID o AIRTABLE_LONA_INSUMO_ID no configurados; total_lonas = 0');
+    if (!MOVIMIENTOS_INSUMOS_CORE_TABLE || !INSUMOS_CORE_BASE_ID || !LONA_INSUMO_ID) {
+      console.warn('⚠️ Configuración de Core incompleta para sumar lonas; total_lonas = 0');
       return 0;
     }
 
-    // Filtro: entrada vinculada al insumo Lona Y creada dentro del período.
+    // Filtro: movimiento de entrada del insumo Lona creado dentro del período
     const filter = `AND(`
-      + `FIND("${LONA_INSUMO_ID}", ARRAYJOIN({Inventario Insumos Pirolisis})),`
+      + `FIND("${LONA_INSUMO_ID}", ARRAYJOIN({Insumo})),`
+      + `{Tipo Movimiento} = "Entrada",`
       + `IS_AFTER(CREATED_TIME(), '${fechaInicio}'),`
       + `IS_BEFORE(CREATED_TIME(), DATEADD('${fechaFin}', 1, 'days'))`
       + `)`;
 
-    const entradas = await this.fetchAllRecords(
-      ENTRADAS_INSUMOS_TABLE,
-      filter,
-      ['Cantidad Ingresa', 'Inventario Insumos Pirolisis']
-    );
+    // Fetch desde la base Core (NO la base local)
+    const token = process.env.AIRTABLE_GLOBAL_TOKEN || AIRTABLE_TOKEN;
+    let allRecords: any[] = [];
+    let offset: string | undefined;
+
+    do {
+      const params = new URLSearchParams({
+        filterByFormula: filter,
+        pageSize: '100',
+      });
+      params.append('fields[]', 'Cantidad');
+      params.append('fields[]', 'Insumo');
+      params.append('fields[]', 'Tipo Movimiento');
+      if (offset) params.set('offset', offset);
+
+      const url = `https://api.airtable.com/v0/${INSUMOS_CORE_BASE_ID}/${MOVIMIENTOS_INSUMOS_CORE_TABLE}?${params.toString()}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        next: { revalidate: 0 }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Error al leer movimientos de lonas del Core: ${response.status} - ${errorText}`);
+        return 0;  // No romper el cálculo
+      }
+
+      const data = await response.json();
+      allRecords = allRecords.concat(data.records || []);
+      offset = data.offset;
+    } while (offset);
 
     let total = 0;
-    for (const rec of entradas) {
-      const cantidad = parseFloat(rec.fields?.['Cantidad Ingresa']) || 0;
+    for (const rec of allRecords) {
+      const cantidad = parseFloat(rec.fields?.['Cantidad']) || 0;
       if (cantidad > 0) total += cantidad;
     }
+
+    console.log(`📦 Total lonas ingresadas (${fechaInicio} a ${fechaFin}): ${total}`);
     return total;
   }
 

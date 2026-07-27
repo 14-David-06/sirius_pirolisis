@@ -1,107 +1,115 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { config } from '../../../../../lib/config';
+import {
+  fetchAllStockInsumos,
+  findStockInRecords,
+  getStockActual,
+} from '../../../../../lib/stock-insumos';
 
-// Campo fórmula: la REST API devuelve el valor con el nombre como clave
-const FIELD_TOTAL_STOCK = 'Total Cantidad Stock';
-
-export async function GET(request: NextRequest) {
-  if (!config.airtable.inventarioTableId) {
-    console.warn('⚠️ AIRTABLE_INVENTARIO_TABLE_ID no está configurado en .env.local');
+/**
+ * GET /api/pirolisis/inventario/verificar-stock-blend
+ *
+ * Verifica si hay stock suficiente de Abono 4G y Biológicos DataLab
+ * para producir una cantidad dada de Biochar Blend.
+ *
+ * MIGRADO (2026-07-27): Antes leía de Inventario Insumos Pirolisis (local).
+ * Ahora lee de Insumo + Stock Insumos del Core.
+ *
+ * Query params:
+ * - kgTotal: KG totales de Blend a producir (requerido)
+ */
+export async function GET(request: Request) {
+  // Validar configuración
+  if (!config.airtable.insumosCoreBaseId || !config.airtable.stockInsumosTableId) {
+    console.warn('⚠️ Configuración de Sirius Insumos Core incompleta');
     return NextResponse.json({
-      error: 'AIRTABLE_INVENTARIO_TABLE_ID no está configurado. Revisa tu archivo .env.local',
-      details: 'Para activar el módulo de inventario, configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local',
+      error: 'Configuración de Sirius Insumos Core incompleta',
     }, { status: 400 });
   }
 
   try {
-    if (!config.airtable.token || !config.airtable.baseId) {
+    const token = config.airtable.insumosCoreToken;
+
+    if (!token) {
       return NextResponse.json({
-        error: 'Configuración de Airtable incompleta',
-        details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID',
+        error: 'Token de Airtable no configurado',
       }, { status: 500 });
     }
 
+    // Leer query param kgTotal
     const { searchParams } = new URL(request.url);
-    const kgTotalParam = searchParams.get('kg_total');
+    const kgTotalStr = searchParams.get('kgTotal');
 
-    if (!kgTotalParam) {
+    if (!kgTotalStr) {
       return NextResponse.json({
         error: 'Parámetro requerido faltante',
-        details: 'Se requiere el query param: kg_total',
+        details: 'Se requiere kgTotal (KG totales de Blend a producir)',
       }, { status: 400 });
     }
 
-    const kgTotal = parseFloat(kgTotalParam);
+    const kgTotal = parseFloat(kgTotalStr);
     if (isNaN(kgTotal) || kgTotal <= 0) {
       return NextResponse.json({
-        error: 'Parámetro inválido',
-        details: 'kg_total debe ser un número positivo',
+        error: 'kgTotal inválido',
+        details: 'kgTotal debe ser un número positivo',
       }, { status: 400 });
     }
 
-    const baseUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.inventarioTableId}`;
-    const headers = {
-      'Authorization': `Bearer ${config.airtable.token}`,
-      'Content-Type': 'application/json',
+    // Proporciones del Blend
+    const { pctAbono, pctBiologicos } = config.blend;
+    const kgAbono = kgTotal * pctAbono;
+    const kgBiologicos = kgTotal * pctBiologicos;
+
+    console.log(`🔍 Verificando stock para ${kgTotal} kg de Blend: Abono=${kgAbono.toFixed(2)} kg, Biológicos=${kgBiologicos.toFixed(2)} kg`);
+
+    // NOTA: Campo {Area} no existe en Stock Insumos
+    // NOTA 2: Insumo ID es multipleRecordLinks; el match se hace en JS sobre los
+    //         record IDs. Ver src/lib/stock-insumos.ts
+    const stockRecords = await fetchAllStockInsumos();
+
+    const stockDe = (insumoRecordId: string) => {
+      const { record } = findStockInRecords(insumoRecordId, stockRecords);
+      return record ? getStockActual(record) : 0;
     };
 
-    // Fetch ambos records en paralelo
-    const [r1, r2] = await Promise.all([
-      fetch(`${baseUrl}/${config.airtable.blendAbono4gRecordId}`, { headers }),
-      fetch(`${baseUrl}/${config.airtable.blendBiologicosRecordId}`, { headers }),
-    ]);
+    const stockAbono = stockDe(config.airtable.blendAbono4gRecordId!);
+    const stockBiologicos = stockDe(config.airtable.blendBiologicosRecordId!);
 
-    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    console.log(`📦 Stock disponible: Abono=${stockAbono} kg, Biológicos=${stockBiologicos} L`);
 
-    if (!r1.ok) {
-      console.error('❌ Error al obtener Abono 4G:', d1);
-      return NextResponse.json({ error: d1?.error || 'Airtable error', details: d1 }, { status: r1.status });
-    }
-    if (!r2.ok) {
-      console.error('❌ Error al obtener Biologicos DataLab:', d2);
-      return NextResponse.json({ error: d2?.error || 'Airtable error', details: d2 }, { status: r2.status });
-    }
+    // Verificar si hay suficiente
+    const suficienteAbono = stockAbono >= kgAbono;
+    const suficienteBiologicos = stockBiologicos >= kgBiologicos;
+    const suficiente = suficienteAbono && suficienteBiologicos;
 
-    const stockAbono4g: number = d1.fields?.[FIELD_TOTAL_STOCK] ?? 0;
-    const stockBiologicos: number = d2.fields?.[FIELD_TOTAL_STOCK] ?? 0;
-
-    // Proporciones de la mezcla Biochar Blend (centralizadas en config.blend
-    // para que verificación de stock y auto-deducción nunca diverjan)
-    const pctAbono = config.blend.pctAbono;
-    const pctBiologicos = config.blend.pctBiologicos;
-    const abono_necesario = kgTotal * pctAbono;
-    const biologicos_necesario = kgTotal * pctBiologicos;
-
-    // suficiente: true solo si AMBOS insumos cubren su proporción individualmente
-    const abono_suficiente = stockAbono4g >= abono_necesario;
-    const biologicos_suficiente = stockBiologicos >= biologicos_necesario;
-    const suficiente = abono_suficiente && biologicos_suficiente;
-
-    console.log(`📊 Verificación blend: kg_total=${kgTotal}, abono_necesario=${abono_necesario}, biologicos_necesario=${biologicos_necesario}, stock_abono4g=${stockAbono4g}, stock_biologicos=${stockBiologicos}, suficiente=${suficiente}`);
-
-    return NextResponse.json({
-      kg_total_solicitado: kgTotal,
+    const resultado = {
       suficiente,
-      proporciones: {
-        abono_4g: { proporcion: pctAbono, kg_necesario: abono_necesario, stock_actual: stockAbono4g, suficiente: abono_suficiente },
-        biologicos_datalab: { proporcion: pctBiologicos, kg_necesario: biologicos_necesario, stock_actual: stockBiologicos, suficiente: biologicos_suficiente },
+      kgTotal,
+      requerido: {
+        abono: Number(kgAbono.toFixed(2)),
+        biologicos: Number(kgBiologicos.toFixed(2)),
       },
-      stock: {
-        abono_4g: {
-          id: config.airtable.blendAbono4gRecordId,
-          insumo: d1.fields?.['Insumo'] ?? 'Abono 4G',
-          stock_actual: stockAbono4g,
-        },
-        biologicos_datalab: {
-          id: config.airtable.blendBiologicosRecordId,
-          insumo: d2.fields?.['Insumo'] ?? 'Biologicos DataLab',
-          stock_actual: stockBiologicos,
-        },
+      disponible: {
+        abono: stockAbono,
+        biologicos: stockBiologicos,
       },
-    }, { status: 200 });
+      faltante: {
+        abono: suficienteAbono ? 0 : Number((kgAbono - stockAbono).toFixed(2)),
+        biologicos: suficienteBiologicos ? 0 : Number((kgBiologicos - stockBiologicos).toFixed(2)),
+      },
+    };
+
+    if (!suficiente) {
+      console.warn('⚠️ Stock insuficiente:', resultado.faltante);
+    } else {
+      console.log('✅ Stock suficiente para la producción');
+    }
+
+    return NextResponse.json(resultado, { status: 200 });
+
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('❌ Error en GET verificar-stock-blend:', message);
+    console.error('❌ Error en verificar-stock-blend:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

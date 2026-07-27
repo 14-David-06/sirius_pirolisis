@@ -1,42 +1,89 @@
 /**
- * Componente de Estadísticas Generales del Inventario
- * Muestra resumen de items totales, categorías, stock bajo y unidades totales
+ * Fila de indicadores del inventario.
+ *
+ * ⚠️ No existe un "total de unidades": el inventario mezcla unidades (und, kg,
+ * L) y sumarlas daría un número sin significado. En su lugar se muestran
+ * conteos de insumos, que sí son comparables.
  */
+
+import { IconAlert, IconInbox, IconPackage, IconTag } from './Icons';
+import { formatCantidad } from '@/lib/inventario.format';
 
 interface EstadisticasGeneralesProps {
   totalItems: number;
   totalCategorias: number;
   itemsStockBajo: number;
+  itemsSinStock: number;
+}
+
+interface KpiProps {
+  label: string;
+  valor: number;
+  icono: React.ReactNode;
+  /** Clases del acento (icono + valor) cuando el indicador requiere atención. */
+  acento: string;
+  nota?: string;
+}
+
+function Kpi({ label, valor, icono, acento, nota }: KpiProps) {
+  return (
+    <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:p-5">
+      <div className="flex items-center gap-2">
+        <span className={acento}>{icono}</span>
+        <span className="text-xs font-medium uppercase tracking-wider text-white/60">
+          {label}
+        </span>
+      </div>
+      <p className={`mt-2 text-3xl font-semibold tabular-nums ${acento}`}>
+        {formatCantidad(valor)}
+      </p>
+      {nota && <p className="mt-0.5 text-xs text-white/50">{nota}</p>}
+    </div>
+  );
 }
 
 export default function EstadisticasGenerales({
   totalItems,
   totalCategorias,
   itemsStockBajo,
+  itemsSinStock,
 }: EstadisticasGeneralesProps) {
   return (
-    <div className="bg-white/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-white/30 mb-6">
-      <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">
-        📊 Estadísticas del Inventario
+    <section aria-labelledby="resumen-inventario">
+      <h2
+        id="resumen-inventario"
+        className="text-xs font-semibold uppercase tracking-widest text-white/50 mb-3"
+      >
+        Resumen
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-white">
-        <div className="text-center bg-white/10 p-4 rounded-lg">
-          <div className="text-3xl font-bold text-blue-300">{totalItems}</div>
-          <div className="text-sm drop-shadow">Total de Insumos</div>
-        </div>
-        <div className="text-center bg-white/10 p-4 rounded-lg">
-          <div className="text-3xl font-bold text-green-300">{totalCategorias}</div>
-          <div className="text-sm drop-shadow">Categorías Activas</div>
-        </div>
-        <div className="text-center bg-white/10 p-4 rounded-lg">
-          <div className="text-3xl font-bold text-red-300">{itemsStockBajo}</div>
-          <div className="text-sm drop-shadow">Items con Stock Bajo</div>
-        </div>
-        <div className="text-center bg-white/10 p-4 rounded-lg">
-          <div className="text-3xl font-bold text-purple-300">N/A</div>
-          <div className="text-sm drop-shadow">Total Unidades</div>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Kpi
+          label="Insumos"
+          valor={totalItems}
+          icono={<IconPackage className="w-4 h-4" />}
+          acento="text-white"
+        />
+        <Kpi
+          label="Categorías"
+          valor={totalCategorias}
+          icono={<IconTag className="w-4 h-4" />}
+          acento="text-white"
+        />
+        <Kpi
+          label="Por agotarse"
+          valor={itemsStockBajo}
+          icono={<IconAlert className="w-4 h-4" />}
+          acento={itemsStockBajo > 0 ? 'text-amber-300' : 'text-white/70'}
+          nota="Bajo el stock mínimo"
+        />
+        <Kpi
+          label="Agotados"
+          valor={itemsSinStock}
+          icono={<IconInbox className="w-4 h-4" />}
+          acento={itemsSinStock > 0 ? 'text-rose-300' : 'text-white/70'}
+          nota="Sin stock disponible"
+        />
       </div>
-    </div>
+    </section>
   );
 }

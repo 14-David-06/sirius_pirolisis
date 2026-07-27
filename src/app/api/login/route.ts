@@ -3,10 +3,10 @@ import bcrypt from 'bcryptjs';
 import { ServerSessionManager } from '@/lib/serverSession';
 
 const NOMINA_BASE_ID = process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE;
-const NOMINA_TOKEN  = process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE;
+const NOMINA_TOKEN  = process.env.AIRTABLE_GLOBAL_TOKEN;
 const NOMINA_TABLE  = process.env.AIRTABLE_TABLE_NOMINA_PERSONAL;
 
-const PIROLISIS_TOKEN  = process.env.AIRTABLE_TOKEN;
+const PIROLISIS_TOKEN  = process.env.AIRTABLE_GLOBAL_TOKEN;
 const PIROLISIS_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const USUARIOS_TABLE   = process.env.AIRTABLE_USUARIOS_TABLE_ID;
 

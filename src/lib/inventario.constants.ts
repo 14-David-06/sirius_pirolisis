@@ -3,35 +3,24 @@
  * Centraliza opciones, categorías y configuraciones reutilizables
  */
 
-import type { CategoriaInsumo, EstadoInsumo, PresentacionInsumo } from '@/types/inventario';
+import type { EstadoInsumo, PresentacionInsumo } from '@/types/inventario';
 
 // ============================================================================
 // CATEGORÍAS
 // ============================================================================
 
+// NOTA: Las categorías "Herramientas" y "Equipos" se movieron al módulo de Activos Fijos
+// Este módulo ahora gestiona únicamente INSUMOS CONSUMIBLES
 export const CATEGORIAS_INSUMO = [
   'Materiales',
   'Químicos',
-  'Herramientas',
-  'Equipos',
   'Consumibles',
 ] as const;
 
-export const CATEGORIAS_INSUMO_ICONS: Record<string, string> = {
-  'Materiales': '🏭',
-  'Químicos': '⚗️',
-  'Herramientas': '🔧',
-  'Equipos': '⚙️',
-  'Consumibles': '📦',
-};
-
-export const CATEGORIAS_FILTRO: { value: CategoriaInsumo; label: string }[] = [
-  { value: 'lona', label: 'Lona' },
-  { value: 'big_bag', label: 'Big Bag' },
-  { value: 'quimico', label: 'Químico' },
-  { value: 'herramienta', label: 'Herramienta' },
-  { value: 'consumible', label: 'Consumible' },
-];
+// ⚠️ NO hay lista fija de categorías: son registros de la tabla
+// `Categoria Insumo` del Core y cambian sin tocar el código. El filtro de la UI
+// se construye con las categorías realmente presentes en los datos
+// (`categoriasDisponibles` en useInventario).
 
 // ============================================================================
 // ESTADOS
@@ -39,9 +28,8 @@ export const CATEGORIAS_FILTRO: { value: CategoriaInsumo; label: string }[] = [
 
 export const ESTADOS_INSUMO: { value: EstadoInsumo; label: string }[] = [
   { value: 'disponible', label: 'Disponible' },
-  { value: 'agotado', label: 'Agotado' },
   { value: 'por_agotarse', label: 'Por agotarse' },
-  { value: 'vencido', label: 'Vencido' },
+  { value: 'agotado', label: 'Agotado' },
 ];
 
 // ============================================================================

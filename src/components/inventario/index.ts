@@ -12,3 +12,6 @@ export { default as InventarioTable } from './InventarioTable';
 export { default as ItemCard } from './ItemCard';
 export { default as RegistrarInsumoForm } from './RegistrarInsumoForm';
 export { default as IngresoInsumoForm } from './IngresoInsumoForm';
+
+// Iconos SVG del módulo (sustituyen los emojis en títulos y botones)
+export * from './Icons';

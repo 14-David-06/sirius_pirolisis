@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const NOMINA_BASE_ID = process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE;
-const NOMINA_TOKEN  = process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE;
+const NOMINA_TOKEN  = process.env.AIRTABLE_GLOBAL_TOKEN;
 const NOMINA_TABLE  = process.env.AIRTABLE_TABLE_NOMINA_PERSONAL;
 
 export async function POST(request: NextRequest) {

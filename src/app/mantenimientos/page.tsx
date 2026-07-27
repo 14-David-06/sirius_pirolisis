@@ -780,8 +780,9 @@ function MantenimientosContent() {
                           {formData.insumosUtilizados.map((insumo) => {
                             const record = inventarioData?.records.find(r => r.id === insumo.id);
                             const insumoNombre = record?.fields.Insumo || 'Sin nombre';
-                            const stock = record?.fields['Total Cantidad Stock'] || 0;
-                            const presentacion = record?.fields['Presentacion Insumo'] || 'Unidades';
+                            const stock = record?.fields['stock_actual'] ?? 0;
+                            // `unidad` es el símbolo de la unidad base del Core (und, kg, L)
+                            const presentacion = record?.fields['unidad'] || 'und';
 
                             return (
                               <div key={insumo.id} className="flex items-center space-x-3 bg-white/20 p-3 rounded-lg">
@@ -837,10 +838,10 @@ function MantenimientosContent() {
                             <div className="mt-2 max-h-40 overflow-y-auto">
                               {inventarioData?.records
                                 .filter(record => !formData.insumosUtilizados.some(item => item.id === record.id))
-                                .filter(record => 
-                                  !searchTerm || 
-                                  (record.fields.Insumo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                  (record.fields['Presentacion Insumo'] || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                .filter(record =>
+                                  !searchTerm ||
+                                  String(record.fields.Insumo ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                  String(record.fields.codigo ?? '').toLowerCase().includes(searchTerm.toLowerCase())
                                 )
                                 .map((record) => (
                                   <button
@@ -854,8 +855,10 @@ function MantenimientosContent() {
                                     }}
                                     className="w-full text-left px-3 py-2 bg-white/20 hover:bg-white/30 rounded text-sm text-white transition-colors mb-1"
                                   >
-                                    <div className="font-medium">{record.fields.Insumo || 'Sin nombre'}</div>
-                                    <div className="text-xs text-white/70">Stock: {record.fields['Total Cantidad Stock'] || 0} {record.fields['Presentacion Insumo'] || 'unidades'}</div>
+                                    <div className="font-medium">{String(record.fields.Insumo ?? 'Sin nombre')}</div>
+                                    <div className="text-xs text-white/70">
+                                      Stock: {record.fields['stock_actual'] ?? 0} {record.fields['unidad'] || 'und'}
+                                    </div>
                                   </button>
                                 ))}
                             </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import VoiceToText from '@/components/VoiceToText';
+import { formatStock } from '@/lib/inventario.format';
 import {
   TIPO_USO_VALUES,
   TIPO_USO_LABELS,
@@ -20,8 +21,8 @@ interface SalidaInsumoFormProps {
   records: InventarioRecord[];
   getItemName: (record: InventarioRecord) => string;
   getItemCategory: (record: InventarioRecord) => string;
-  getItemQuantity: (record: InventarioRecord) => number;
-  getItemPresentacion: (record: InventarioRecord) => string;
+  /** Símbolo de la unidad base del insumo: "und", "kg", "L". */
+  getItemUnit: (record: InventarioRecord) => string;
   getItemStockTotal: (record: InventarioRecord) => number;
   getCurrentUserName: () => string;
   onSuccess: () => void;
@@ -37,8 +38,7 @@ export default function SalidaInsumoForm({
   records,
   getItemName,
   getItemCategory,
-  getItemQuantity,
-  getItemPresentacion,
+  getItemUnit,
   getItemStockTotal,
   getCurrentUserName,
   onSuccess,
@@ -190,6 +190,8 @@ export default function SalidaInsumoForm({
     }));
   };
 
+  const selectedItem = records.find(item => item.id === formData.selectedItemId);
+
   return (
     <form onSubmit={handleSubmit} className="p-6">
       <div className="space-y-6">
@@ -208,20 +210,15 @@ export default function SalidaInsumoForm({
             <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
             {records.map((item) => (
               <option key={item.id} value={item.id} className="bg-gray-800">
-                {getItemName(item)} - {getItemCategory(item)} - Presentación: {getItemQuantity(item)} {getItemPresentacion(item)}
+                {getItemName(item)} — {getItemCategory(item)} — Stock: {formatStock(getItemStockTotal(item), getItemUnit(item))}
               </option>
             ))}
           </select>
-          {formData.selectedItemId && (
+          {selectedItem && (
             <p className="text-sm text-blue-200 mt-2 drop-shadow">
-              📊 Stock disponible: <span className="font-semibold">
-                {(() => {
-                  const selectedItem = records.find(item => item.id === formData.selectedItemId);
-                  return selectedItem ? getItemStockTotal(selectedItem) : 0;
-                })()} {(() => {
-                  const selectedItem = records.find(item => item.id === formData.selectedItemId);
-                  return selectedItem ? getItemPresentacion(selectedItem) || 'unidades' : 'unidades';
-                })()}
+              Stock disponible:{' '}
+              <span className="font-semibold tabular-nums">
+                {formatStock(getItemStockTotal(selectedItem), getItemUnit(selectedItem))}
               </span>
             </p>
           )}

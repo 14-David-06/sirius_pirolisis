@@ -22,7 +22,7 @@ export class eBiomasAirtableRepository implements IeBiomasRepository {
     let offset: string | undefined;
 
     // Construir fórmula de filtro por fecha
-    // "Fecha Entrega" es el campo de fecha en Viajes Biomasa (fld0VDi1YqcsbOcKI)
+    // "Fecha Entrega" es el campo de fecha en Viajes Biomasa
     const filterParts: string[] = [
       `IS_AFTER({Fecha Entrega}, '${fechaInicio}')`,
       `IS_BEFORE({Fecha Entrega}, DATEADD('${fechaFin}', 1, 'days'))`,

@@ -163,7 +163,7 @@ export default function FirmarRemisionPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadRemision(); }, [remisionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadRemision(); }, [remisionId]);
 
   // ── Canvas helpers ────────────────────────────────────────────────────────
 

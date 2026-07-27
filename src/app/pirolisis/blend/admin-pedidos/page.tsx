@@ -245,7 +245,6 @@ export default function AdminPedidosBlendPage() {
     candidatos.forEach(p => {
       if (!produccionStatus[p.id]) verificarProduccionStatus(p.id);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidos]);
 
   // ── Cargar clientes y productos al montar ───────────────────────────────

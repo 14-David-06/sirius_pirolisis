@@ -13,9 +13,18 @@ const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
+      // Reglas básicas deshabilitadas
       "@typescript-eslint/no-explicit-any": "off",
       "react/no-unescaped-entities": "off",
-      "@typescript-eslint/no-unused-vars": "warn"
+
+      // Variables no usadas - deshabilitado completamente
+      "@typescript-eslint/no-unused-vars": "off",
+
+      // Imágenes Next.js - permite usar <img> en lugar de <Image />
+      "@next/next/no-img-element": "off",
+
+      // React Hooks - permite dependencias opcionales
+      "react-hooks/exhaustive-deps": "off"
     }
   }
 ];

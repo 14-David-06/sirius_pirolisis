@@ -1,56 +1,80 @@
 /**
- * Componente de Alertas de Inventario
- * Muestra items con stock bajo que requieren atención
+ * Insumos que requieren reposición: agotados primero, luego los que están en o
+ * por debajo de su stock mínimo.
  */
 
+import { IconAlert } from './Icons';
+import { ESTADO_STOCK_UI, formatCantidad, formatStock } from '@/lib/inventario.format';
 import type { InventarioRecord } from '@/types/inventario';
 
 interface AlertasInventarioProps {
-  items: InventarioRecord[];
+  /** Insumos en o bajo el stock mínimo. */
+  itemsStockBajo: InventarioRecord[];
+  /** Insumos con stock ≤ 0. */
+  itemsSinStock: InventarioRecord[];
   getItemName: (record: InventarioRecord) => string;
-  getItemCategory: (record: InventarioRecord) => string;
-  getItemDescription: (record: InventarioRecord) => string;
-  getItemQuantity: (record: InventarioRecord) => number;
+  getItemCategories: (record: InventarioRecord) => string[];
+  getItemStockTotal: (record: InventarioRecord) => number;
+  getMinStock: (record: InventarioRecord) => number;
   getItemUnit: (record: InventarioRecord) => string;
 }
 
 export default function AlertasInventario({
-  items,
+  itemsStockBajo,
+  itemsSinStock,
   getItemName,
-  getItemCategory,
-  getItemDescription,
-  getItemQuantity,
+  getItemCategories,
+  getItemStockTotal,
+  getMinStock,
   getItemUnit,
 }: AlertasInventarioProps) {
+  // Los agotados van primero: son los que bloquean la operación.
+  const items = [
+    ...itemsSinStock.map((item) => ({ item, estado: 'agotado' as const })),
+    ...itemsStockBajo.map((item) => ({ item, estado: 'por_agotarse' as const })),
+  ];
+
   if (items.length === 0) return null;
 
   return (
-    <div className="bg-red-500/20 backdrop-blur-md rounded-lg shadow-lg p-6 border border-red-500/30 mb-6">
-      <h2 className="text-xl font-semibold text-white mb-4 drop-shadow-lg">
-        ⚠️ Alertas de Inventario
+    <section
+      aria-labelledby="alertas-inventario"
+      className="rounded-xl bg-amber-500/10 ring-1 ring-amber-400/25 p-4 sm:p-5"
+    >
+      <h2 id="alertas-inventario" className="flex items-center gap-2 text-base font-semibold text-white">
+        <IconAlert className="w-5 h-5 text-amber-300" />
+        Requieren reposición
+        <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-normal text-amber-100 tabular-nums">
+          {formatCantidad(items.length)}
+        </span>
       </h2>
-      <div className="space-y-3">
-        {items.map((item, index) => (
-          <div
-            key={index}
-            className="flex justify-between items-center bg-white/10 p-4 rounded-lg border border-red-500/20"
-          >
-            <div className="flex-1">
-              <span className="text-white font-semibold text-lg">{getItemName(item)}</span>
-              <div className="text-sm text-white/70">Categoría: {getItemCategory(item)}</div>
-              {getItemDescription(item) && (
-                <div className="text-sm text-white/60 mt-1">{getItemDescription(item)}</div>
-              )}
-            </div>
-            <div className="text-right">
-              <span className="text-red-300 font-bold text-xl">
-                {getItemQuantity(item)} {getItemUnit(item)}
-              </span>
-              <div className="text-xs text-red-200 mt-1">Stock bajo</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+
+      <ul className="mt-3 divide-y divide-white/10">
+        {items.map(({ item, estado }) => {
+          const ui = ESTADO_STOCK_UI[estado];
+          const minimo = getMinStock(item);
+          const unidad = getItemUnit(item);
+
+          return (
+            <li key={item.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5">
+              <div className="min-w-0">
+                <p className="text-white font-medium leading-snug">{getItemName(item)}</p>
+                <p className="text-xs text-white/50">
+                  {getItemCategories(item).join(' · ') || 'Sin categoría'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className={`font-semibold tabular-nums ${ui.texto}`}>
+                  {formatStock(getItemStockTotal(item), unidad)}
+                </p>
+                <p className="text-xs text-white/50 tabular-nums">
+                  {minimo > 0 ? `Mínimo ${formatStock(minimo, unidad)}` : ui.label}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

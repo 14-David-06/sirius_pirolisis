@@ -164,7 +164,7 @@ export async function POST(
       // El registro produccionRecordId existe en Airtable sin link al pedido.
       // El pedido queda en su estado anterior — re-ejecutar aprobar crearía una segunda producción.
       console.error(
-        `🚨 PRODUCCIÓN HUÉRFANA: registro ${produccionRecordId} creado en tbl5Mh3DZYrbWAtzE pero PATCH del pedido ${id} falló. Requiere intervención manual.`,
+        `🚨 PRODUCCIÓN HUÉRFANA: registro ${produccionRecordId} creado en Produccion Biochar Blend Pirolisis pero PATCH del pedido ${id} falló. Requiere intervención manual.`,
         patchData
       );
       return NextResponse.json({

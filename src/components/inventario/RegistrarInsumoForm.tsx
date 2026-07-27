@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { CATEGORIAS_INSUMO, CATEGORIAS_INSUMO_ICONS, PRESENTACIONES_INSUMO } from '@/lib/inventario.constants';
+import { CATEGORIAS_INSUMO, PRESENTACIONES_INSUMO } from '@/lib/inventario.constants';
 import type { RegistroInsumoFormData, S3UploadResult } from '@/types/inventario';
 
 interface RegistrarInsumoFormProps {
@@ -151,7 +151,7 @@ export default function RegistrarInsumoForm({
             <option value="" className="bg-gray-800">Seleccionar categoría</option>
             {CATEGORIAS_INSUMO.map(cat => (
               <option key={cat} value={cat} className="bg-gray-800">
-                {CATEGORIAS_INSUMO_ICONS[cat]} {cat}
+                {cat}
               </option>
             ))}
           </select>

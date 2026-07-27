@@ -1,53 +1,63 @@
 import { render, screen } from '@testing-library/react';
 import ItemCard from '@/components/inventario/ItemCard';
+import type { InventarioRecord } from '@/types/inventario';
 
 describe('ItemCard', () => {
   const mockGetters = {
-    getItemName: (item: any) => item.fields['Insumo'] || 'Test Item',
-    getItemCategory: () => 'Químicos',
-    getItemCategoriaInsumo: () => '',
-    getItemEstado: () => 'disponible',
-    getItemPresentacion: () => 'Kilogramos',
-    getItemCantidadPresentacion: () => 25,
-    getItemStockTotal: () => 100,
-    getItemDescription: () => 'Descripción de prueba',
-    getItemEntradas: () => [],
-    getItemSalidas: () => [],
+    getItemName: (item: InventarioRecord) => String(item.fields['Nombre'] ?? 'Test Item'),
+    getItemCodigo: () => 'SIRIUS-INS-0042',
+    getItemCategories: () => ['Insumos de Producción'],
+    getItemStockTotal: () => 33614,
+    getMinStock: () => 0,
+    getItemUnit: () => 'kg',
+    getItemEstado: () => 'disponible' as const,
+    getItemMovimientos: () => ['recA', 'recB'],
   };
 
-  test('muestra el nombre del item', () => {
-    const mockItem = { 
-      id: '1', 
-      fields: { 'Insumo': 'Hidróxido de Sodio' }, 
-      createdTime: '2024-01-01' 
-    };
-    
+  const mockItem: InventarioRecord = {
+    id: '1',
+    fields: { 'Nombre': 'Abono 4G' },
+    createdTime: '2024-01-01',
+  };
+
+  test('muestra el nombre y el código del insumo', () => {
     render(<ItemCard item={mockItem} {...mockGetters} />);
-    
-    expect(screen.getByText('Hidróxido de Sodio')).toBeInTheDocument();
+
+    expect(screen.getByText('Abono 4G')).toBeInTheDocument();
+    expect(screen.getByText('SIRIUS-INS-0042')).toBeInTheDocument();
   });
 
-  test('muestra la categoría del item', () => {
-    const mockItem = { 
-      id: '1', 
-      fields: { 'Insumo': 'Test' }, 
-      createdTime: '2024-01-01' 
-    };
-    
+  test('muestra el stock con su unidad y separador de miles', () => {
     render(<ItemCard item={mockItem} {...mockGetters} />);
-    
-    expect(screen.getByText(/Categoría: Químicos/)).toBeInTheDocument();
+
+    expect(screen.getByText('33.614')).toBeInTheDocument();
+    expect(screen.getByText('kg')).toBeInTheDocument();
   });
 
-  test('muestra el stock disponible', () => {
-    const mockItem = { 
-      id: '1', 
-      fields: { 'Insumo': 'Test' }, 
-      createdTime: '2024-01-01' 
-    };
-    
+  test('muestra el estado derivado del stock', () => {
     render(<ItemCard item={mockItem} {...mockGetters} />);
-    
-    expect(screen.getByText(/Stock Disponible: 100/)).toBeInTheDocument();
+
+    expect(screen.getByText('Disponible')).toBeInTheDocument();
+  });
+
+  test('marca como agotado cuando no hay stock', () => {
+    render(
+      <ItemCard
+        item={mockItem}
+        {...mockGetters}
+        getItemStockTotal={() => 0}
+        getItemEstado={() => 'agotado' as const}
+      />
+    );
+
+    expect(screen.getByText('Agotado')).toBeInTheDocument();
+  });
+
+  test('muestra el stock mínimo solo cuando está definido', () => {
+    const { rerender } = render(<ItemCard item={mockItem} {...mockGetters} />);
+    expect(screen.queryByText(/Mínimo/)).not.toBeInTheDocument();
+
+    rerender(<ItemCard item={mockItem} {...mockGetters} getMinStock={() => 5} />);
+    expect(screen.getByText(/Mínimo/)).toBeInTheDocument();
   });
 });

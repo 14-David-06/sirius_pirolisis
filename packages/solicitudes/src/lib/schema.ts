@@ -1,5 +1,5 @@
 // Subset de Airtable schema para el módulo de solicitudes.
-// Cubre únicamente las tablas de Novedades Nómina (appnRVYZMd4EAQoRF).
+// Cubre únicamente las tablas de Novedades Nómina.
 // Los nombres de tabla se leen de env vars para permitir sobreescritura por entorno.
 
 export const TABLES = {

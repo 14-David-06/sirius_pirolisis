@@ -23,6 +23,21 @@ export const config = {
     bachesTableId: process.env.AIRTABLE_BACHES_TABLE_ID,
     remisionesBachesTableId: process.env.AIRTABLE_REMISIONES_BACHES_TABLE_ID,
     detalleCantidadesRemisionTableId: process.env.AIRTABLE_DETALLE_CANTIDADES_REMISION_TABLE_ID,
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SIRIUS INSUMOS CORE — Inventario Centralizado (2026-07-27)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Reemplaza: Inventario/Entrada/Salida Insumos Pirolisis (base local)
+    insumosCoreBaseId: process.env.AIRTABLE_INSUMOS_CORE_BASE_ID,
+    insumosCoreToken: GLOBAL_TOKEN,  // Usa el token global que tiene acceso a todas las bases
+    insumosTableId: process.env.AIRTABLE_INSUMOS_TABLE_ID,
+    movimientosInsumosTableId: process.env.AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID,
+    stockInsumosTableId: process.env.AIRTABLE_STOCK_INSUMOS_TABLE_ID,
+    categoriaInsumoTableId: process.env.AIRTABLE_CATEGORIA_INSUMO_TABLE_ID,
+    unidadesMedidaTableId: process.env.AIRTABLE_UNIDADES_MEDIDA_TABLE_ID,
+    pirolisisAreaCode: process.env.AIRTABLE_PIROLISIS_AREA_CODE,
+
+    // DEPRECATED (2026-07-27): Mantener por si hay rollback
     inventarioTableId: process.env.AIRTABLE_INVENTARIO_TABLE_ID,
     entradasTableId: process.env.AIRTABLE_ENTRADAS_TABLE_ID,
     salidasTableId: process.env.AIRTABLE_SALIDAS_TABLE_ID,
@@ -54,9 +69,37 @@ export const config = {
       observaciones: process.env.AIRTABLE_LABORATORIOS_OBSERVACIONES_FIELD_ID,
       monitoreoBaches: process.env.AIRTABLE_LABORATORIOS_MONITOREO_BACHES_FIELD_ID
     },
-    // ✅ BUENA PRÁCTICA: Field IDs obtenidos de variables de entorno
-    // para evitar hardcodear IDs sensibles en el código fuente
-    // Los valores reales se configuran en .env.local
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Field IDs — Sirius Insumos Core (2026-07-27)
+    // ═══════════════════════════════════════════════════════════════════════════
+    insumoFields: {
+      nombre: process.env.AIRTABLE_INSUMO_NOMBRE_FIELD_ID,
+      categoria: process.env.AIRTABLE_INSUMO_CATEGORIA_FIELD_ID,
+      unidadBase: process.env.AIRTABLE_INSUMO_UNIDAD_BASE_FIELD_ID,
+      idAreaOrigen: process.env.AIRTABLE_INSUMO_ID_AREA_ORIGEN_FIELD_ID,
+      idResponsableCore: process.env.AIRTABLE_INSUMO_ID_RESPONSABLE_CORE_FIELD_ID,
+      stockMinimo: process.env.AIRTABLE_INSUMO_STOCK_MINIMO_FIELD_ID,
+      estado: process.env.AIRTABLE_INSUMO_ESTADO_FIELD_ID,
+      fichaTecnica: process.env.AIRTABLE_INSUMO_FICHA_TECNICA_FIELD_ID,
+    },
+    movimientoFields: {
+      insumo: process.env.AIRTABLE_MOVIMIENTO_INSUMO_FIELD_ID,
+      cantidad: process.env.AIRTABLE_MOVIMIENTO_CANTIDAD_FIELD_ID,
+      tipoMovimiento: process.env.AIRTABLE_MOVIMIENTO_TIPO_FIELD_ID,
+      subtipo: process.env.AIRTABLE_MOVIMIENTO_SUBTIPO_FIELD_ID,
+      idAreaOrigen: process.env.AIRTABLE_MOVIMIENTO_ID_AREA_ORIGEN_FIELD_ID,
+      idAreaDestino: process.env.AIRTABLE_MOVIMIENTO_ID_AREA_DESTINO_FIELD_ID,
+      idResponsable: process.env.AIRTABLE_MOVIMIENTO_ID_RESPONSABLE_FIELD_ID,
+      notas: process.env.AIRTABLE_MOVIMIENTO_NOTAS_FIELD_ID,
+    },
+    stockFields: {
+      stockActual: process.env.AIRTABLE_STOCK_ACTUAL_FIELD_ID,
+      insumoId: process.env.AIRTABLE_STOCK_INSUMO_ID_FIELD_ID,
+      movimientoId: process.env.AIRTABLE_STOCK_MOVIMIENTO_ID_FIELD_ID,
+      area: process.env.AIRTABLE_STOCK_AREA_FIELD_ID,
+    },
+
+    // DEPRECATED (2026-07-27): Field IDs de la base local
     inventarioFields: {
       insumo: process.env.AIRTABLE_INVENTARIO_INSUMO_FIELD_ID,
       categoria: process.env.AIRTABLE_INVENTARIO_CATEGORIA_FIELD_ID,
@@ -65,7 +108,6 @@ export const config = {
       realizaRegistro: process.env.AIRTABLE_INVENTARIO_REALIZA_REGISTRO_FIELD_ID,
       fichaSeguridad: process.env.AIRTABLE_INVENTARIO_FICHA_SEGURIDAD_FIELD_ID,
       totalCantidadStock: process.env.AIRTABLE_INVENTARIO_TOTAL_CANTIDAD_STOCK_FIELD_ID,
-      // Campos nuevos — trazabilidad productiva
       categoriaInsumo: process.env.AIRTABLE_FIELD_INVENTARIO_CATEGORIA,
       estado: process.env.AIRTABLE_FIELD_INVENTARIO_ESTADO,
       fechaVencimiento: process.env.AIRTABLE_FIELD_INVENTARIO_FECHA_VENCIMIENTO,
@@ -93,11 +135,22 @@ export const config = {
     },
     // Aforos por Turno
     aforosTurnoTableId: process.env.AIRTABLE_TABLE_AFOROS_TURNO,
-    // Paquetes de Lonas
+    // Paquetes de Lonas (tabla local, IDs de insumos del Core)
     paquetesLonasTableId: process.env.AIRTABLE_PAQUETES_LONAS_TABLE_ID,
-    lonaInsumoId: process.env.AIRTABLE_LONA_INSUMO_ID,
+    lonaInsumoId: process.env.AIRTABLE_LONA_INSUMO_ID,  // MIGRADO al Core (SIRIUS-INS-0062)
+    bigBagInsumoId: process.env.AIRTABLE_BIG_BAG_INSUMO_ID,  // MIGRADO al Core (SIRIUS-INS-0063)
     paqueteLonasActivoFieldId: process.env.AIRTABLE_FIELD_PAQUETE_LONAS_ACTIVO,
     lonasVidaEstimadaDias: parseInt(process.env.LONAS_VIDA_ESTIMADA_DIAS || '90', 10),
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SIRIUS ACTIVOS CORE — Gestión de Activos Fijos Multi-Área
+    // ═══════════════════════════════════════════════════════════════════════════
+    activosCoreBaseId: process.env.AIRTABLE_ACTIVOS_CORE_BASE_ID,
+    activosFijosTableId: process.env.AIRTABLE_ACTIVOS_FIJOS_TABLE_ID,
+    asignacionesTableId: process.env.AIRTABLE_ASIGNACIONES_TABLE_ID,
+    tiposActivoTableId: process.env.AIRTABLE_TIPOS_ACTIVO_TABLE_ID,
+    ubicacionesTableId: process.env.AIRTABLE_UBICACIONES_TABLE_ID,
+    hojaVidaActivoTableId: process.env.AIRTABLE_HOJA_VIDA_ACTIVO_TABLE_ID,
     lonasAlertaDias: parseInt(process.env.LONAS_ALERTA_DIAS || '75', 10),
     // Blend (Pedidos, Producción, Remisiones)
     blendPedidosTableId: process.env.AIRTABLE_BLEND_PEDIDOS_TABLE_ID,
@@ -134,15 +187,16 @@ export const config = {
     nominaCorePersonalTable: process.env.AIRTABLE_TABLE_NOMINA_PERSONAL,
     nominaCoreAreasTable: process.env.AIRTABLE_TABLE_NOMINA_AREAS,
     nominaCoreSistemasTable: process.env.AIRTABLE_TABLE_NOMINA_SISTEMAS_APLICACIONES,
-    // Novedades Nomina (appnRVYZMd4EAQoRF) — OPCIONAL (módulo solicitudes ROTO)
+    // Novedades Nomina — OPCIONAL (módulo solicitudes ROTO)
     novedadesNominaBaseId: process.env.AIRTABLE_BASE_ID_NOVEDADES_NOMINA,
     novedadesNominaToken: process.env.AIRTABLE_API_KEY_NOVEDADES_NOMINA || GLOBAL_TOKEN,
     novedadesNominaReportesTable: process.env.AIRTABLE_TABLE_NOVEDADES_REPORTES,
     novedadesNominaPermisosTable: process.env.AIRTABLE_TABLE_NOVEDADES_PERMISOS,
     novedadesNominaVacacionesTable: process.env.AIRTABLE_TABLE_NOVEDADES_VACACIONES,
     novedadesNominaSiriusTable: process.env.AIRTABLE_TABLE_NOVEDADES_NOMINA_SIRIUS,
-    blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,
-    blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,
+    // Insumos Blend (MIGRADOS AL CORE 2026-07-27)
+    blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,  // SIRIUS-INS-0064
+    blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,  // SIRIUS-INS-0065
     // Field IDs para Remisiones Baches Pirolisis
     remisionesBachesFields: {
       id: process.env.AIRTABLE_REMISIONES_ID_FIELD_ID,

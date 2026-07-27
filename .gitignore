@@ -44,3 +44,4 @@ next-env.d.ts
 /actas
 src/lib/INVENTARIO_REFACTOR_SUMMARY.md
 src/app/inventario-pirolisis/README.md
+/src/__tests__/api/activos

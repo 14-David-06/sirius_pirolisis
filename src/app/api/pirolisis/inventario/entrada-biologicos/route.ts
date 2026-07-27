@@ -1,87 +1,146 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../../lib/config';
+import {
+  appendMovimientoToStock,
+  findStockByInsumo,
+} from '../../../../../lib/stock-insumos';
 
-
-
+/**
+ * POST /api/pirolisis/inventario/entrada-biologicos
+ *
+ * Registra una entrada de Biológicos DataLab en el inventario.
+ *
+ * MIGRADO (2026-07-27): Antes creaba en Entrada Insumos Pirolisis (local).
+ * Ahora crea Movimiento Insumos (tipo="Entrada") en el Core.
+ *
+ * Body esperado:
+ * - cantidad (number, requerido): cantidad de Biológicos a ingresar
+ * - realizaRegistro (string, opcional): quién registra
+ * - notas (string, opcional): observaciones
+ */
 export async function POST(request: Request) {
-  if (!config.airtable.inventarioTableId) {
-    console.warn('⚠️ AIRTABLE_INVENTARIO_TABLE_ID no está configurado en .env.local');
+  // Validar configuración
+  if (!config.airtable.insumosCoreBaseId || !config.airtable.movimientosInsumosTableId) {
+    console.warn('⚠️ Configuración de Sirius Insumos Core incompleta');
     return NextResponse.json({
-      error: 'AIRTABLE_INVENTARIO_TABLE_ID no está configurado. Revisa tu archivo .env.local',
-      details: 'Para activar el módulo de inventario, configura AIRTABLE_INVENTARIO_TABLE_ID en .env.local',
+      success: false,
+      error: 'Configuración de Sirius Insumos Core incompleta',
     }, { status: 400 });
   }
 
   try {
-    if (!config.airtable.token || !config.airtable.baseId) {
+    const token = config.airtable.insumosCoreToken;
+    const coreBaseId = config.airtable.insumosCoreBaseId;
+    const movimientosTableId = config.airtable.movimientosInsumosTableId;
+    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
+    const movFields = config.airtable.movimientoFields;
+    const biologicosRecordId = config.airtable.blendBiologicosRecordId;
+
+    if (!token || !biologicosRecordId) {
       return NextResponse.json({
-        error: 'Configuración de Airtable incompleta',
-        details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID',
+        success: false,
+        error: 'Configuración incompleta: falta token o record ID de Biológicos',
       }, { status: 500 });
     }
 
     const body = await request.json();
-    console.log('📥 Datos recibidos en entrada-biologicos:', body);
+    console.log('📥 Entrada de Biológicos DataLab:', body);
 
-    const { cantidad_kg, realiza_registro } = body as {
-      cantidad_kg: number;
-      realiza_registro?: string;
+    const { cantidad, realizaRegistro, notas } = body;
+
+    if (!cantidad || isNaN(parseFloat(cantidad)) || parseFloat(cantidad) <= 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Cantidad inválida',
+        details: 'Se requiere una cantidad numérica positiva',
+      }, { status: 400 });
+    }
+
+    const cantidadNumerica = parseFloat(cantidad);
+
+    // Crear movimiento de entrada
+    const movimientoFields: Record<string, any> = {
+      [movFields.insumo!]: [biologicosRecordId],
+      [movFields.cantidad!]: cantidadNumerica,
+      [movFields.tipoMovimiento!]: 'Entrada',
+      [movFields.idAreaDestino!]: pirolisisAreaCode,
     };
 
-    if (cantidad_kg === undefined || cantidad_kg === null) {
-      return NextResponse.json({
-        error: 'Campo requerido faltante',
-        details: 'Se requiere: cantidad_kg',
-      }, { status: 400 });
+    if (realizaRegistro) {
+      movimientoFields[movFields.idResponsable!] = realizaRegistro;
     }
 
-    const cantidadNumerica = parseFloat(String(cantidad_kg));
-    if (isNaN(cantidadNumerica) || cantidadNumerica <= 0) {
-      return NextResponse.json({
-        error: 'Cantidad inválida',
-        details: 'cantidad_kg debe ser un número positivo',
-      }, { status: 400 });
+    if (notas) {
+      movimientoFields[movFields.notas!] = notas;
     }
 
-    const fields: Record<string, unknown> = {};
-    fields[config.airtable.entradasFields.cantidadIngresa || 'Cantidad Ingresa'] = cantidadNumerica;
-    fields[config.airtable.entradasFields.inventarioInsumos || 'Inventario Insumos Pirolisis'] = [config.airtable.blendBiologicosRecordId];
-
-    if (realiza_registro) {
-      fields[config.airtable.entradasFields.realizaRegistro || 'Realiza Registro'] = realiza_registro;
-    }
-
-    console.log('📤 Campos a crear en Entrada Insumos Pirolisis (Biologicos DataLab):', fields);
-
-    const response = await fetch(
-      `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.entradasTableId}`,
+    const createMovResponse = await fetch(
+      `https://api.airtable.com/v0/${coreBaseId}/${movimientosTableId}`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${config.airtable.token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ records: [{ fields }] }),
+        body: JSON.stringify({
+          records: [{ fields: movimientoFields }]
+        }),
       }
     );
 
-    const data = await response.json();
+    const movimientoData = await createMovResponse.json();
 
-    if (!response.ok) {
-      console.error('❌ Error de Airtable al crear entrada Biologicos DataLab:', data);
-      return NextResponse.json({ error: data?.error || 'Airtable error', details: data }, { status: response.status });
+    if (!createMovResponse.ok) {
+      console.error('❌ Error al crear movimiento de Biológicos:', movimientoData);
+      return NextResponse.json({
+        success: false,
+        error: 'Error al crear movimiento',
+        details: movimientoData
+      }, { status: createMovResponse.status });
     }
 
-    console.log('✅ Entrada Biologicos DataLab registrada:', data.records?.[0]?.id);
+    const nuevoMovimientoId = movimientoData.records[0].id;
+    console.log(`✅ Entrada de Biológicos registrada: ${nuevoMovimientoId}`);
+
+    // Actualizar Stock Insumos
+    // NOTA: No filtramos por área porque el campo "Area" no existe
+    // NOTA 2: Insumo ID es multipleRecordLinks; el match se hace en JS sobre los
+    //         record IDs. Ver src/lib/stock-insumos.ts
+    const { record: stockRecord } = await findStockByInsumo(biologicosRecordId);
+
+    if (!stockRecord) {
+      console.error(`❌ Stock Insumos NO existe para Biológicos: ${biologicosRecordId}`);
+      return NextResponse.json({
+        success: false,
+        error: 'No existe Stock para Biológicos',
+        details: 'El insumo Biológicos debe tener un registro de Stock antes de agregar movimientos.'
+      }, { status: 404 });
+    }
+
+    try {
+      // Preserva los movimientos ya vinculados: el PATCH de un campo link
+      // reemplaza el array completo.
+      await appendMovimientoToStock(stockRecord.id, nuevoMovimientoId);
+    } catch (linkErr: any) {
+      console.error('❌ Error al actualizar Stock de Biológicos:', linkErr);
+      return NextResponse.json({
+        success: false,
+        error: 'Movimiento creado pero faltó vincular al stock',
+        details: String(linkErr?.message || linkErr)
+      }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Entrada de Biologicos DataLab registrada exitosamente. Cantidad: ${cantidadNumerica} kg`,
-      data,
+      message: `Entrada de Biológicos registrada: ${cantidadNumerica} L`,
+      data: movimientoData.records[0]
     }, { status: 201 });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('❌ Error en POST entrada-biologicos:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+
+  } catch (err: any) {
+    console.error('❌ Error en entrada-biologicos:', err);
+    return NextResponse.json({
+      success: false,
+      error: String(err.message || err)
+    }, { status: 500 });
   }
 }
