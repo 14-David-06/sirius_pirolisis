@@ -1,95 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '@/lib/config';
+import { ActivosError, listarActivos } from '@/lib/activos.server';
 
-const BASE_ID = config.airtable.activosCoreBaseId;
-const TABLE_ID = config.airtable.activosFijosTableId;
-
+/**
+ * GET /api/activos/disponibles — activos sin responsable y en estado usable.
+ *
+ * Filtra en memoria sobre el listado normalizado en vez de con
+ * `filterByFormula`: así "disponible" significa exactamente lo mismo aquí, en
+ * las estadísticas y en la UI. Acepta `categoria` y `ubicacion` (por nombre).
+ */
 export async function GET(request: NextRequest) {
-  // Verificar configuración
-  if (!BASE_ID || !TABLE_ID) {
-    return NextResponse.json({
-      error: 'Módulo de Activos Fijos no configurado'
-    }, { status: 400 });
-  }
-
   try {
-    if (!config.airtable.token) {
-      return NextResponse.json({
-        error: 'Token de Airtable no configurado'
-      }, { status: 500 });
-    }
-
-    // Leer filtros opcionales
     const { searchParams } = new URL(request.url);
-    const categoriaFilter = searchParams.get('categoria');
-    const ubicacionFilter = searchParams.get('ubicacion');
+    const categoria = searchParams.get('categoria');
+    const ubicacion = searchParams.get('ubicacion');
 
-    // Construir filterByFormula - Disponibles significa:
-    // 1. Sin responsable asignado (campo vacío)
-    // 2. Estado Operativo (funcionando correctamente)
-    const filters: string[] = [
-      'OR({Responsable Asignado} = "", {Responsable Asignado} = BLANK())',
-      '{Estado Operativo} = "Operativo"'
-    ];
+    const activos = await listarActivos();
 
-    if (categoriaFilter) {
-      const safeCat = categoriaFilter.replace(/'/g, "\\'");
-      filters.push(`SEARCH('${safeCat}', ARRAYJOIN({Categoría}, ', '))`);
-    }
+    const disponibles = activos.filter((activo) => {
+      const f = activo.fields;
+      if (f.asignado) return false;
+      if (f.estado !== 'Operativo' && f.estado !== 'Disponible en Almacén') return false;
+      if (categoria && !(f.categorias || []).includes(categoria)) return false;
+      if (ubicacion && f.ubicacion !== ubicacion) return false;
+      return true;
+    });
 
-    if (ubicacionFilter) {
-      const safeLoc = ubicacionFilter.replace(/'/g, "\\'");
-      filters.push(`SEARCH('${safeLoc}', ARRAYJOIN({Ubicación Actual}, ', '))`);
-    }
-
-    let url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`;
-    const params = new URLSearchParams();
-
-    params.set('filterByFormula', `AND(${filters.join(', ')})`);
-    params.set('pageSize', '100');
-
-    const queryString = params.toString();
-    url += `?${queryString}`;
-
-    // Fetch con paginación automática
-    let allRecords: unknown[] = [];
-    let offset: string | undefined;
-
-    do {
-      const fetchUrl = offset ? `${url}&offset=${offset}` : url;
-
-      const response = await fetch(fetchUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${config.airtable.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('❌ Error de Airtable:', data);
-        return NextResponse.json({
-          error: data?.error?.type || 'Airtable error',
-          details: data
-        }, { status: response.status });
-      }
-
-      allRecords = allRecords.concat(data.records || []);
-      offset = data.offset;
-    } while (offset);
-
-    console.log(`📊 Activos disponibles: ${allRecords.length} registros`);
-
-    return NextResponse.json({
-      records: allRecords,
-      total: allRecords.length
-    }, { status: 200 });
-
+    return NextResponse.json(
+      { success: true, records: disponibles, data: disponibles, total: disponibles.length },
+      { status: 200 }
+    );
   } catch (err: unknown) {
+    if (err instanceof ActivosError) {
+      return NextResponse.json(
+        { success: false, error: err.message, details: err.details },
+        { status: err.status }
+      );
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en API activos/disponibles:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

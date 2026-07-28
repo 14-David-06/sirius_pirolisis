@@ -1,140 +1,100 @@
 /**
- * AsignarActivoForm - Formulario para asignar un activo a un responsable
+ * Entrega de un activo a un responsable.
+ *
+ * Recibe los activos ya cargados por la página en vez de consultarlos otra vez:
+ * la versión anterior llamaba a `/api/activos/disponibles` y leía `result.data`
+ * de una respuesta que devolvía `records`, así que la lista SIEMPRE salía vacía
+ * ("no hay activos disponibles") aunque hubiera decenas.
+ *
+ * El cuerpo que se envía coincide con el contrato de `/api/activos/asignar`
+ * (`fechaAsignacion` y `condicionAlAsignar` son obligatorios en la API; antes no
+ * se mandaban y la petición fallaba con 400 siempre).
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { AREAS_EMPRESA } from '@/lib/activos.constants';
+import { useMemo, useState } from 'react';
+import { asignarActivo } from '@/lib/activos.client';
+import {
+  AREAS_EMPRESA,
+  CONDICIONES_ACTIVO,
+  CONDICIONES_ACTIVO_AYUDA,
+  MENSAJES,
+} from '@/lib/activos.constants';
+import { hoyISO } from '@/lib/activos.format';
+import type { ActivoFijoRecord, CondicionActivo } from '@/types/activos';
+import {
+  AccionesFormulario,
+  Campo,
+  ErrorOperacion,
+  Input,
+  Select,
+  Textarea,
+} from './FormFields';
+import { IconInbox, IconUserPlus } from './Icons';
 
 interface AsignarActivoFormProps {
-  onSuccess: () => void;
+  /** Todos los activos; el formulario se queda con los asignables. */
+  activos: ActivoFijoRecord[];
+  /** Activo preseleccionado (cuando se entra desde la fila o el detalle). */
+  activoInicial?: ActivoFijoRecord | null;
+  onSuccess: (mensaje: string) => void;
   onCancel: () => void;
   getCurrentUserName: () => string;
 }
 
-interface Activo {
-  id: string;
-  codigo: string;
-  nombre: string;
-  estado: string;
-}
-
 export default function AsignarActivoForm({
+  activos,
+  activoInicial,
   onSuccess,
   onCancel,
   getCurrentUserName,
 }: AsignarActivoFormProps) {
-  const [loading, setLoading] = useState(false);
-  const [loadingActivos, setLoadingActivos] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activos, setActivos] = useState<Activo[]>([]);
+  const disponibles = useMemo(
+    () =>
+      activos
+        .filter((activo) => {
+          const f = activo.fields;
+          if (f.asignado) return false;
+          return f.estado === 'Operativo' || f.estado === 'Disponible en Almacén';
+        })
+        .sort((a, b) =>
+          String(a.fields.nombre || '').localeCompare(String(b.fields.nombre || ''), 'es')
+        ),
+    [activos]
+  );
 
-  const [activoId, setActivoId] = useState('');
+  const [activoId, setActivoId] = useState(activoInicial?.id || '');
   const [responsable, setResponsable] = useState('');
-  const [area, setArea] = useState('');
+  const [area, setArea] = useState(
+    (activoInicial?.fields.area as string) || ''
+  );
   const [proposito, setProposito] = useState('');
+  const [condicion, setCondicion] = useState<CondicionActivo>('Buena');
+  const [fecha, setFecha] = useState(hoyISO());
   const [observaciones, setObservaciones] = useState('');
 
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [errores, setErrores] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
-  useEffect(() => {
-    // Cargar activos disponibles
-    fetch('/api/activos/disponibles')
-      .then(res => res.json())
-      .then(result => {
-        if (result.success && result.data) {
-          setActivos(result.data);
-        }
-        setLoadingActivos(false);
-      })
-      .catch(() => {
-        setLoadingActivos(false);
-      });
-  }, []);
+  const seleccionado = useMemo(
+    () => disponibles.find((activo) => activo.id === activoId) || activoInicial || null,
+    [disponibles, activoId, activoInicial]
+  );
 
-  const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
-
-    if (!activoId) {
-      errors.activoId = 'Debes seleccionar un activo';
-    }
-
-    if (!responsable.trim()) {
-      errors.responsable = 'El responsable es requerido';
-    }
-
-    if (!proposito.trim()) {
-      errors.proposito = 'El propósito de uso es requerido';
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!validateForm()) {
-      setError('Por favor completa todos los campos requeridos');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const body = {
-        activoId,
-        responsable: responsable.trim(),
-        area: area.trim() || undefined,
-        proposito: proposito.trim(),
-        observaciones: observaciones.trim() || undefined,
-        usuarioAsigna: getCurrentUserName(),
-      };
-
-      const response = await fetch('/api/activos/asignar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Error al asignar el activo');
-      }
-
-      onSuccess();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      console.error('❌ Error al asignar activo:', message);
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loadingActivos) {
+  if (disponibles.length === 0 && !activoInicial) {
     return (
-      <div className="p-6 text-center text-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-        <p>Cargando activos disponibles...</p>
-      </div>
-    );
-  }
-
-  if (activos.length === 0) {
-    return (
-      <div className="p-6 text-center text-white">
-        <div className="text-6xl mb-4">📦</div>
-        <p className="text-lg mb-4">No hay activos disponibles para asignar</p>
-        <p className="text-sm text-white/70 mb-6">
-          Todos los activos están asignados o no están en estado disponible.
+      <div className="p-8 text-center">
+        <IconInbox className="mx-auto h-10 w-10 text-white/30" />
+        <p className="mt-3 font-medium text-white">{MENSAJES.INFO.SIN_DISPONIBLES}</p>
+        <p className="mx-auto mt-2 max-w-sm text-sm text-white/60">
+          Todos los activos están asignados o su estado no permite entregarlos.
         </p>
         <button
+          type="button"
           onClick={onCancel}
-          className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg"
+          className="mt-5 rounded-lg bg-white/10 ring-1 ring-white/15 px-4 py-2 text-sm text-white transition-colors duration-200 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
         >
           Cerrar
         </button>
@@ -142,154 +102,194 @@ export default function AsignarActivoForm({
     );
   }
 
+  const validar = (): boolean => {
+    const nuevos: Record<string, string> = {};
+    if (!activoId) nuevos.activoId = MENSAJES.ERROR.SELECCIONAR_ACTIVO;
+    if (!responsable.trim()) nuevos.responsable = MENSAJES.ERROR.ESPECIFICAR_RESPONSABLE;
+    if (!fecha) nuevos.fecha = 'Indica la fecha de entrega';
+    setErrores(nuevos);
+    return Object.keys(nuevos).length === 0;
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    if (!validar()) {
+      setError(MENSAJES.ERROR.CAMPOS_REQUERIDOS);
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      await asignarActivo({
+        activoId,
+        responsable: responsable.trim(),
+        areaResponsable: area.trim() || undefined,
+        // La API espera un dateTime; se envía el inicio del día elegido.
+        fechaAsignacion: new Date(`${fecha}T00:00:00`).toISOString(),
+        propositoUso: proposito.trim() || undefined,
+        condicionAlAsignar: condicion,
+        observacionesAsignacion: observaciones.trim() || undefined,
+        usuarioQueAsigna: getCurrentUserName(),
+      });
+
+      onSuccess(MENSAJES.EXITO.ASIGNACION_CREADA);
+    } catch (err: unknown) {
+      const mensaje = err instanceof Error ? err.message : 'Error desconocido';
+      console.error('❌ Error al asignar activo:', mensaje);
+      setError(mensaje);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="p-6 space-y-6">
-      {error && (
-        <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 text-white">
-          <p className="font-semibold">⚠️ Error</p>
-          <p className="text-sm mt-1">{error}</p>
-        </div>
+    <form onSubmit={handleSubmit} className="space-y-4 p-6" noValidate>
+      {error && <ErrorOperacion mensaje={error} />}
+
+      <Campo label="Activo a entregar" requerido error={errores.activoId}>
+        {(props) => (
+          <Select
+            {...props}
+            value={activoId}
+            onChange={(event) => {
+              setActivoId(event.target.value);
+              setErrores((previos) => ({ ...previos, activoId: '' }));
+            }}
+            invalido={Boolean(errores.activoId)}
+          >
+            <option value="" className="bg-slate-800">
+              Selecciona un activo
+            </option>
+            {activoInicial && !disponibles.some((activo) => activo.id === activoInicial.id) && (
+              <option value={activoInicial.id} className="bg-slate-800">
+                {activoInicial.fields.codigo} — {activoInicial.fields.nombre}
+              </option>
+            )}
+            {disponibles.map((activo) => (
+              <option key={activo.id} value={activo.id} className="bg-slate-800">
+                {activo.fields.codigo} — {activo.fields.nombre}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Campo>
+
+      {seleccionado && (
+        <p className="rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-xs text-white/60">
+          {[
+            seleccionado.fields.ubicacion
+              ? `Ubicación actual: ${seleccionado.fields.ubicacion}`
+              : 'Sin ubicación registrada',
+            (seleccionado.fields.tipos as string[])?.join(' · ') || 'Sin tipo',
+          ].join(' · ')}
+        </p>
       )}
 
-      {/* Seleccionar Activo */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Activo a Asignar <span className="text-red-400">*</span>
-        </label>
-        <select
-          value={activoId}
-          onChange={(e) => {
-            setActivoId(e.target.value);
-            if (validationErrors.activoId) {
-              setValidationErrors((prev) => ({ ...prev, activoId: '' }));
-            }
-          }}
-          className={`w-full bg-white/10 backdrop-blur-sm border ${
-            validationErrors.activoId ? 'border-red-500' : 'border-white/20'
-          } rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500`}
-        >
-          <option value="" className="bg-gray-800">Selecciona un activo</option>
-          {activos.map((activo) => (
-            <option key={activo.id} value={activo.id} className="bg-gray-800">
-              {activo.codigo} - {activo.nombre}
-            </option>
-          ))}
-        </select>
-        {validationErrors.activoId && (
-          <p className="text-red-300 text-xs mt-1">{validationErrors.activoId}</p>
-        )}
-      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Campo label="Responsable" requerido error={errores.responsable}>
+          {(props) => (
+            <Input
+              {...props}
+              type="text"
+              value={responsable}
+              onChange={(event) => {
+                setResponsable(event.target.value);
+                setErrores((previos) => ({ ...previos, responsable: '' }));
+              }}
+              placeholder="Nombre de quien recibe"
+              invalido={Boolean(errores.responsable)}
+            />
+          )}
+        </Campo>
 
-      {/* Responsable */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Responsable <span className="text-red-400">*</span>
-        </label>
-        <input
-          type="text"
-          value={responsable}
-          onChange={(e) => {
-            setResponsable(e.target.value);
-            if (validationErrors.responsable) {
-              setValidationErrors((prev) => ({ ...prev, responsable: '' }));
-            }
-          }}
-          placeholder="Nombre de la persona responsable"
-          className={`w-full bg-white/10 backdrop-blur-sm border ${
-            validationErrors.responsable ? 'border-red-500' : 'border-white/20'
-          } rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-        />
-        {validationErrors.responsable && (
-          <p className="text-red-300 text-xs mt-1">{validationErrors.responsable}</p>
-        )}
-      </div>
-
-      {/* Área */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Área / Departamento
-        </label>
-        <input
-          type="text"
-          value={area}
-          onChange={(e) => setArea(e.target.value)}
-          list="areas-empresa"
-          placeholder="ej: Pirólisis, Mantenimiento..."
-          className="w-full bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <datalist id="areas-empresa">
-          {AREAS_EMPRESA.map((areaOption) => (
-            <option key={areaOption} value={areaOption} />
-          ))}
-        </datalist>
-      </div>
-
-      {/* Propósito */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Propósito de Uso <span className="text-red-400">*</span>
-        </label>
-        <textarea
-          value={proposito}
-          onChange={(e) => {
-            setProposito(e.target.value);
-            if (validationErrors.proposito) {
-              setValidationErrors((prev) => ({ ...prev, proposito: '' }));
-            }
-          }}
-          placeholder="¿Para qué se usará este activo?"
-          rows={3}
-          className={`w-full bg-white/10 backdrop-blur-sm border ${
-            validationErrors.proposito ? 'border-red-500' : 'border-white/20'
-          } rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500`}
-        />
-        {validationErrors.proposito && (
-          <p className="text-red-300 text-xs mt-1">{validationErrors.proposito}</p>
-        )}
-      </div>
-
-      {/* Observaciones */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Observaciones
-        </label>
-        <textarea
-          value={observaciones}
-          onChange={(e) => setObservaciones(e.target.value)}
-          placeholder="Notas adicionales..."
-          rows={2}
-          className="w-full bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Botones */}
-      <div className="flex justify-end space-x-4 pt-4 border-t border-white/10">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors duration-200"
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-        >
-          {loading ? (
+        <Campo label="Área del responsable">
+          {(props) => (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>Asignando...</span>
-            </>
-          ) : (
-            <>
-              <span>👤</span>
-              <span>Asignar Activo</span>
+              <Input
+                {...props}
+                type="text"
+                list="areas-empresa-asignar"
+                value={area}
+                onChange={(event) => setArea(event.target.value)}
+                placeholder="ej: Pirólisis"
+              />
+              <datalist id="areas-empresa-asignar">
+                {AREAS_EMPRESA.map((opcion) => (
+                  <option key={opcion} value={opcion} />
+                ))}
+              </datalist>
             </>
           )}
-        </button>
+        </Campo>
+
+        <Campo label="Fecha de entrega" requerido error={errores.fecha}>
+          {(props) => (
+            <Input
+              {...props}
+              type="date"
+              max={hoyISO()}
+              value={fecha}
+              onChange={(event) => setFecha(event.target.value)}
+              invalido={Boolean(errores.fecha)}
+            />
+          )}
+        </Campo>
+
+        <Campo
+          label="Condición al entregar"
+          requerido
+          ayuda={CONDICIONES_ACTIVO_AYUDA[condicion]}
+        >
+          {(props) => (
+            <Select
+              {...props}
+              value={condicion}
+              onChange={(event) => setCondicion(event.target.value as CondicionActivo)}
+            >
+              {CONDICIONES_ACTIVO.map((opcion) => (
+                <option key={opcion} value={opcion} className="bg-slate-800">
+                  {opcion}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Campo>
+
+        <Campo label="Propósito de uso" className="sm:col-span-2">
+          {(props) => (
+            <Textarea
+              {...props}
+              rows={2}
+              value={proposito}
+              onChange={(event) => setProposito(event.target.value)}
+              placeholder="¿Para qué se va a usar?"
+            />
+          )}
+        </Campo>
+
+        <Campo label="Observaciones" className="sm:col-span-2">
+          {(props) => (
+            <Textarea
+              {...props}
+              rows={2}
+              value={observaciones}
+              onChange={(event) => setObservaciones(event.target.value)}
+              placeholder="Notas de la entrega"
+            />
+          )}
+        </Campo>
       </div>
+
+      <AccionesFormulario
+        onCancel={onCancel}
+        enviando={enviando}
+        etiqueta="Asignar activo"
+        etiquetaEnviando="Asignando…"
+        icono={<IconUserPlus className="w-4 h-4" />}
+        tono="emerald"
+      />
     </form>
   );
 }

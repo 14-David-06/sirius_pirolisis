@@ -1,76 +1,75 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  CATEGORIA_SIN_CLASIFICAR,
+  clasificarVencimiento,
+  normalizeEstadoOperativo,
+} from './activos.format';
+import { DIAS_ALERTA_MANTENIMIENTO, DIAS_ALERTA_VENCIMIENTO } from './activos.constants';
 import type {
   ActivoFijoRecord,
-  AsignacionRecord,
   ActivosData,
-  AsignacionesData,
   ActivosFilters,
+  AsignacionRecord,
+  AsignacionesData,
   AsignacionesFilters,
-  EstadoOperativo,
   EstadisticasActivos,
+  EstadoOperativo,
 } from '@/types/activos';
 
 /**
- * Helper genérico para obtener valores de campos con fallbacks
- * Reduce duplicación de código y centraliza la lógica de acceso a campos
+ * Estado y derivados del módulo de Activos Fijos.
+ *
+ * Mismo patrón que `useInventario`: el endpoint devuelve el parque completo en
+ * una sola llamada y TODO el filtrado ocurre en memoria. Antes cada cambio de
+ * filtro reconstruía un `filterByFormula` y volvía a consultar Airtable, con lo
+ * que la tabla parpadeaba y la búsqueda (que era local) no se combinaba con los
+ * demás filtros.
  */
-function getFieldValue<T = string>(
-  record: ActivoFijoRecord | AsignacionRecord,
-  fieldNames: Array<string>,
-  defaultValue: T
-): T {
-  for (const fieldName of fieldNames) {
-    const value = record.fields[fieldName];
-    if (value !== undefined && value !== null) {
-      return value as T;
-    }
-  }
-  return defaultValue;
+
+/** Normaliza texto para búsquedas: minúsculas y sin tildes. */
+function normalizarTexto(valor: string): string {
+  return valor
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
 }
 
-/**
- * Hook personalizado para gestión de Activos Fijos
- * Proporciona estado, funciones de fetch y getters para acceder a datos de activos
- */
+function comoTexto(valor: unknown): string {
+  return typeof valor === 'string' ? valor : '';
+}
+
+function comoArray(valor: unknown): string[] {
+  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string') : [];
+}
+
 export function useActivos(filters?: ActivosFilters) {
   const [data, setData] = useState<ActivosData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchActivos = async () => {
+  const fetchActivos = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const params = new URLSearchParams();
-      if (filters?.categoria) params.set('categoria', filters.categoria);
-      if (filters?.estadoOperativo) params.set('estado', filters.estadoOperativo);
-      if (filters?.ubicacion) params.set('ubicacion', filters.ubicacion);
-      if (filters?.area) params.set('area', filters.area);
-      if (filters?.soloAsignados) params.set('soloAsignados', 'true');
-      if (filters?.soloDisponibles) params.set('soloDisponibles', 'true');
-      if (filters?.proximosAVencer) params.set('proximosAVencer', 'true');
-
-      const qs = params.toString();
-      const url = `/api/activos/list${qs ? `?${qs}` : ''}`;
-
-      const response = await fetch(url);
+      const response = await fetch('/api/activos/list');
       const result = await response.json();
 
       if (!response.ok) {
-        if (response.status === 400 && result.error?.includes('no configurado')) {
-          throw new Error('Módulo de Activos Fijos no configurado. Verifica las variables de entorno.');
+        if (response.status === 400 && String(result.error || '').includes('no configurado')) {
+          throw new Error(
+            'Módulo de Activos Fijos no configurado. Revisa AIRTABLE_ACTIVOS_CORE_BASE_ID y AIRTABLE_ACTIVOS_FIJOS_TABLE_ID en .env.local'
+          );
+        }
+        if (response.status === 403) {
+          throw new Error('Sin permisos sobre Sirius Activos Core. Verifica el token de Airtable.');
         }
         throw new Error(result.error || 'Error al obtener datos de activos');
       }
 
       setData(result);
-
-      if (result.records && result.records.length === 0) {
-        console.info('📦 No hay activos registrados o no hay resultados con los filtros aplicados');
-      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error desconocido al cargar activos';
       console.error('❌ Error al cargar activos:', message);
@@ -78,316 +77,335 @@ export function useActivos(filters?: ActivosFilters) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchActivos();
-  }, [
-    filters?.categoria,
-    filters?.estadoOperativo,
-    filters?.ubicacion,
-    filters?.area,
-    filters?.soloAsignados,
-    filters?.soloDisponibles,
-    filters?.proximosAVencer,
-  ]);
+  }, [fetchActivos]);
 
-  // ============================================================================
-  // FUNCIÓN DE REFRESH MANUAL
-  // ============================================================================
+  // ==========================================================================
+  // GETTERS — leen los campos normalizados de /api/activos/list
+  // ==========================================================================
 
-  const refreshActivos = async () => {
-    await fetchActivos();
-  };
+  const getActivoNombre = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.nombre) || comoTexto(record.fields['Nombre del Activo']) || 'Sin nombre';
 
-  // ============================================================================
-  // GETTERS PARA ACTIVOS FIJOS
-  // ============================================================================
+  const getActivoCodigo = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.codigo) || comoTexto(record.fields['Código Activo']) || '';
 
-  const getActivoNombre = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Nombre del Activo', 'Nombre', 'Name'],
-      'Sin nombre'
+  const getActivoDescripcion = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.descripcion);
+
+  /**
+   * Categorías legibles del activo.
+   * ⚠️ El lookup `Categoría` puede venir vacío si el activo no tiene tipo; el
+   * endpoint ya intenta reconstruirlo desde el catálogo de tipos.
+   */
+  const getActivoCategorias = (record: ActivoFijoRecord): string[] =>
+    comoArray(record.fields.categorias);
+
+  /** Categoría principal, para agrupar y filtrar. */
+  const getActivoCategoria = (record: ActivoFijoRecord): string =>
+    getActivoCategorias(record)[0] || CATEGORIA_SIN_CLASIFICAR;
+
+  const getActivoTipos = (record: ActivoFijoRecord): string[] => comoArray(record.fields.tipos);
+
+  const getActivoEstado = (record: ActivoFijoRecord): EstadoOperativo =>
+    normalizeEstadoOperativo(
+      comoTexto(record.fields.estado) || comoTexto(record.fields['Estado Operativo'])
     );
+
+  /** Nombre de la ubicación (nunca el record ID). */
+  const getActivoUbicacion = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.ubicacion);
+
+  const getActivoArea = (record: ActivoFijoRecord): string => comoTexto(record.fields.area);
+
+  const getActivoResponsable = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.responsable);
+
+  const getActivoEstaAsignado = (record: ActivoFijoRecord): boolean =>
+    Boolean(record.fields.asignado);
+
+  const getActivoNumeroSerie = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.numeroSerie);
+
+  const getActivoMarca = (record: ActivoFijoRecord): string => comoTexto(record.fields.marca);
+
+  const getActivoModelo = (record: ActivoFijoRecord): string => comoTexto(record.fields.modelo);
+
+  const getActivoProveedor = (record: ActivoFijoRecord): string =>
+    comoTexto(record.fields.proveedor);
+
+  const getActivoFechaAdquisicion = (record: ActivoFijoRecord): string | null =>
+    (record.fields.fechaAdquisicion as string | null) ?? null;
+
+  const getActivoValor = (record: ActivoFijoRecord): number => {
+    const valor = Number(record.fields.valorAdquisicion);
+    return Number.isFinite(valor) ? valor : 0;
   };
 
-  const getActivoCodigo = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Código Activo', 'Codigo', 'ID'],
-      'N/A'
-    );
-  };
-
-  const getActivoDescripcion = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Descripción', 'Descripcion'],
-      ''
-    );
-  };
-
-  const getActivoCategoria = (record: ActivoFijoRecord): string => {
-    const categorias = getFieldValue<string[]>(
-      record,
-      ['Categoría', 'Categoria'],
-      []
-    );
-    return Array.isArray(categorias) && categorias.length > 0
-      ? categorias.join(', ')
-      : 'Sin categoría';
-  };
-
-  const getActivoEstado = (record: ActivoFijoRecord): EstadoOperativo => {
-    return getFieldValue(
-      record,
-      ['Estado Operativo', 'Estado'],
-      'Operativo'
-    ) as EstadoOperativo;
-  };
-
-  const getActivoUbicacion = (record: ActivoFijoRecord): string => {
-    // Las ubicaciones vienen como array de record IDs
-    // Idealmente deberíamos hacer lookup, pero por ahora retornamos el ID
-    const ubicaciones = getFieldValue<string[]>(
-      record,
-      ['Ubicación Actual', 'Ubicacion'],
-      []
-    );
-    return Array.isArray(ubicaciones) && ubicaciones.length > 0
-      ? ubicaciones.join(', ')
-      : 'Sin ubicación';
-  };
-
-  const getActivoArea = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Área Responsable', 'Area Responsable', 'Area'],
-      ''
-    );
-  };
-
-  const getActivoResponsable = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Responsable Asignado', 'Responsable'],
-      ''
-    );
-  };
-
-  const getActivoEstaAsignado = (record: ActivoFijoRecord): boolean => {
-    const responsable = getActivoResponsable(record);
-    return responsable.trim() !== '';
-  };
-
-  const getActivoNumeroSerie = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Número de Serie', 'Numero de Serie', 'Serie'],
-      ''
-    );
-  };
-
-  const getActivoCodigoInterno = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Código Interno', 'Codigo Interno'],
-      ''
-    );
-  };
-
-  const getActivoMarca = (record: ActivoFijoRecord): string => {
-    return getFieldValue(record, ['Marca'], '');
-  };
-
-  const getActivoModelo = (record: ActivoFijoRecord): string => {
-    return getFieldValue(record, ['Modelo'], '');
-  };
-
-  const getActivoFechaAdquisicion = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Fecha de Adquisición', 'Fecha Adquisicion'],
-      ''
-    );
-  };
-
-  const getActivoValorAdquisicion = (record: ActivoFijoRecord): number => {
-    return getFieldValue(
-      record,
-      ['Valor de Adquisición', 'Valor Adquisicion', 'Valor'],
-      0
-    );
-  };
-
-  const getActivoProveedor = (record: ActivoFijoRecord): string => {
-    return getFieldValue(record, ['Proveedor'], '');
-  };
-
-  const getActivoFechaVencimiento = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Fecha de Vencimiento', 'Fecha Vencimiento'],
-      ''
-    );
-  };
+  const getActivoFechaVencimiento = (record: ActivoFijoRecord): string | null =>
+    (record.fields.fechaVencimiento as string | null) ?? null;
 
   const getActivoDiasVencimiento = (record: ActivoFijoRecord): number | null => {
-    const dias = getFieldValue<number | null>(
-      record,
-      ['Días para Vencimiento', 'Dias para Vencimiento'],
-      null
-    );
-    return typeof dias === 'number' ? dias : null;
+    const dias = record.fields.diasVencimiento;
+    return typeof dias === 'number' && Number.isFinite(dias) ? dias : null;
   };
 
-  const getActivoProximoMantenimiento = (record: ActivoFijoRecord): string => {
-    return getFieldValue(
-      record,
-      ['Próximo Mantenimiento', 'Proximo Mantenimiento'],
-      ''
-    );
-  };
+  const getActivoProximoMantenimiento = (record: ActivoFijoRecord): string | null =>
+    (record.fields.proximoMantenimiento as string | null) ?? null;
 
-  const getActivoNotas = (record: ActivoFijoRecord): string => {
-    return getFieldValue(record, ['Notas'], '');
-  };
+  const getActivoNotas = (record: ActivoFijoRecord): string => comoTexto(record.fields.notas);
 
-  // ============================================================================
-  // FUNCIONES DE CÁLCULO Y ANÁLISIS
-  // ============================================================================
+  /** `false` cuando falta tipo o ubicación: el activo no se puede clasificar. */
+  const getActivoEstaCompleto = (record: ActivoFijoRecord): boolean =>
+    Boolean(record.fields.completo);
 
-  const getTotalActivos = (): number => {
-    return data?.records?.length || 0;
-  };
+  // ==========================================================================
+  // DERIVADOS — filtrado, agrupación y métricas en memoria
+  // ==========================================================================
 
-  const getActivosByCategoria = (): Record<string, ActivoFijoRecord[]> => {
-    const records = data?.records || [];
-    const grouped: Record<string, ActivoFijoRecord[]> = {};
+  const registros = useMemo(() => data?.records ?? [], [data]);
 
-    records.forEach((record) => {
-      const categoria = getActivoCategoria(record);
-      if (!grouped[categoria]) {
-        grouped[categoria] = [];
+  /** Categorías presentes en los datos, ordenadas. Alimenta el filtro. */
+  const categoriasDisponibles = useMemo(() => {
+    const nombres = new Set<string>();
+    registros.forEach((record) => {
+      const categorias = getActivoCategorias(record);
+      if (categorias.length === 0) nombres.add(CATEGORIA_SIN_CLASIFICAR);
+      categorias.forEach((categoria) => nombres.add(categoria));
+    });
+    return [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [registros]);
+
+  /** Ubicaciones presentes en los datos, ordenadas. */
+  const ubicacionesDisponibles = useMemo(() => {
+    const nombres = new Set<string>();
+    registros.forEach((record) => {
+      const ubicacion = getActivoUbicacion(record);
+      if (ubicacion) nombres.add(ubicacion);
+    });
+    return [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [registros]);
+
+  /** Áreas responsables presentes en los datos, ordenadas. */
+  const areasDisponibles = useMemo(() => {
+    const nombres = new Set<string>();
+    registros.forEach((record) => {
+      const area = getActivoArea(record);
+      if (area) nombres.add(area);
+    });
+    return [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [registros]);
+
+  /** Registros que pasan los filtros activos. */
+  const registrosFiltrados = useMemo(() => {
+    const busqueda = filters?.busqueda ? normalizarTexto(filters.busqueda) : '';
+
+    return registros.filter((record) => {
+      if (filters?.categoria) {
+        const categorias = getActivoCategorias(record);
+        const coincide =
+          filters.categoria === CATEGORIA_SIN_CLASIFICAR
+            ? categorias.length === 0
+            : categorias.includes(filters.categoria);
+        if (!coincide) return false;
       }
-      grouped[categoria].push(record);
+      if (filters?.estado && getActivoEstado(record) !== filters.estado) return false;
+      if (filters?.ubicacion && getActivoUbicacion(record) !== filters.ubicacion) return false;
+      if (filters?.area && getActivoArea(record) !== filters.area) return false;
+      if (filters?.asignacion === 'asignados' && !getActivoEstaAsignado(record)) return false;
+      if (filters?.asignacion === 'disponibles' && getActivoEstaAsignado(record)) return false;
+      if (filters?.soloIncompletos && getActivoEstaCompleto(record)) return false;
+
+      if (busqueda) {
+        const heno = normalizarTexto(
+          [
+            getActivoNombre(record),
+            getActivoCodigo(record),
+            getActivoNumeroSerie(record),
+            getActivoMarca(record),
+            getActivoModelo(record),
+            getActivoResponsable(record),
+            getActivoUbicacion(record),
+            getActivoCategorias(record).join(' '),
+            getActivoTipos(record).join(' '),
+          ].join(' ')
+        );
+        if (!heno.includes(busqueda)) return false;
+      }
+
+      return true;
+    });
+  }, [
+    registros,
+    filters?.categoria,
+    filters?.estado,
+    filters?.ubicacion,
+    filters?.area,
+    filters?.asignacion,
+    filters?.soloIncompletos,
+    filters?.busqueda,
+  ]);
+
+  const getTotalActivos = (): number => registros.length;
+
+  /**
+   * Activos filtrados y agrupados por categoría, ordenados alfabéticamente
+   * (categorías y activos). Un activo con varias categorías aparece en la
+   * principal.
+   */
+  const getActivosByCategoria = (): Record<string, ActivoFijoRecord[]> => {
+    const grupos = new Map<string, ActivoFijoRecord[]>();
+
+    for (const record of registrosFiltrados) {
+      const categoria = getActivoCategoria(record);
+      const grupo = grupos.get(categoria) ?? [];
+      grupo.push(record);
+      grupos.set(categoria, grupo);
+    }
+
+    return Object.fromEntries(
+      [...grupos.entries()]
+        .sort(([a], [b]) => {
+          // "Sin clasificar" al final: es una bandeja de pendientes, no una categoría.
+          if (a === CATEGORIA_SIN_CLASIFICAR) return 1;
+          if (b === CATEGORIA_SIN_CLASIFICAR) return -1;
+          return a.localeCompare(b, 'es');
+        })
+        .map(([categoria, activos]) => [
+          categoria,
+          activos.sort((a, b) => getActivoNombre(a).localeCompare(getActivoNombre(b), 'es')),
+        ])
+    );
+  };
+
+  const getActivosByEstado = (estado: EstadoOperativo): ActivoFijoRecord[] =>
+    registros.filter((record) => getActivoEstado(record) === estado);
+
+  const getActivosOperativos = (): ActivoFijoRecord[] => getActivosByEstado('Operativo');
+
+  const getActivosEnReparacion = (): ActivoFijoRecord[] => getActivosByEstado('En Reparación');
+
+  const getActivosEnMantenimiento = (): ActivoFijoRecord[] =>
+    getActivosByEstado('En Mantenimiento');
+
+  const getActivosDadosDeBaja = (): ActivoFijoRecord[] => getActivosByEstado('Dado de Baja');
+
+  const getActivosAsignados = (): ActivoFijoRecord[] =>
+    registros.filter((record) => getActivoEstaAsignado(record));
+
+  /** Disponibles: sin responsable y en un estado en que se pueden entregar. */
+  const getActivosDisponibles = (): ActivoFijoRecord[] =>
+    registros.filter((record) => {
+      if (getActivoEstaAsignado(record)) return false;
+      const estado = getActivoEstado(record);
+      return estado === 'Operativo' || estado === 'Disponible en Almacén';
     });
 
-    return grouped;
-  };
+  /** Activos sin tipo o sin ubicación: no se pueden clasificar ni encontrar. */
+  const getActivosIncompletos = (): ActivoFijoRecord[] =>
+    registros.filter((record) => !getActivoEstaCompleto(record));
 
-  const getActivosByEstado = (estado: EstadoOperativo): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => getActivoEstado(record) === estado);
-  };
+  const getActivosProximosAVencer = (
+    diasAnticipacion: number = DIAS_ALERTA_VENCIMIENTO
+  ): ActivoFijoRecord[] =>
+    registros.filter((record) => {
+      const nivel = clasificarVencimiento(getActivoDiasVencimiento(record), diasAnticipacion);
+      return nivel === 'proximo' || nivel === 'critico';
+    });
 
-  const getActivosOperativos = (): ActivoFijoRecord[] => {
-    return getActivosByEstado('Operativo');
-  };
+  const getActivosVencidos = (): ActivoFijoRecord[] =>
+    registros.filter(
+      (record) =>
+        clasificarVencimiento(getActivoDiasVencimiento(record), DIAS_ALERTA_VENCIMIENTO) ===
+        'vencido'
+    );
 
-  const getActivosEnReparacion = (): ActivoFijoRecord[] => {
-    return getActivosByEstado('En Reparación');
-  };
+  /** Activos con mantenimiento programado dentro de la ventana de alerta. */
+  const getMantenimientosProximos = (
+    dias: number = DIAS_ALERTA_MANTENIMIENTO
+  ): ActivoFijoRecord[] => {
+    const hoy = new Date();
+    const limite = new Date(hoy.getTime() + dias * 24 * 60 * 60 * 1000);
 
-  const getActivosAsignados = (): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => getActivoEstaAsignado(record));
-  };
-
-  const getActivosDisponibles = (): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => {
-      return !getActivoEstaAsignado(record) && getActivoEstado(record) === 'Operativo';
+    return registros.filter((record) => {
+      const fechaStr = getActivoProximoMantenimiento(record);
+      if (!fechaStr) return false;
+      const fecha = new Date(fechaStr);
+      if (Number.isNaN(fecha.getTime())) return false;
+      return fecha <= limite;
     });
   };
 
-  const getActivosProximosAVencer = (diasAnticipacion: number = 30): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => {
-      const dias = getActivoDiasVencimiento(record);
-      return dias !== null && dias > 0 && dias <= diasAnticipacion;
-    });
-  };
-
-  const getActivosVencidos = (): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => {
-      const dias = getActivoDiasVencimiento(record);
-      return dias !== null && dias <= 0;
-    });
-  };
-
-  const getActivosByArea = (area: string): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => getActivoArea(record) === area);
-  };
-
-  const getActivosByUbicacion = (ubicacion: string): ActivoFijoRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => getActivoUbicacion(record).includes(ubicacion));
-  };
-
-  const getValorTotalActivos = (): number => {
-    const records = data?.records || [];
-    return records.reduce((total, record) => {
-      return total + getActivoValorAdquisicion(record);
-    }, 0);
-  };
-
-  // ============================================================================
-  // RETORNO DEL HOOK
-  // ============================================================================
+  /**
+   * Valor de adquisición acumulado. Excluye los activos dados de baja: sumarlos
+   * infla el valor del parque con bienes que ya no existen.
+   */
+  const getValorTotalActivos = (): number =>
+    registros
+      .filter((record) => getActivoEstado(record) !== 'Dado de Baja')
+      .reduce((total, record) => total + getActivoValor(record), 0);
 
   return {
     // Estado
     data,
     loading,
     error,
+    refreshActivos: fetchActivos,
 
-    // Funciones de fetch
-    refreshActivos,
+    // Datos derivados
+    registros,
+    registrosFiltrados,
+    categoriasDisponibles,
+    ubicacionesDisponibles,
+    areasDisponibles,
 
-    // Getters individuales
+    // Conteos y agrupaciones
+    getTotalActivos,
+    getActivosByCategoria,
+    getActivosByEstado,
+    getActivosOperativos,
+    getActivosEnReparacion,
+    getActivosEnMantenimiento,
+    getActivosDadosDeBaja,
+    getActivosAsignados,
+    getActivosDisponibles,
+    getActivosIncompletos,
+    getActivosProximosAVencer,
+    getActivosVencidos,
+    getMantenimientosProximos,
+    getValorTotalActivos,
+
+    // Getters por registro
     getActivoNombre,
     getActivoCodigo,
     getActivoDescripcion,
     getActivoCategoria,
+    getActivoCategorias,
+    getActivoTipos,
     getActivoEstado,
     getActivoUbicacion,
     getActivoArea,
     getActivoResponsable,
     getActivoEstaAsignado,
     getActivoNumeroSerie,
-    getActivoCodigoInterno,
     getActivoMarca,
     getActivoModelo,
-    getActivoFechaAdquisicion,
-    getActivoValorAdquisicion,
     getActivoProveedor,
+    getActivoFechaAdquisicion,
+    getActivoValor,
     getActivoFechaVencimiento,
     getActivoDiasVencimiento,
     getActivoProximoMantenimiento,
     getActivoNotas,
-
-    // Funciones de cálculo
-    getTotalActivos,
-    getActivosByCategoria,
-    getActivosByEstado,
-    getActivosOperativos,
-    getActivosEnReparacion,
-    getActivosAsignados,
-    getActivosDisponibles,
-    getActivosProximosAVencer,
-    getActivosVencidos,
-    getActivosByArea,
-    getActivosByUbicacion,
-    getValorTotalActivos,
+    getActivoEstaCompleto,
   };
 }
 
 // ============================================================================
-// HOOK PARA ASIGNACIONES
+// ASIGNACIONES
 // ============================================================================
 
 export function useAsignaciones(filters?: AsignacionesFilters) {
@@ -395,26 +413,24 @@ export function useAsignaciones(filters?: AsignacionesFilters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAsignaciones = async () => {
+  const { responsable, area, soloActivas, activoId } = filters || {};
+
+  const fetchAsignaciones = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
       const params = new URLSearchParams();
-      if (filters?.responsable) params.set('responsable', filters.responsable);
-      if (filters?.area) params.set('area', filters.area);
-      if (filters?.soloActivas) params.set('soloActivas', 'true');
-      if (filters?.activoId) params.set('activoId', filters.activoId);
+      if (responsable) params.set('responsable', responsable);
+      if (area) params.set('area', area);
+      if (soloActivas) params.set('soloActivas', 'true');
+      if (activoId) params.set('activoId', activoId);
 
       const qs = params.toString();
-      const url = `/api/activos/asignaciones/list${qs ? `?${qs}` : ''}`;
-
-      const response = await fetch(url);
+      const response = await fetch(`/api/activos/asignaciones/list${qs ? `?${qs}` : ''}`);
       const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Error al obtener asignaciones');
-      }
+      if (!response.ok) throw new Error(result.error || 'Error al obtener asignaciones');
 
       setData(result);
     } catch (err: unknown) {
@@ -424,65 +440,46 @@ export function useAsignaciones(filters?: AsignacionesFilters) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [responsable, area, soloActivas, activoId]);
 
   useEffect(() => {
     fetchAsignaciones();
-  }, [filters?.responsable, filters?.area, filters?.soloActivas, filters?.activoId]);
+  }, [fetchAsignaciones]);
 
-  const refreshAsignaciones = async () => {
-    await fetchAsignaciones();
-  };
+  const registros = useMemo(() => data?.records ?? [], [data]);
 
-  // Getters para asignaciones
-  const getAsignacionResponsable = (record: AsignacionRecord): string => {
-    return getFieldValue(record, ['Responsable'], 'Sin responsable');
-  };
+  const getAsignacionResponsable = (record: AsignacionRecord): string =>
+    comoTexto(record.fields.responsable) || 'Sin responsable';
 
-  const getAsignacionActivoNombre = (record: AsignacionRecord): string => {
-    const nombres = getFieldValue<string[]>(record, ['Nombre Activo'], []);
-    return Array.isArray(nombres) && nombres.length > 0 ? nombres[0] : 'N/A';
-  };
+  const getAsignacionActivoNombre = (record: AsignacionRecord): string =>
+    comoTexto(record.fields.activoNombre) || 'N/A';
 
-  const getAsignacionCodigoActivo = (record: AsignacionRecord): string => {
-    const codigos = getFieldValue<string[]>(record, ['Código Activo'], []);
-    return Array.isArray(codigos) && codigos.length > 0 ? codigos[0] : 'N/A';
-  };
+  const getAsignacionCodigoActivo = (record: AsignacionRecord): string =>
+    comoTexto(record.fields.activoCodigo) || 'N/A';
 
-  const getAsignacionFechaAsignacion = (record: AsignacionRecord): string => {
-    return getFieldValue(record, ['Fecha Asignación', 'Fecha Asignacion'], '');
-  };
+  const getAsignacionFechaAsignacion = (record: AsignacionRecord): string | null =>
+    (record.fields.fechaAsignacion as string | null) ?? null;
 
-  const getAsignacionFechaDevolucion = (record: AsignacionRecord): string => {
-    return getFieldValue(record, ['Fecha Devolución', 'Fecha Devolucion'], '');
-  };
+  const getAsignacionFechaDevolucion = (record: AsignacionRecord): string | null =>
+    (record.fields.fechaDevolucion as string | null) ?? null;
 
-  const getAsignacionEstado = (record: AsignacionRecord): string => {
-    return getFieldValue(record, ['Estado Asignación', 'Estado Asignacion'], '');
-  };
+  const getAsignacionEstado = (record: AsignacionRecord): string =>
+    record.fields.activa ? 'Activa' : 'Devuelto';
 
   const getAsignacionDiasEnUso = (record: AsignacionRecord): number => {
-    return getFieldValue(record, ['Días en Uso', 'Dias en Uso'], 0);
+    const dias = Number(record.fields.diasEnUso);
+    return Number.isFinite(dias) ? dias : 0;
   };
 
-  const getAsignacionPropositoUso = (record: AsignacionRecord): string => {
-    return getFieldValue(record, ['Propósito de Uso', 'Proposito de Uso'], '');
-  };
-
-  const getAsignacionesActivas = (): AsignacionRecord[] => {
-    const records = data?.records || [];
-    return records.filter((record) => !getAsignacionFechaDevolucion(record));
-  };
-
-  const getTotalAsignaciones = (): number => {
-    return data?.records?.length || 0;
-  };
+  const getAsignacionesActivas = (): AsignacionRecord[] =>
+    registros.filter((record) => Boolean(record.fields.activa));
 
   return {
     data,
     loading,
     error,
-    refreshAsignaciones,
+    refreshAsignaciones: fetchAsignaciones,
+    registros,
     getAsignacionResponsable,
     getAsignacionActivoNombre,
     getAsignacionCodigoActivo,
@@ -490,22 +487,28 @@ export function useAsignaciones(filters?: AsignacionesFilters) {
     getAsignacionFechaDevolucion,
     getAsignacionEstado,
     getAsignacionDiasEnUso,
-    getAsignacionPropositoUso,
     getAsignacionesActivas,
-    getTotalAsignaciones,
+    getTotalAsignaciones: () => registros.length,
   };
 }
 
 // ============================================================================
-// HOOK PARA ESTADÍSTICAS
+// ESTADÍSTICAS AGREGADAS (endpoint independiente)
 // ============================================================================
 
+/**
+ * Consume `/api/activos/estadisticas`.
+ *
+ * ⚠️ La página de activos NO lo usa: sus indicadores salen de los registros ya
+ * cargados por `useActivos`, para no pagar dos consultas por la misma verdad.
+ * Existe para tableros que solo necesitan los agregados.
+ */
 export function useEstadisticasActivos() {
   const [estadisticas, setEstadisticas] = useState<EstadisticasActivos | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchEstadisticas = async () => {
+  const fetchEstadisticas = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -513,9 +516,7 @@ export function useEstadisticasActivos() {
       const response = await fetch('/api/activos/estadisticas');
       const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Error al obtener estadísticas');
-      }
+      if (!response.ok) throw new Error(result.error || 'Error al obtener estadísticas');
 
       setEstadisticas(result.data);
     } catch (err: unknown) {
@@ -525,20 +526,11 @@ export function useEstadisticasActivos() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchEstadisticas();
-  }, []);
+  }, [fetchEstadisticas]);
 
-  const refreshEstadisticas = async () => {
-    await fetchEstadisticas();
-  };
-
-  return {
-    estadisticas,
-    loading,
-    error,
-    refreshEstadisticas,
-  };
+  return { estadisticas, loading, error, refreshEstadisticas: fetchEstadisticas };
 }

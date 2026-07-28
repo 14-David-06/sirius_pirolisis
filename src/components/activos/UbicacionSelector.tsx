@@ -1,229 +1,94 @@
 /**
- * UbicacionSelector - Selector single-select para Ubicaciones
+ * Selector de ubicación (catálogo `Ubicaciones`).
+ *
+ * Es un `<select>` nativo a propósito: la lista es corta y cerrada, y así hereda
+ * el teclado, el foco y el comportamiento móvil sin reimplementarlos.
  */
 
 'use client';
 
 import { useEffect, useState } from 'react';
-
-interface Ubicacion {
-  id: string;
-  nombre: string;
-  tipo: string;
-  descripcion: string;
-  area: string;
-  direccion: string;
-}
+import { listarUbicaciones } from '@/lib/activos.client';
+import type { UbicacionOpcion } from '@/types/activos';
+import { Select } from './FormFields';
 
 interface UbicacionSelectorProps {
   selectedId: string;
   onChange: (id: string) => void;
   error?: string;
+  id?: string;
+  'aria-describedby'?: string;
+  /** Etiqueta de la opción vacía. */
+  placeholder?: string;
 }
 
 export default function UbicacionSelector({
-  selectedId: selectedIdProp,
+  selectedId,
   onChange,
-  error: errorProp,
+  error,
+  id,
+  'aria-describedby': describedBy,
+  placeholder = 'Selecciona una ubicación',
 }: UbicacionSelectorProps) {
-  // Force unwrap React 19 optimization objects
-  const selectedId = selectedIdProp ? String(selectedIdProp) : '';
-  const error = errorProp ? String(errorProp) : '';
-
-  const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [ubicaciones, setUbicaciones] = useState<UbicacionOpcion[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [fallo, setFallo] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadUbicaciones = async () => {
-      try {
-        setLoading(true);
-        setLoadError(null);
+    let vigente = true;
 
-        const response = await fetch('/api/activos/ubicaciones/list');
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || 'Error cargando ubicaciones');
-        }
-
-        setUbicaciones(result.data || []);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Error desconocido';
-        setLoadError(message);
-        console.error('Error cargando ubicaciones:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUbicaciones();
-  }, []);
-
-  const handleReload = () => {
-    setLoading(true);
-    setLoadError(null);
-    fetch('/api/activos/ubicaciones/list')
-      .then(res => res.json())
-      .then(result => {
-        if (result.data) {
-          setUbicaciones(result.data);
-        }
+    listarUbicaciones()
+      .then((datos) => {
+        if (vigente) setUbicaciones(datos);
       })
-      .catch(err => {
-        setLoadError(err instanceof Error ? err.message : 'Error desconocido');
+      .catch((err: unknown) => {
+        if (vigente) setFallo(err instanceof Error ? err.message : 'No se pudo cargar el catálogo');
       })
       .finally(() => {
-        setLoading(false);
+        if (vigente) setCargando(false);
       });
-  };
 
-  const handleSelect = (id: string) => {
-    onChange(id);
-    setIsOpen(false);
-    setSearchTerm('');
-  };
+    return () => {
+      vigente = false;
+    };
+  }, []);
 
-  if (loading) {
+  if (cargando) {
     return (
-      <div className="text-white/70 text-sm py-2">
-        <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-          <span>Cargando ubicaciones...</span>
-        </div>
-      </div>
+      <div
+        className="h-[42px] rounded-lg bg-white/5 ring-1 ring-white/10 animate-pulse motion-reduce:animate-none"
+        aria-busy="true"
+        aria-label="Cargando ubicaciones"
+      />
     );
   }
 
-  if (loadError) {
+  if (fallo) {
     return (
-      <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 text-white/90 text-sm">
-        <p className="font-semibold mb-1">⚠️ Error al cargar ubicaciones</p>
-        <p className="text-xs text-white/70">{loadError}</p>
-        <button
-          type="button"
-          onClick={handleReload}
-          className="mt-2 text-xs underline hover:text-white"
-        >
-          Reintentar
-        </button>
-      </div>
+      <p className="rounded-lg bg-rose-500/10 ring-1 ring-rose-400/25 px-3 py-2 text-xs text-rose-100">
+        {fallo}
+      </p>
     );
   }
-
-  if (ubicaciones.length === 0) {
-    return (
-      <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3 text-white/90 text-sm">
-        <p className="font-semibold">⚠️ No hay ubicaciones disponibles</p>
-        <p className="text-xs text-white/70 mt-1">
-          Necesitas crear al menos una ubicación en Airtable primero.
-        </p>
-      </div>
-    );
-  }
-
-  const selectedUbicacion = ubicaciones.find((u) => u.id === selectedId);
-  const selectedName = selectedUbicacion ? selectedUbicacion.nombre : '';
-
-  const filteredUbicaciones = ubicaciones.filter((u) =>
-    u.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.tipo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.area.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white/10 backdrop-blur-sm border ${
-          error ? 'border-red-500' : 'border-white/20'
-        } rounded-lg px-4 py-3 text-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-white/15 transition-colors`}
-      >
-        <div className="flex justify-between items-center">
-          <span className={!selectedId ? 'text-white/50' : ''}>
-            {!selectedId ? 'Selecciona una ubicación' : selectedName}
-          </span>
-          <span className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
-            ▼
-          </span>
-        </div>
-      </button>
-
-      {error && typeof error === 'string' && error.length > 0 && (
-        <p className="text-red-300 text-xs mt-1">{error}</p>
-      )}
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          />
-
-          <div className="absolute z-20 mt-2 w-full bg-gray-800 border border-white/20 rounded-lg shadow-xl max-h-80 overflow-hidden">
-            <div className="p-3 border-b border-white/10">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar ubicación..."
-                className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white text-sm placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-
-            <div className="overflow-y-auto max-h-64">
-              {filteredUbicaciones.length === 0 ? (
-                <div className="px-4 py-3 text-white/60 text-sm text-center">
-                  No se encontraron ubicaciones
-                </div>
-              ) : (
-                filteredUbicaciones.map((ubicacion) => {
-                  const isSelected = selectedId === ubicacion.id;
-
-                  return (
-                    <button
-                      key={ubicacion.id}
-                      type="button"
-                      onClick={() => handleSelect(ubicacion.id)}
-                      className={`w-full text-left px-4 py-3 border-b border-white/10 hover:bg-white/10 transition-colors ${
-                        isSelected ? 'bg-blue-600/30' : ''
-                      }`}
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-white font-semibold">{ubicacion.nombre}</span>
-                            {isSelected && <span className="text-blue-300 text-sm">✓</span>}
-                          </div>
-                          {ubicacion.tipo && (
-                            <p className="text-xs text-white/60 mt-1">
-                              Tipo: {ubicacion.tipo}
-                            </p>
-                          )}
-                          {ubicacion.area && (
-                            <p className="text-xs text-white/70 mt-1">
-                              Área: {ubicacion.area}
-                            </p>
-                          )}
-                          {ubicacion.descripcion && (
-                            <p className="text-xs text-white/60 mt-1">
-                              {ubicacion.descripcion}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <Select
+      id={id}
+      value={selectedId}
+      onChange={(event) => onChange(event.target.value)}
+      invalido={Boolean(error)}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy}
+    >
+      <option value="" className="bg-slate-800">
+        {placeholder}
+      </option>
+      {ubicaciones.map((ubicacion) => (
+        <option key={ubicacion.id} value={ubicacion.id} className="bg-slate-800">
+          {ubicacion.nombre}
+          {ubicacion.tipo ? ` — ${ubicacion.tipo}` : ''}
+        </option>
+      ))}
+    </Select>
   );
 }

@@ -1,224 +1,214 @@
 /**
- * TipoActivoSelector - Selector multi-select para Tipos de Activo
+ * Selector múltiple de tipos de activo (catálogo `Tipos de Activo`).
+ *
+ * El tipo define la categoría, la vida útil y si el activo requiere vencimiento
+ * o mantenimiento, así que se muestra esa herencia al elegirlo.
+ *
+ * Nota histórica: había cuatro versiones de este componente (`Simple*`, `Safe*`,
+ * `SelectorWrapper`) que clonaban props con `JSON.parse(JSON.stringify(...))`
+ * para "romper objetos de optimización de React 19". El objeto
+ * `{state, value, isStale}` que las motivó no venía de React: es cómo Airtable
+ * serializa los campos `aiText`. Ahora la API lo aplana y basta un componente.
  */
 
 'use client';
 
-import { useEffect, useState } from 'react';
-
-interface TipoActivo {
-  id: string;
-  nombre: string;
-  categoria: string;
-  descripcion: string;
-  requiereVencimiento: boolean;
-  requiereMantenimiento: boolean;
-}
+import { useEffect, useMemo, useState } from 'react';
+import { listarTiposActivo } from '@/lib/activos.client';
+import type { TipoActivoOpcion } from '@/types/activos';
+import { IconCheck, IconChevron, IconSearch } from './Icons';
 
 interface TipoActivoSelectorProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   error?: string;
+  id?: string;
+  'aria-describedby'?: string;
 }
 
 export default function TipoActivoSelector({
-  selectedIds: selectedIdsProp,
+  selectedIds,
   onChange,
-  error: errorProp,
+  error,
+  id,
+  'aria-describedby': describedBy,
 }: TipoActivoSelectorProps) {
-  // Force unwrap React 19 optimization objects
-  const selectedIds = Array.isArray(selectedIdsProp) ? [...selectedIdsProp] : [];
-  const error = errorProp ? String(errorProp) : '';
-
-  // Debug: check if we're receiving wrapper objects
-  if (selectedIdsProp && typeof selectedIdsProp === 'object' && 'state' in selectedIdsProp) {
-    console.error('⚠️ TipoActivoSelector received wrapper object:', selectedIdsProp);
-  }
-
-  const [tipos, setTipos] = useState<TipoActivo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [tipos, setTipos] = useState<TipoActivoOpcion[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [fallo, setFallo] = useState<string | null>(null);
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
 
   useEffect(() => {
-    const loadTipos = async () => {
-      try {
-        setLoading(true);
-        setLoadError(null);
+    let vigente = true;
 
-        const response = await fetch('/api/activos/tipos-activo/list');
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || 'Error cargando tipos de activo');
-        }
-
-        setTipos(result.data || []);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Error desconocido';
-        setLoadError(message);
-        console.error('Error cargando tipos:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadTipos();
-  }, []);
-
-  const handleToggleTipo = (id: string) => {
-    const newSelection = selectedIds.includes(id)
-      ? selectedIds.filter((tid) => tid !== id)
-      : [...selectedIds, id];
-    onChange(newSelection);
-  };
-
-  const handleReload = () => {
-    setLoading(true);
-    setLoadError(null);
-    fetch('/api/activos/tipos-activo/list')
-      .then(res => res.json())
-      .then(result => {
-        if (result.data) {
-          setTipos(result.data);
-        }
+    listarTiposActivo()
+      .then((datos) => {
+        if (vigente) setTipos(datos);
       })
-      .catch(err => {
-        setLoadError(err instanceof Error ? err.message : 'Error desconocido');
+      .catch((err: unknown) => {
+        if (vigente) setFallo(err instanceof Error ? err.message : 'No se pudo cargar el catálogo');
       })
       .finally(() => {
-        setLoading(false);
+        if (vigente) setCargando(false);
       });
+
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  const seleccionados = useMemo(
+    () => tipos.filter((tipo) => selectedIds.includes(tipo.id)),
+    [tipos, selectedIds]
+  );
+
+  const visibles = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    if (!texto) return tipos;
+    return tipos.filter(
+      (tipo) =>
+        tipo.nombre.toLowerCase().includes(texto) || tipo.categoria.toLowerCase().includes(texto)
+    );
+  }, [tipos, busqueda]);
+
+  const alternar = (tipoId: string) => {
+    onChange(
+      selectedIds.includes(tipoId)
+        ? selectedIds.filter((actual) => actual !== tipoId)
+        : [...selectedIds, tipoId]
+    );
   };
 
-  if (loading) {
+  if (cargando) {
     return (
-      <div className="text-white/70 text-sm py-2">
-        <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-          <span>Cargando tipos de activo...</span>
-        </div>
-      </div>
+      <div
+        className="h-[42px] rounded-lg bg-white/5 ring-1 ring-white/10 animate-pulse motion-reduce:animate-none"
+        aria-busy="true"
+        aria-label="Cargando tipos de activo"
+      />
     );
   }
 
-  if (loadError) {
+  if (fallo) {
     return (
-      <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 text-white/90 text-sm">
-        <p className="font-semibold mb-1">⚠️ Error al cargar tipos de activo</p>
-        <p className="text-xs text-white/70">{loadError}</p>
-        <button
-          type="button"
-          onClick={handleReload}
-          className="mt-2 text-xs underline hover:text-white"
-        >
-          Reintentar
-        </button>
-      </div>
+      <p className="rounded-lg bg-rose-500/10 ring-1 ring-rose-400/25 px-3 py-2 text-xs text-rose-100">
+        {fallo}
+      </p>
     );
   }
 
-  if (tipos.length === 0) {
-    return (
-      <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3 text-white/90 text-sm">
-        <p className="font-semibold">⚠️ No hay tipos de activo disponibles</p>
-        <p className="text-xs text-white/70 mt-1">
-          Necesitas crear al menos un tipo de activo en Airtable primero.
-        </p>
-      </div>
-    );
-  }
-
-  const selectedCount = selectedIds.length;
-  const selectedNames = tipos
-    .filter((t) => selectedIds.includes(t.id))
-    .map((t) => t.nombre)
-    .join(', ');
+  const resumen =
+    seleccionados.length === 0
+      ? 'Selecciona el tipo de activo'
+      : seleccionados.map((tipo) => tipo.nombre).join(', ');
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white/10 backdrop-blur-sm border ${
-          error ? 'border-red-500' : 'border-white/20'
-        } rounded-lg px-4 py-3 text-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-white/15 transition-colors`}
+        id={id}
+        onClick={() => setAbierto((previo) => !previo)}
+        aria-expanded={abierto}
+        // `aria-invalid` no aplica al rol button; el error se anuncia por
+        // `aria-describedby`, que apunta al mensaje que pinta `Campo`.
+        aria-describedby={describedBy}
+        className={`flex w-full items-center justify-between gap-2 rounded-lg bg-white/10 ring-1 px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-sky-400/70 cursor-pointer ${
+          error ? 'ring-rose-400/60' : 'ring-white/15'
+        } ${seleccionados.length === 0 ? 'text-white/40' : 'text-white'}`}
       >
-        <div className="flex justify-between items-center">
-          <span className={selectedCount === 0 ? 'text-white/50' : ''}>
-            {selectedCount === 0
-              ? 'Selecciona uno o más tipos de activo'
-              : `${selectedCount} tipo(s): ${selectedNames}`}
-          </span>
-          <span className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
-            ▼
-          </span>
-        </div>
+        <span className="truncate">{resumen}</span>
+        <IconChevron
+          className={`w-4 h-4 shrink-0 text-white/50 transition-transform duration-200 motion-reduce:transition-none ${
+            abierto ? 'rotate-90' : ''
+          }`}
+        />
       </button>
 
-      {error && typeof error === 'string' && error.length > 0 && (
-        <p className="text-red-300 text-xs mt-1">{error}</p>
-      )}
-
-      {isOpen && (
+      {abierto && (
         <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          />
+          {/* Capa para cerrar al hacer clic fuera. */}
+          <div className="fixed inset-0 z-30" aria-hidden="true" onClick={() => setAbierto(false)} />
 
-          <div className="absolute z-20 mt-2 w-full bg-gray-800 border border-white/20 rounded-lg shadow-xl max-h-80 overflow-y-auto">
-            {tipos.map((tipo) => {
-              const isSelected = selectedIds.includes(tipo.id);
+          <div className="absolute z-40 mt-2 w-full overflow-hidden rounded-lg bg-slate-900 ring-1 ring-white/15 shadow-2xl">
+            <div className="border-b border-white/10 p-2">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40">
+                  <IconSearch className="w-4 h-4" />
+                </span>
+                <input
+                  type="search"
+                  value={busqueda}
+                  onChange={(event) => setBusqueda(event.target.value)}
+                  placeholder="Buscar tipo…"
+                  aria-label="Buscar tipo de activo"
+                  className="w-full rounded-md bg-white/10 ring-1 ring-white/15 pl-8 pr-2 py-1.5 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-sky-400/70"
+                />
+              </div>
+            </div>
 
-              return (
-                <button
-                  key={tipo.id}
-                  type="button"
-                  onClick={() => handleToggleTipo(tipo.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-white/10 hover:bg-white/10 transition-colors ${
-                    isSelected ? 'bg-blue-600/30' : ''
-                  }`}
-                >
-                  <div className="flex items-start space-x-3">
+            {/* Casillas reales en lugar de un listbox simulado: se hereda el
+                teclado y los lectores de pantalla anuncian el estado sin ARIA. */}
+            <fieldset className="max-h-64 overflow-y-auto py-1">
+              <legend className="sr-only">Tipos de activo</legend>
+
+              {visibles.length === 0 && (
+                <p className="px-3 py-4 text-center text-sm text-white/50">Sin resultados</p>
+              )}
+
+              {visibles.map((tipo) => {
+                const activo = selectedIds.includes(tipo.id);
+                const herencia = [
+                  tipo.categoria,
+                  tipo.vidaUtil ? `${tipo.vidaUtil} años` : null,
+                  tipo.requiereVencimiento ? 'con vencimiento' : null,
+                  tipo.requiereMantenimiento ? 'con mantenimiento' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+
+                return (
+                  <label
+                    key={tipo.id}
+                    className="flex cursor-pointer items-start gap-2 px-3 py-2 transition-colors duration-200 hover:bg-white/10 has-[:focus-visible]:bg-white/10"
+                  >
                     <input
                       type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                      readOnly
-                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-white/30 rounded pointer-events-none"
+                      checked={activo}
+                      onChange={() => alternar(tipo.id)}
+                      className="sr-only"
                     />
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-white font-semibold">{tipo.nombre}</span>
-                      </div>
-                      {tipo.categoria && (
-                        <p className="text-xs text-white/60 mt-1">
-                          Categoría: {tipo.categoria}
-                        </p>
-                      )}
-                      {tipo.descripcion && (
-                        <p className="text-xs text-white/70 mt-1">
-                          {tipo.descripcion}
-                        </p>
-                      )}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {tipo.requiereVencimiento && (
-                          <span className="text-xs bg-yellow-500/20 text-yellow-200 px-2 py-0.5 rounded">
-                            📅 Requiere vencimiento
-                          </span>
-                        )}
-                        {tipo.requiereMantenimiento && (
-                          <span className="text-xs bg-blue-500/20 text-blue-200 px-2 py-0.5 rounded">
-                            🔧 Requiere mantenimiento
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+                    <span
+                      className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded ring-1 ${
+                        activo
+                          ? 'bg-sky-500/80 ring-sky-300/60 text-white'
+                          : 'bg-white/5 ring-white/20 text-transparent'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <IconCheck className="w-3 h-3" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm text-white">{tipo.nombre}</span>
+                      {herencia && <span className="block text-xs text-white/45">{herencia}</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+
+            <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
+              <span className="text-xs text-white/50 tabular-nums">
+                {seleccionados.length} seleccionado{seleccionados.length === 1 ? '' : 's'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAbierto(false)}
+                className="rounded-md bg-white/10 px-2.5 py-1 text-xs text-white/80 transition-colors duration-200 hover:bg-white/20 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+              >
+                Listo
+              </button>
+            </div>
           </div>
         </>
       )}

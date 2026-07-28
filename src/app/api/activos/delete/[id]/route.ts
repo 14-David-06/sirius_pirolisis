@@ -1,127 +1,105 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '@/lib/config';
-import { ACTIVOS_FIELD_IDS } from '@/lib/activos.fields';
-
-const BASE_ID = config.airtable.activosCoreBaseId;
-const TABLE_ID = config.airtable.activosFijosTableId;
+import { ACTIVOS_FIELD_IDS, ACTIVOS_TABLE_IDS, assertActivosFieldIds } from '@/lib/activos.fields';
+import { MENSAJES } from '@/lib/activos.constants';
+import {
+  ActivosError,
+  assertActivosConfig,
+  getActivoRaw,
+  getCatalogos,
+  normalizarActivo,
+  responsableDe,
+  updateRecord,
+} from '@/lib/activos.server';
 
 /**
- * DELETE - Dar de baja un activo (soft delete)
- * No elimina el registro, solo cambia su estado a "Dado de Baja"
+ * DELETE /api/activos/delete/[id] — baja lógica de un activo.
+ *
+ * No borra el registro: cambia el estado a "Dado de Baja" y deja el motivo en
+ * las notas. Un activo es un bien contable, su historial de asignaciones y
+ * mantenimientos tiene que sobrevivir a la baja.
+ *
+ * Guarda: no se puede dar de baja un activo que está asignado a alguien.
  */
-export async function DELETE(
-  request: NextRequest,
-  props: { params: Promise<{ id: string }> }
-) {
-  const params = await props.params;
-
-  // Verificar configuración
-  if (!BASE_ID || !TABLE_ID) {
-    return NextResponse.json({
-      error: 'Módulo de Activos Fijos no configurado'
-    }, { status: 400 });
-  }
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const { id } = await props.params;
 
   try {
-    if (!config.airtable.token) {
-      return NextResponse.json({
-        error: 'Token de Airtable no configurado'
-      }, { status: 500 });
-    }
+    assertActivosConfig();
+    assertActivosFieldIds();
 
-    const { id } = params;
-
-    // Leer datos opcionales del body (motivo de baja, etc.)
     let motivoBaja = '';
+    let usuario = '';
     try {
-      const body = await request.json();
-      motivoBaja = body.motivoBaja || '';
+      const body = (await request.json()) as { motivoBaja?: string; usuario?: string };
+      motivoBaja = (body.motivoBaja || '').trim();
+      usuario = (body.usuario || '').trim();
     } catch {
-      // Body opcional, continuar
+      // El cuerpo es opcional.
     }
 
-    // Paso 1: Verificar que el activo no esté asignado
-    const getUrl = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${id}`;
-    const getResponse = await fetch(getUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    // Se leen los campos por field ID (`returnFieldsByFieldId`): con las claves
+    // por nombre esta guarda nunca detectaba al responsable y permitía dar de
+    // baja activos que estaban en manos de alguien.
+    const actuales = await getActivoRaw(id);
+    const responsable = responsableDe(actuales);
 
-    if (!getResponse.ok) {
-      return NextResponse.json({
-        error: 'Activo no encontrado'
-      }, { status: 404 });
+    if (responsable) {
+      return NextResponse.json(
+        {
+          error: 'No se puede dar de baja un activo que está asignado',
+          details: `Actualmente asignado a ${responsable}. Registra la devolución primero.`,
+        },
+        { status: 409 }
+      );
     }
 
-    const activoData = await getResponse.json();
-    const responsable = activoData.fields[ACTIVOS_FIELD_IDS.responsableAsignado];
-
-    if (responsable && responsable.trim() !== '') {
-      return NextResponse.json({
-        error: 'No se puede dar de baja un activo que está asignado',
-        details: `Actualmente asignado a: ${responsable}. Registra la devolución primero.`
-      }, { status: 400 });
+    if (actuales[ACTIVOS_FIELD_IDS.estadoOperativo] === 'Dado de Baja') {
+      return NextResponse.json(
+        { error: 'Este activo ya está dado de baja' },
+        { status: 409 }
+      );
     }
 
-    // Paso 2: Cambiar estado a "Dado de Baja" (soft delete)
-    const updateFields: Record<string, unknown> = {
+    const fields: Record<string, unknown> = {
       [ACTIVOS_FIELD_IDS.estadoOperativo]: 'Dado de Baja',
     };
 
-    // Agregar motivo a las notas
     if (motivoBaja) {
-      const notasActuales = activoData.fields[ACTIVOS_FIELD_IDS.notas] || '';
-      const fechaBaja = new Date().toISOString().split('T')[0];
-      const nuevasNotas = `${notasActuales}\n\n[BAJA ${fechaBaja}] ${motivoBaja}`.trim();
-      updateFields[ACTIVOS_FIELD_IDS.notas] = nuevasNotas;
+      const notasActuales = String(actuales[ACTIVOS_FIELD_IDS.notas] || '');
+      const fecha = new Date().toISOString().split('T')[0];
+      const firma = usuario ? ` (${usuario})` : '';
+      fields[ACTIVOS_FIELD_IDS.notas] = `${notasActuales}\n\n[BAJA ${fecha}${firma}] ${motivoBaja}`.trim();
     }
 
-    const updateUrl = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${id}`;
-    const updateResponse = await fetch(updateUrl, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ fields: updateFields }),
-    });
+    const actualizado = await updateRecord(ACTIVOS_TABLE_IDS.activosFijos as string, id, fields);
+    const catalogos = await getCatalogos();
+    const activo = normalizarActivo(
+      { id: actualizado.id, fields: actualizado.fields, createdTime: actualizado.createdTime },
+      catalogos
+    );
 
-    const updateData = await updateResponse.json();
+    console.log('✅ Activo dado de baja:', activo.fields.codigo || id);
 
-    if (!updateResponse.ok) {
-      console.error('❌ Error dando de baja activo:', updateData);
-      return NextResponse.json({
-        error: 'Error al dar de baja el activo',
-        details: updateData
-      }, { status: updateResponse.status });
-    }
-
-    console.log('✅ Activo dado de baja:', id);
-
-    return NextResponse.json({
-      success: true,
-      data: updateData,
-      message: 'Activo dado de baja exitosamente'
-    }, { status: 200 });
-
+    return NextResponse.json(
+      { success: true, data: activo, message: MENSAJES.EXITO.ACTIVO_DADO_DE_BAJA },
+      { status: 200 }
+    );
   } catch (err: unknown) {
+    if (err instanceof ActivosError) {
+      const status = err.status === 404 ? 404 : err.status;
+      const error = status === 404 ? MENSAJES.ERROR.ACTIVO_NO_ENCONTRADO : err.message;
+      return NextResponse.json({ success: false, error, details: err.details }, { status });
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en API activos/delete:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
 /**
- * POST - Alternativa al DELETE para dar de baja
- * Permite enviar datos en el body más fácilmente
+ * POST /api/activos/delete/[id] — alias de DELETE.
+ * Existe porque algunos clientes (y proxies) no envían cuerpo en un DELETE.
  */
-export async function POST(
-  request: NextRequest,
-  props: { params: Promise<{ id: string }> }
-) {
-  const params = await props.params;
-  return DELETE(request, { params: Promise.resolve(params) });
+export function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  return DELETE(request, props);
 }

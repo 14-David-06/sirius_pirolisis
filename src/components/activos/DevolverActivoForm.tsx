@@ -1,142 +1,98 @@
 /**
- * DevolverActivoForm - Formulario para registrar devolución de un activo asignado
+ * Devolución de un activo asignado.
+ *
+ * La versión anterior estaba rota de tres formas: pedía
+ * `/api/activos/list?asignados=true` (el parámetro real era `soloAsignados`),
+ * leía `result.data` de una respuesta que devuelve `records`, y enviaba
+ * `activoId` cuando la API exigía `asignacionId`. Ninguna devolución podía
+ * completarse. Además ofrecía condiciones ("Bueno", "Malo", "Dañado") que no
+ * existen en el `singleSelect` de Airtable.
+ *
+ * Ahora trabaja con los activos ya cargados y la API resuelve la asignación
+ * abierta a partir del activo.
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { devolverActivo } from '@/lib/activos.client';
+import {
+  CONDICIONES_ACTIVO,
+  CONDICIONES_ACTIVO_AYUDA,
+  CONDICIONES_REQUIEREN_MANTENIMIENTO,
+  MENSAJES,
+} from '@/lib/activos.constants';
+import { hoyISO } from '@/lib/activos.format';
+import type { ActivoFijoRecord, CondicionActivo } from '@/types/activos';
+import {
+  AccionesFormulario,
+  Campo,
+  ErrorOperacion,
+  Input,
+  Select,
+  Textarea,
+} from './FormFields';
+import { IconCheck, IconUndo } from './Icons';
 
 interface DevolverActivoFormProps {
-  onSuccess: () => void;
+  /** Todos los activos; el formulario se queda con los que están asignados. */
+  activos: ActivoFijoRecord[];
+  activoInicial?: ActivoFijoRecord | null;
+  onSuccess: (mensaje: string) => void;
   onCancel: () => void;
   getCurrentUserName: () => string;
 }
 
-interface ActivoAsignado {
-  id: string;
-  codigo: string;
-  nombre: string;
-  responsable: string;
-  fechaAsignacion: string;
-}
-
 export default function DevolverActivoForm({
+  activos,
+  activoInicial,
   onSuccess,
   onCancel,
   getCurrentUserName,
 }: DevolverActivoFormProps) {
-  const [loading, setLoading] = useState(false);
-  const [loadingActivos, setLoadingActivos] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activos, setActivos] = useState<ActivoAsignado[]>([]);
+  const asignados = useMemo(
+    () =>
+      activos
+        .filter((activo) => activo.fields.asignado)
+        .sort((a, b) =>
+          String(a.fields.nombre || '').localeCompare(String(b.fields.nombre || ''), 'es')
+        ),
+    [activos]
+  );
 
-  const [activoId, setActivoId] = useState('');
-  const [condicion, setCondicion] = useState('Bueno');
+  const [activoId, setActivoId] = useState(activoInicial?.id || '');
+  const [condicion, setCondicion] = useState<CondicionActivo>('Buena');
+  const [fecha, setFecha] = useState(hoyISO());
   const [observaciones, setObservaciones] = useState('');
-  const [requiereMantenimiento, setRequiereMantenimiento] = useState(false);
+  const [mantenimientoManual, setMantenimientoManual] = useState<boolean | null>(null);
 
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [errores, setErrores] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
-  useEffect(() => {
-    // Cargar activos asignados
-    fetch('/api/activos/list?asignados=true')
-      .then(res => res.json())
-      .then(result => {
-        if (result.success && result.data) {
-          // Filtrar solo los que tienen responsable asignado
-          const asignados = result.data.filter((a: any) => a.responsableAsignado);
-          setActivos(asignados.map((a: any) => ({
-            id: a.id,
-            codigo: a.codigoActivo || 'N/A',
-            nombre: a.nombreActivo || 'Sin nombre',
-            responsable: a.responsableAsignado,
-            fechaAsignacion: a.fechaAsignacion || 'N/A',
-          })));
-        }
-        setLoadingActivos(false);
-      })
-      .catch(() => {
-        setLoadingActivos(false);
-      });
-  }, []);
+  const seleccionado = useMemo(
+    () => asignados.find((activo) => activo.id === activoId) || activoInicial || null,
+    [asignados, activoId, activoInicial]
+  );
 
-  const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
+  // Por defecto se deduce de la condición; el usuario puede forzarlo.
+  const sugiereMantenimiento = (CONDICIONES_REQUIEREN_MANTENIMIENTO as readonly string[]).includes(
+    condicion
+  );
+  const requiereMantenimiento = mantenimientoManual ?? sugiereMantenimiento;
 
-    if (!activoId) {
-      errors.activoId = 'Debes seleccionar un activo';
-    }
-
-    if (!condicion) {
-      errors.condicion = 'Debes indicar la condición del activo';
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!validateForm()) {
-      setError('Por favor completa todos los campos requeridos');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const body = {
-        activoId,
-        condicion,
-        observaciones: observaciones.trim() || undefined,
-        requiereMantenimiento,
-        usuarioRecibe: getCurrentUserName(),
-      };
-
-      const response = await fetch('/api/activos/devolver', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Error al registrar la devolución');
-      }
-
-      onSuccess();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      console.error('❌ Error al devolver activo:', message);
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loadingActivos) {
+  if (asignados.length === 0 && !activoInicial) {
     return (
-      <div className="p-6 text-center text-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-        <p>Cargando activos asignados...</p>
-      </div>
-    );
-  }
-
-  if (activos.length === 0) {
-    return (
-      <div className="p-6 text-center text-white">
-        <div className="text-6xl mb-4">✅</div>
-        <p className="text-lg mb-4">No hay activos asignados para devolver</p>
-        <p className="text-sm text-white/70 mb-6">
-          Todos los activos están disponibles o no asignados.
+      <div className="p-8 text-center">
+        <IconCheck className="mx-auto h-10 w-10 text-emerald-300" />
+        <p className="mt-3 font-medium text-white">{MENSAJES.INFO.SIN_ASIGNADOS}</p>
+        <p className="mx-auto mt-2 max-w-sm text-sm text-white/60">
+          Ningún activo está en manos de un responsable en este momento.
         </p>
         <button
+          type="button"
           onClick={onCancel}
-          className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg"
+          className="mt-5 rounded-lg bg-white/10 ring-1 ring-white/15 px-4 py-2 text-sm text-white transition-colors duration-200 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
         >
           Cerrar
         </button>
@@ -144,134 +100,155 @@ export default function DevolverActivoForm({
     );
   }
 
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    if (!activoId) {
+      setErrores({ activoId: MENSAJES.ERROR.SELECCIONAR_ACTIVO });
+      setError(MENSAJES.ERROR.CAMPOS_REQUERIDOS);
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      const respuesta = await devolverActivo({
+        activoId,
+        fechaDevolucion: new Date(`${fecha}T00:00:00`).toISOString(),
+        condicionAlDevolver: condicion,
+        observacionesDevolucion: observaciones.trim() || undefined,
+        usuarioQueRecibe: getCurrentUserName(),
+        requiereMantenimiento,
+      });
+
+      const aviso = respuesta.aviso ? ` ${respuesta.aviso}` : '';
+      onSuccess(`${MENSAJES.EXITO.DEVOLUCION_REGISTRADA}.${aviso}`);
+    } catch (err: unknown) {
+      const mensaje = err instanceof Error ? err.message : 'Error desconocido';
+      console.error('❌ Error al registrar devolución:', mensaje);
+      setError(mensaje);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="p-6 space-y-6">
-      {error && (
-        <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 text-white">
-          <p className="font-semibold">⚠️ Error</p>
-          <p className="text-sm mt-1">{error}</p>
-        </div>
+    <form onSubmit={handleSubmit} className="space-y-4 p-6" noValidate>
+      {error && <ErrorOperacion mensaje={error} />}
+
+      <Campo label="Activo a devolver" requerido error={errores.activoId}>
+        {(props) => (
+          <Select
+            {...props}
+            value={activoId}
+            onChange={(event) => {
+              setActivoId(event.target.value);
+              setErrores({});
+            }}
+            invalido={Boolean(errores.activoId)}
+          >
+            <option value="" className="bg-slate-800">
+              Selecciona un activo
+            </option>
+            {activoInicial && !asignados.some((activo) => activo.id === activoInicial.id) && (
+              <option value={activoInicial.id} className="bg-slate-800">
+                {activoInicial.fields.codigo} — {activoInicial.fields.nombre}
+              </option>
+            )}
+            {asignados.map((activo) => (
+              <option key={activo.id} value={activo.id} className="bg-slate-800">
+                {activo.fields.codigo} — {activo.fields.nombre} ({activo.fields.responsable})
+              </option>
+            ))}
+          </Select>
+        )}
+      </Campo>
+
+      {seleccionado?.fields.responsable && (
+        <p className="rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-xs text-white/60">
+          En manos de {String(seleccionado.fields.responsable)}
+          {seleccionado.fields.ubicacion ? ` · ${String(seleccionado.fields.ubicacion)}` : ''}
+        </p>
       )}
 
-      {/* Seleccionar Activo */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Activo a Devolver <span className="text-red-400">*</span>
-        </label>
-        <select
-          value={activoId}
-          onChange={(e) => {
-            setActivoId(e.target.value);
-            if (validationErrors.activoId) {
-              setValidationErrors((prev) => ({ ...prev, activoId: '' }));
-            }
-          }}
-          className={`w-full bg-white/10 backdrop-blur-sm border ${
-            validationErrors.activoId ? 'border-red-500' : 'border-white/20'
-          } rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500`}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Campo label="Fecha de devolución" requerido>
+          {(props) => (
+            <Input
+              {...props}
+              type="date"
+              max={hoyISO()}
+              value={fecha}
+              onChange={(event) => setFecha(event.target.value)}
+            />
+          )}
+        </Campo>
+
+        <Campo
+          label="Condición al devolver"
+          requerido
+          ayuda={CONDICIONES_ACTIVO_AYUDA[condicion]}
         >
-          <option value="" className="bg-gray-800">Selecciona un activo</option>
-          {activos.map((activo) => (
-            <option key={activo.id} value={activo.id} className="bg-gray-800">
-              {activo.codigo} - {activo.nombre} (Asignado a: {activo.responsable})
-            </option>
-          ))}
-        </select>
-        {validationErrors.activoId && (
-          <p className="text-red-300 text-xs mt-1">{validationErrors.activoId}</p>
-        )}
+          {(props) => (
+            <Select
+              {...props}
+              value={condicion}
+              onChange={(event) => {
+                setCondicion(event.target.value as CondicionActivo);
+                // Al cambiar la condición vuelve a mandar la sugerencia.
+                setMantenimientoManual(null);
+              }}
+            >
+              {CONDICIONES_ACTIVO.map((opcion) => (
+                <option key={opcion} value={opcion} className="bg-slate-800">
+                  {opcion}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Campo>
       </div>
 
-      {/* Condición al Devolver */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Condición al Devolver <span className="text-red-400">*</span>
-        </label>
-        <select
-          value={condicion}
-          onChange={(e) => {
-            setCondicion(e.target.value);
-            if (validationErrors.condicion) {
-              setValidationErrors((prev) => ({ ...prev, condicion: '' }));
-            }
-          }}
-          className={`w-full bg-white/10 backdrop-blur-sm border ${
-            validationErrors.condicion ? 'border-red-500' : 'border-white/20'
-          } rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500`}
-        >
-          <option value="Excelente" className="bg-gray-800">Excelente - Como nuevo</option>
-          <option value="Bueno" className="bg-gray-800">Bueno - Funcionando correctamente</option>
-          <option value="Regular" className="bg-gray-800">Regular - Muestra desgaste normal</option>
-          <option value="Malo" className="bg-gray-800">Malo - Requiere reparación</option>
-          <option value="Dañado" className="bg-gray-800">Dañado - No funcional</option>
-        </select>
-        {validationErrors.condicion && (
-          <p className="text-red-300 text-xs mt-1">{validationErrors.condicion}</p>
-        )}
-      </div>
-
-      {/* Requiere Mantenimiento */}
-      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-        <label className="flex items-center space-x-3 cursor-pointer">
+      <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4">
+        <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
             checked={requiereMantenimiento}
-            onChange={(e) => setRequiereMantenimiento(e.target.checked)}
-            className="w-5 h-5 rounded border-white/20 bg-white/10 text-blue-600 focus:ring-blue-500"
+            onChange={(event) => setMantenimientoManual(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-white/20 bg-white/10 accent-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
           />
-          <div className="flex-1">
-            <span className="text-white/90 font-medium">
-              Requiere Mantenimiento Post-Devolución
+          <span>
+            <span className="block text-sm font-medium text-white">
+              Requiere mantenimiento antes de reasignar
             </span>
-            <p className="text-white/60 text-xs mt-1">
-              Marca esta opción si el activo necesita mantenimiento, reparación o revisión antes de ser reasignado
-            </p>
-          </div>
+            <span className="mt-0.5 block text-xs text-white/50">
+              {requiereMantenimiento
+                ? 'El activo quedará "En mantenimiento" y no aparecerá como disponible.'
+                : 'El activo quedará disponible para entregarse de nuevo.'}
+            </span>
+          </span>
         </label>
       </div>
 
-      {/* Observaciones */}
-      <div>
-        <label className="block text-white/90 text-sm font-medium mb-2">
-          Observaciones de Devolución
-        </label>
-        <textarea
-          value={observaciones}
-          onChange={(e) => setObservaciones(e.target.value)}
-          placeholder="Describe el estado del activo, problemas encontrados, etc."
-          rows={3}
-          className="w-full bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      <Campo label="Observaciones de la devolución">
+        {(props) => (
+          <Textarea
+            {...props}
+            rows={3}
+            value={observaciones}
+            onChange={(event) => setObservaciones(event.target.value)}
+            placeholder="Estado en que se recibe, novedades encontradas…"
+          />
+        )}
+      </Campo>
 
-      {/* Botones */}
-      <div className="flex justify-end space-x-4 pt-4 border-t border-white/10">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors duration-200"
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-        >
-          {loading ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>Registrando...</span>
-            </>
-          ) : (
-            <>
-              <span>↩️</span>
-              <span>Registrar Devolución</span>
-            </>
-          )}
-        </button>
-      </div>
+      <AccionesFormulario
+        onCancel={onCancel}
+        enviando={enviando}
+        etiqueta="Registrar devolución"
+        etiquetaEnviando="Registrando…"
+        icono={<IconUndo className="w-4 h-4" />}
+      />
     </form>
   );
 }

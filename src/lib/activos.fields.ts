@@ -15,6 +15,16 @@ import { config } from './config';
  * únicamente con constantes de presentación.
  *
  * Los valores se configuran en `.env.local` (ver `.env.example`).
+ *
+ * ⚠️ NO existen en la base (se eliminaron de este mapa porque escribirlos hace
+ * que Airtable rechace TODO el registro con `UNKNOWN_FIELD_NAME`):
+ *   - Activos Fijos → "Código Interno", "Foto del Activo"
+ *   - Asignaciones  → "Evidencia Asignación"
+ *
+ * ⚠️ Los field IDs sirven para ESCRIBIR. Al leer, Airtable devuelve las claves
+ * con el NOMBRE del campo salvo que se pida `returnFieldsByFieldId=true`; por
+ * eso las guardas que leen un registro antes de mutarlo deben usar
+ * `getActivoRaw()` de `activos.server.ts`, que ya envía ese parámetro.
  */
 
 const faltantes: string[] = [];
@@ -45,7 +55,6 @@ export const ACTIVOS_FIELD_IDS = {
   tipoActivo: fieldId('AIRTABLE_ACTIVO_TIPO_ACTIVO_FIELD_ID'),
   categoria: fieldId('AIRTABLE_ACTIVO_CATEGORIA_FIELD_ID'),
   numeroSerie: fieldId('AIRTABLE_ACTIVO_NUMERO_SERIE_FIELD_ID'),
-  codigoInterno: fieldId('AIRTABLE_ACTIVO_CODIGO_INTERNO_FIELD_ID'),
   estadoOperativo: fieldId('AIRTABLE_ACTIVO_ESTADO_OPERATIVO_FIELD_ID'),
   ubicacionActual: fieldId('AIRTABLE_ACTIVO_UBICACION_ACTUAL_FIELD_ID'),
   areaResponsable: fieldId('AIRTABLE_ACTIVO_AREA_RESPONSABLE_FIELD_ID'),
@@ -65,7 +74,6 @@ export const ACTIVOS_FIELD_IDS = {
   historialEventos: fieldId('AIRTABLE_ACTIVO_HISTORIAL_EVENTOS_FIELD_ID'),
   estaAsignado: fieldId('AIRTABLE_ACTIVO_ESTA_ASIGNADO_FIELD_ID'),
   notas: fieldId('AIRTABLE_ACTIVO_NOTAS_FIELD_ID'),
-  fotoActivo: fieldId('AIRTABLE_ACTIVO_FOTO_ACTIVO_FIELD_ID'),
   asignaciones: fieldId('AIRTABLE_ACTIVO_ASIGNACIONES_FIELD_ID'),
   ultimaAsignacion: fieldId('AIRTABLE_ACTIVO_ULTIMA_ASIGNACION_FIELD_ID'),
   ultimaDevolucion: fieldId('AIRTABLE_ACTIVO_ULTIMA_DEVOLUCION_FIELD_ID'),
@@ -90,7 +98,6 @@ export const ASIGNACIONES_FIELD_IDS = {
   diasEnUso: fieldId('AIRTABLE_ASIGNACION_DIAS_EN_USO_FIELD_ID'),
   usuarioQueAsigna: fieldId('AIRTABLE_ASIGNACION_USUARIO_QUE_ASIGNA_FIELD_ID'),
   usuarioQueRecibe: fieldId('AIRTABLE_ASIGNACION_USUARIO_QUE_RECIBE_FIELD_ID'),
-  evidenciaAsignacion: fieldId('AIRTABLE_ASIGNACION_EVIDENCIA_ASIGNACION_FIELD_ID'),
   evidenciaDevolucion: fieldId('AIRTABLE_ASIGNACION_EVIDENCIA_DEVOLUCION_FIELD_ID'),
   requiereMantenimiento: fieldId('AIRTABLE_ASIGNACION_REQUIERE_MANTENIMIENTO_FIELD_ID'),
 } as const;

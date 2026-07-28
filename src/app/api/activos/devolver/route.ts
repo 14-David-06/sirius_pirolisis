@@ -1,152 +1,157 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '@/lib/config';
-import { ASIGNACIONES_FIELD_IDS, ACTIVOS_FIELD_IDS } from '@/lib/activos.fields';
+import {
+  ACTIVOS_FIELD_IDS,
+  ACTIVOS_TABLE_IDS,
+  ASIGNACIONES_FIELD_IDS,
+  assertActivosFieldIds,
+} from '@/lib/activos.fields';
+import { CONDICIONES_REQUIEREN_MANTENIMIENTO, MENSAJES } from '@/lib/activos.constants';
+import { validarCondicion } from '@/lib/activos.payload';
+import {
+  ActivosError,
+  assertActivosConfig,
+  assertTabla,
+  buscarAsignacionAbierta,
+  getActivoRaw,
+  getAsignacionRaw,
+  responsableDe,
+  updateRecord,
+} from '@/lib/activos.server';
 
-const BASE_ID = config.airtable.activosCoreBaseId;
-const ASIGNACIONES_TABLE_ID = config.airtable.asignacionesTableId;
-const ACTIVOS_TABLE_ID = config.airtable.activosFijosTableId;
-
+/**
+ * POST /api/activos/devolver — registra la devolución de un activo.
+ *
+ * Acepta `asignacionId` o `activoId`. Desde la UI lo natural es lo segundo (el
+ * operario ve activos, no registros de asignación), así que la ruta resuelve la
+ * asignación abierta del activo.
+ *
+ * Si el activo tiene responsable pero no existe una asignación abierta —caso de
+ * los activos cargados a mano— se libera igualmente y se avisa en la respuesta:
+ * bloquear ahí dejaría el activo asignado para siempre.
+ */
 export async function POST(request: NextRequest) {
-  // Verificar configuración
-  if (!BASE_ID || !ASIGNACIONES_TABLE_ID || !ACTIVOS_TABLE_ID) {
-    return NextResponse.json({
-      error: 'Módulo de Activos Fijos no configurado'
-    }, { status: 400 });
-  }
-
   try {
-    if (!config.airtable.token) {
-      return NextResponse.json({
-        error: 'Token de Airtable no configurado'
-      }, { status: 500 });
+    assertActivosConfig();
+    assertActivosFieldIds();
+
+    const asignacionesTable = assertTabla(
+      ACTIVOS_TABLE_IDS.asignaciones,
+      'AIRTABLE_ASIGNACIONES_TABLE_ID'
+    );
+    const activosTable = ACTIVOS_TABLE_IDS.activosFijos as string;
+
+    const body = (await request.json()) as Record<string, unknown>;
+
+    const condicion = validarCondicion(body.condicionAlDevolver);
+    if (!condicion) {
+      return NextResponse.json({ error: MENSAJES.ERROR.CONDICION_REQUERIDA }, { status: 400 });
     }
 
-    const body = await request.json();
+    const fechaDevolucion = String(body.fechaDevolucion || '') || new Date().toISOString();
+    const usuarioQueRecibe = String(body.usuarioQueRecibe || 'Sistema');
+    const observaciones = String(body.observacionesDevolucion || '').trim();
 
-    // Validar campos requeridos
-    if (!body.asignacionId) {
-      return NextResponse.json({
-        error: 'El ID de la asignación es requerido'
-      }, { status: 400 });
+    // `requiereMantenimiento` puede llegar del formulario o deducirse de una
+    // condición que deja el activo inservible.
+    const requiereMantenimiento =
+      body.requiereMantenimiento === undefined
+        ? (CONDICIONES_REQUIEREN_MANTENIMIENTO as readonly string[]).includes(condicion)
+        : Boolean(body.requiereMantenimiento);
+
+    let asignacionId = String(body.asignacionId || '');
+    let activoId = String(body.activoId || '');
+
+    if (!asignacionId && !activoId) {
+      return NextResponse.json({ error: MENSAJES.ERROR.SELECCIONAR_ACTIVO }, { status: 400 });
     }
 
-    if (!body.fechaDevolucion) {
-      return NextResponse.json({
-        error: 'La fecha de devolución es requerida'
-      }, { status: 400 });
+    // — Resolver la asignación —
+    if (asignacionId) {
+      const asignacion = await getAsignacionRaw(asignacionId);
+
+      if (asignacion[ASIGNACIONES_FIELD_IDS.fechaDevolucion]) {
+        return NextResponse.json(
+          {
+            error: 'Esta asignación ya fue devuelta',
+            details: `Fecha de devolución: ${asignacion[ASIGNACIONES_FIELD_IDS.fechaDevolucion]}`,
+          },
+          { status: 409 }
+        );
+      }
+
+      const vinculados = asignacion[ASIGNACIONES_FIELD_IDS.activo];
+      if (Array.isArray(vinculados) && typeof vinculados[0] === 'string') {
+        activoId = vinculados[0];
+      }
+
+      if (!activoId) {
+        return NextResponse.json(
+          { error: 'No se pudo determinar el activo de esta asignación' },
+          { status: 422 }
+        );
+      }
+    } else {
+      const abierta = await buscarAsignacionAbierta(activoId);
+      asignacionId = abierta?.id || '';
     }
 
-    if (!body.condicionAlDevolver) {
-      return NextResponse.json({
-        error: 'La condición del activo al devolver es requerida'
-      }, { status: 400 });
+    // — Verificar que el activo esté realmente asignado —
+    const activoActual = await getActivoRaw(activoId);
+    const responsable = responsableDe(activoActual);
+
+    if (!responsable && !asignacionId) {
+      return NextResponse.json(
+        { error: 'Este activo no está asignado a nadie' },
+        { status: 409 }
+      );
     }
 
-    // Paso 1: Verificar que la asignación exista y esté activa
-    const asignacionUrl = `https://api.airtable.com/v0/${BASE_ID}/${ASIGNACIONES_TABLE_ID}/${body.asignacionId}`;
-    const asignacionResponse = await fetch(asignacionUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    // — Cerrar la asignación (si existe) —
+    if (asignacionId) {
+      const cierre: Record<string, unknown> = {
+        [ASIGNACIONES_FIELD_IDS.fechaDevolucion]: fechaDevolucion,
+        [ASIGNACIONES_FIELD_IDS.condicionAlDevolver]: condicion,
+        [ASIGNACIONES_FIELD_IDS.usuarioQueRecibe]: usuarioQueRecibe,
+        [ASIGNACIONES_FIELD_IDS.requiereMantenimiento]: requiereMantenimiento,
+      };
+      if (observaciones) {
+        cierre[ASIGNACIONES_FIELD_IDS.observacionesDevolucion] = observaciones;
+      }
 
-    if (!asignacionResponse.ok) {
-      return NextResponse.json({
-        error: 'Asignación no encontrada'
-      }, { status: 404 });
+      await updateRecord(asignacionesTable, asignacionId, cierre);
     }
 
-    const asignacionData = await asignacionResponse.json();
-    const fechaDevolucionActual = asignacionData.fields[ASIGNACIONES_FIELD_IDS.fechaDevolucion];
-
-    if (fechaDevolucionActual) {
-      return NextResponse.json({
-        error: 'Esta asignación ya fue devuelta',
-        details: `Fecha de devolución: ${fechaDevolucionActual}`
-      }, { status: 400 });
-    }
-
-    // Obtener el ID del activo desde la asignación
-    const activoIds = asignacionData.fields[ASIGNACIONES_FIELD_IDS.activo];
-    if (!activoIds || !Array.isArray(activoIds) || activoIds.length === 0) {
-      return NextResponse.json({
-        error: 'No se pudo determinar el activo de esta asignación'
-      }, { status: 400 });
-    }
-    const activoId = activoIds[0];
-
-    // Paso 2: Actualizar registro de asignación con datos de devolución
-    const updateAsignacionFields: Record<string, unknown> = {
-      [ASIGNACIONES_FIELD_IDS.fechaDevolucion]: body.fechaDevolucion,
-      [ASIGNACIONES_FIELD_IDS.condicionAlDevolver]: body.condicionAlDevolver,
-      [ASIGNACIONES_FIELD_IDS.usuarioQueRecibe]: body.usuarioQueRecibe || 'Sistema',
+    // — Liberar el activo —
+    const liberacion: Record<string, unknown> = {
+      [ACTIVOS_FIELD_IDS.responsableAsignado]: '',
     };
-
-    if (body.observacionesDevolucion) {
-      updateAsignacionFields[ASIGNACIONES_FIELD_IDS.observacionesDevolucion] = body.observacionesDevolucion;
+    if (requiereMantenimiento) {
+      liberacion[ACTIVOS_FIELD_IDS.estadoOperativo] = 'En Mantenimiento';
     }
 
-    if (body.requiereMantenimiento !== undefined) {
-      updateAsignacionFields[ASIGNACIONES_FIELD_IDS.requiereMantenimiento] = body.requiereMantenimiento;
-    }
+    await updateRecord(activosTable, activoId, liberacion);
 
-    const updateAsignacionResponse = await fetch(asignacionUrl, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
+    console.log('✅ Devolución registrada:', activoId, asignacionId ? `(${asignacionId})` : '(sin asignación previa)');
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: { activoId, asignacionId: asignacionId || null, requiereMantenimiento },
+        message: MENSAJES.EXITO.DEVOLUCION_REGISTRADA,
+        aviso: asignacionId
+          ? undefined
+          : 'El activo se liberó, pero no existía una asignación abierta que cerrar.',
       },
-      body: JSON.stringify({ fields: updateAsignacionFields }),
-    });
-
-    const updateAsignacionData = await updateAsignacionResponse.json();
-
-    if (!updateAsignacionResponse.ok) {
-      console.error('❌ Error actualizando asignación:', updateAsignacionData);
-      return NextResponse.json({
-        error: 'Error al registrar la devolución',
-        details: updateAsignacionData
-      }, { status: updateAsignacionResponse.status });
-    }
-
-    // Paso 3: Limpiar el responsable del activo
-    const activoUrl = `https://api.airtable.com/v0/${BASE_ID}/${ACTIVOS_TABLE_ID}/${activoId}`;
-    const updateActivoFields: Record<string, unknown> = {
-      [ACTIVOS_FIELD_IDS.responsableAsignado]: '', // Limpiar responsable
-    };
-
-    // Si requiere mantenimiento, cambiar estado del activo
-    if (body.requiereMantenimiento === true) {
-      updateActivoFields[ACTIVOS_FIELD_IDS.estadoOperativo] = 'En Mantenimiento';
-    }
-
-    const updateActivoResponse = await fetch(activoUrl, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.airtable.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ fields: updateActivoFields }),
-    });
-
-    if (!updateActivoResponse.ok) {
-      console.error('⚠️ Devolución registrada pero error al actualizar activo');
-      // La devolución ya se registró, retornar éxito parcial
-    }
-
-    console.log('✅ Devolución registrada exitosamente:', body.asignacionId);
-
-    return NextResponse.json({
-      success: true,
-      data: updateAsignacionData,
-      message: 'Devolución registrada correctamente'
-    }, { status: 200 });
-
+      { status: 200 }
+    );
   } catch (err: unknown) {
+    if (err instanceof ActivosError) {
+      const status = err.status === 404 ? 404 : err.status;
+      const error = status === 404 ? MENSAJES.ERROR.ACTIVO_NO_ENCONTRADO : err.message;
+      return NextResponse.json({ success: false, error, details: err.details }, { status });
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en API activos/devolver:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

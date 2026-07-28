@@ -1,20 +1,26 @@
 /**
- * Tipos y interfaces para el módulo de Gestión de Activos Fijos
- * Sistema multi-área de gestión de activos para toda la empresa Sirius
- * Base: Sirius Activos Core 
+ * Tipos e interfaces del módulo de Activos Fijos.
+ * Base: Sirius Activos Core (multi-área, toda la empresa).
+ *
+ * Los nombres de campo de este archivo están verificados contra el esquema real
+ * de la base. Si Airtable cambia, este archivo es el primero que hay que ajustar.
  */
 
 // ============================================================================
 // TIPOS BASE DE AIRTABLE
 // ============================================================================
 
-/**
- * Estructura base de un registro de Airtable
- */
+/** Estructura base de un registro de Airtable. */
 export interface AirtableRecord<T = Record<string, unknown>> {
   id: string;
   fields: T;
   createdTime: string;
+}
+
+/** Adjunto de Airtable. */
+export interface AirtableAttachment {
+  url: string;
+  filename: string;
 }
 
 // ============================================================================
@@ -22,66 +28,113 @@ export interface AirtableRecord<T = Record<string, unknown>> {
 // ============================================================================
 
 /**
- * Campos del registro de Activo Fijo en Airtable
- * Tabla: Activos Fijos
+ * Campos normalizados que agrega `/api/activos/list`.
+ *
+ * ⚠️ Los campos crudos `Tipo de Activo` y `Ubicación Actual` son links: llegan
+ * como arrays de record IDs ("rec…"). Pintarlos directo muestra IDs en pantalla,
+ * así que el endpoint los resuelve a nombres y los expone aquí en minúsculas.
  */
-export interface ActivoFijoFields {
-  // Identificación
-  'Código Activo'?: string; // formula, primary
+export interface ActivoNormalizado {
+  /** Código legible generado por Airtable: "ACT-0017". */
+  codigo?: string;
+  nombre?: string;
+  descripcion?: string;
+  /** Nombres de los tipos de activo vinculados. */
+  tipos?: string[];
+  /** Record IDs de los tipos vinculados (para el formulario de edición). */
+  tipoIds?: string[];
+  /** Categorías heredadas del tipo, ya resueltas a texto. */
+  categorias?: string[];
+  /** Nombre de la ubicación actual. */
+  ubicacion?: string;
+  /** Record ID de la ubicación actual (para el formulario de edición). */
+  ubicacionId?: string;
+  area?: string;
+  responsable?: string;
+  /** `true` cuando el activo tiene responsable asignado. */
+  asignado?: boolean;
+  estado?: EstadoOperativo;
+  numeroSerie?: string;
+  marca?: string;
+  modelo?: string;
+  proveedor?: string;
+  fechaAdquisicion?: string | null;
+  valorAdquisicion?: number;
+  fechaVencimiento?: string | null;
+  /** Días restantes hasta el vencimiento. Negativo si ya venció. */
+  diasVencimiento?: number | null;
+  proximoMantenimiento?: string | null;
+  requiereVencimiento?: boolean;
+  requiereMantenimiento?: boolean;
+  vidaUtil?: number | null;
+  anioBaja?: number | null;
+  notas?: string;
+  totalEventos?: number;
+  totalAsignaciones?: number;
+  ultimaAsignacion?: string | null;
+  ultimaDevolucion?: string | null;
+  /**
+   * `true` cuando el activo tiene los datos mínimos de clasificación (tipo y
+   * ubicación). Los activos incompletos no se pueden ubicar ni depreciar.
+   */
+  completo?: boolean;
+}
+
+/**
+ * Campos del registro de Activo Fijo.
+ * Tabla: Activos Fijos (Sirius Activos Core).
+ */
+export interface ActivoFijoFields extends ActivoNormalizado {
+  // — Identificación —
+  'Código Activo'?: string; // formula (primary): "ACT-0001"
   'ID'?: number; // autoNumber
   'Nombre del Activo'?: string;
   'Descripción'?: string;
 
-  // Tipo y Categoría
-  'Tipo de Activo'?: string[]; // link to Tipos de Activo
-  'Categoría'?: string[]; // lookup
-
-  // Códigos
+  // — Clasificación —
+  'Tipo de Activo'?: string[]; // link → Tipos de Activo
+  'Categoría'?: string[]; // lookup desde el tipo
   'Número de Serie'?: string;
-  'Código Interno'?: string;
 
-  // Estado y Ubicación
+  // — Estado y ubicación —
   'Estado Operativo'?: EstadoOperativo;
-  'Ubicación Actual'?: string[]; // link to Ubicaciones
+  'Ubicación Actual'?: string[]; // link → Ubicaciones
   'Área Responsable'?: string;
   'Responsable Asignado'?: string;
 
-  // Datos de Adquisición
-  'Fecha de Adquisición'?: string; // date
-  'Valor de Adquisición'?: number; // currency
+  // — Adquisición —
+  'Fecha de Adquisición'?: string;
+  'Valor de Adquisición'?: number; // currency COP, precisión 0
   'Proveedor'?: string;
   'Marca'?: string;
   'Modelo'?: string;
 
-  // Vencimiento
+  // — Vencimiento —
   'Requiere Vencimiento'?: boolean[]; // lookup
-  'Fecha de Vencimiento'?: string; // date
-  'Días para Vencimiento'?: number; // formula
+  'Fecha de Vencimiento'?: string;
+  'Días para Vencimiento'?: number; // formula (negativo si venció)
 
-  // Mantenimiento
+  // — Mantenimiento —
   'Requiere Mantenimiento'?: boolean[]; // lookup
-  'Próximo Mantenimiento'?: string; // date
-  'Vida Útil Estimada'?: number[]; // lookup
+  'Próximo Mantenimiento'?: string;
+  /** Ojo: en Airtable la "ú" va en minúscula ("Vida útil Estimada"). */
+  'Vida útil Estimada'?: number[]; // lookup
   'Año de Baja Estimado'?: number; // formula
 
-  // Relaciones
-  'Historial de Eventos'?: string[]; // link to Hoja de Vida Activo
-  'Asignaciones'?: string[]; // link to Asignaciones
+  // — Relaciones —
+  'Historial de Eventos'?: string[]; // link → Hoja de Vida Activo
+  'Asignaciones'?: string[]; // link → Asignaciones
   'Última Asignación'?: string; // rollup
   'Última Devolución'?: string; // rollup
 
-  // Campos calculados y multimedia
-  'Está Asignado'?: string; // formula
+  // — Otros —
+  'Está Asignado'?: string; // formula: "Asignado" | "Disponible"
   'Notas'?: string;
-  'Foto del Activo'?: Array<{ url: string; filename: string }>; // attachments
 
-  // Campos genéricos adicionales
   [key: string]: unknown;
 }
 
-/**
- * Registro completo de Activo Fijo
- */
+/** Registro completo de Activo Fijo. */
 export type ActivoFijoRecord = AirtableRecord<ActivoFijoFields>;
 
 // ============================================================================
@@ -89,118 +142,82 @@ export type ActivoFijoRecord = AirtableRecord<ActivoFijoFields>;
 // ============================================================================
 
 /**
- * Campos del registro de Asignación en Airtable
- * Tabla: Asignaciones
+ * Campos del registro de Asignación.
+ * Tabla: Asignaciones.
  */
 export interface AsignacionFields {
-  // Identificación
   'Responsable'?: string; // primary
-
-  // Activo
-  'Activo'?: string[]; // link to Activos Fijos
+  'Activo'?: string[]; // link → Activos Fijos
   'Nombre Activo'?: string[]; // lookup
   'Código Activo'?: string[]; // lookup
-
-  // Responsable
   'Área del Responsable'?: string;
-
-  // Fechas
   'Fecha Asignación'?: string; // dateTime
-  'Fecha Devolución'?: string; // dateTime
-  'Estado Asignación'?: string; // formula
-
-  // Ubicación y Propósito
-  'Ubicación Destino'?: string[]; // link to Ubicaciones
+  'Fecha Devolución'?: string; // dateTime (vacío si está activa)
+  'Estado Asignación'?: string; // formula: "Activa" | "Devuelto"
+  'Ubicación Destino'?: string[]; // link → Ubicaciones
   'Propósito de Uso'?: string;
-
-  // Condición
   'Condición al Asignar'?: CondicionActivo;
   'Condición al Devolver'?: CondicionActivo;
-
-  // Observaciones
   'Observaciones Asignación'?: string;
   'Observaciones Devolución'?: string;
-
-  // Cálculos
   'Días en Uso'?: number; // formula
-
-  // Usuarios
   'Usuario que Asigna'?: string;
   'Usuario que Recibe'?: string;
-
-  // Evidencia
-  'Evidencia Asignación'?: Array<{ url: string; filename: string }>;
-  'Evidencia Devolución'?: Array<{ url: string; filename: string }>;
-
-  // Mantenimiento
+  'Evidencia Devolución'?: AirtableAttachment[];
   'Requiere Mantenimiento Post-Devolución'?: boolean;
 
-  // Campos genéricos adicionales
+  // — Campos normalizados que agrega la API —
+  activoId?: string;
+  activoNombre?: string;
+  activoCodigo?: string;
+  responsable?: string;
+  fechaAsignacion?: string | null;
+  fechaDevolucion?: string | null;
+  activa?: boolean;
+  diasEnUso?: number;
+
   [key: string]: unknown;
 }
 
-/**
- * Registro completo de Asignación
- */
+/** Registro completo de Asignación. */
 export type AsignacionRecord = AirtableRecord<AsignacionFields>;
 
 // ============================================================================
-// CAMPOS DE TIPOS DE ACTIVO
+// CATÁLOGOS
 // ============================================================================
 
-/**
- * Campos del catálogo de Tipos de Activo
- * Tabla: Tipos de Activo
- */
-export interface TipoActivoFields {
-  'Código Tipo'?: string; // primary
-  'Nombre Tipo'?: string;
-  'Descripción'?: string;
-  'Categoría'?: string;
-  'Vida Útil Estimada (años)'?: number;
-  'Requiere Vencimiento'?: boolean;
-  'Requiere Mantenimiento Preventivo'?: boolean;
-  'Estado'?: string;
-  'Activos Fijos'?: string[]; // link inverso
-  [key: string]: unknown;
+/** Tipo de activo del catálogo, ya normalizado por la API. */
+export interface TipoActivoOpcion {
+  id: string;
+  nombre: string;
+  categoria: string;
+  descripcion: string;
+  requiereVencimiento: boolean;
+  requiereMantenimiento: boolean;
+  vidaUtil: number | null;
 }
 
-export type TipoActivoRecord = AirtableRecord<TipoActivoFields>;
-
-// ============================================================================
-// CAMPOS DE UBICACIONES
-// ============================================================================
-
-/**
- * Campos del catálogo de Ubicaciones
- * Tabla: Ubicaciones
- */
-export interface UbicacionFields {
-  'Código Ubicación'?: string; // primary
-  'Nombre Ubicación'?: string;
-  'Tipo Ubicación'?: TipoUbicacion;
-  'Descripción'?: string;
-  'Responsable Área'?: string;
-  'Estado'?: string;
-  'Código Área Nómina Core'?: string;
-  'Activos Fijos'?: string[]; // link inverso
-  'Asignaciones'?: string[]; // link inverso
-  [key: string]: unknown;
+/** Ubicación del catálogo, ya normalizada por la API. */
+export interface UbicacionOpcion {
+  id: string;
+  nombre: string;
+  tipo: string;
+  descripcion: string;
+  /** Código del área en Sirius Nómina Core (ej: SIRIUS-AREA-0009). */
+  codigoArea: string;
 }
 
-export type UbicacionRecord = AirtableRecord<UbicacionFields>;
-
 // ============================================================================
-// CAMPOS DE HOJA DE VIDA
+// HOJA DE VIDA
 // ============================================================================
 
 /**
- * Campos del historial de eventos de activos
- * Tabla: Hoja de Vida Activo
+ * Campos del historial de eventos técnicos.
+ * Tabla: Hoja de Vida Activo.
  */
 export interface HojaVidaActivoFields {
   'ID Evento'?: string; // primary
-  'Activos Fijos'?: string[]; // link to Activos Fijos
+  'Activos Fijos'?: string[]; // link → Activos Fijos
   'Tipo Evento'?: TipoEvento;
   'Fecha Evento'?: string;
   'Descripción'?: string;
@@ -210,7 +227,7 @@ export interface HojaVidaActivoFields {
   'Próxima Acción Requerida'?: string;
   'Fecha Próxima Acción'?: string;
   'Estado Resultado'?: EstadoResultado;
-  'Evidencia'?: Array<{ url: string; filename: string }>;
+  'Evidencia'?: AirtableAttachment[];
   'Observaciones'?: string;
   [key: string]: unknown;
 }
@@ -221,48 +238,43 @@ export type HojaVidaActivoRecord = AirtableRecord<HojaVidaActivoFields>;
 // DATOS DE RESPUESTA
 // ============================================================================
 
-/**
- * Respuesta de la API de listado de activos
- */
+/** Respuesta de `/api/activos/list`. */
 export interface ActivosData {
   records: ActivoFijoRecord[];
   offset?: string;
 }
 
-/**
- * Respuesta de la API de listado de asignaciones
- */
+/** Respuesta de `/api/activos/asignaciones/list`. */
 export interface AsignacionesData {
   records: AsignacionRecord[];
   offset?: string;
 }
 
-/**
- * Estadísticas generales de activos
- */
+/** Estadísticas agregadas de activos (endpoint `/api/activos/estadisticas`). */
 export interface EstadisticasActivos {
   totalActivos: number;
   operativos: number;
   enReparacion: number;
+  enMantenimiento: number;
   asignados: number;
   disponibles: number;
   porVencer: number;
+  vencidos: number;
+  incompletos: number;
   valorTotalAdquisicion: number;
   porCategoria: Record<string, number>;
   porUbicacion: Record<string, number>;
   porArea: Record<string, number>;
+  porEstado: Record<string, number>;
 }
 
-/**
- * Datos de activo con información extendida
- */
-export interface ActivoExtendido extends ActivoFijoRecord {
-  diasParaVencimiento?: number;
-  estaAsignado?: boolean;
-  categoriaLabel?: string;
-  ubicacionLabel?: string;
-  ultimaAsignacionFecha?: string;
-  diasDesdeUltimaAsignacion?: number;
+/** Respuesta estándar de la API. */
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  details?: unknown;
+  message?: string;
 }
 
 // ============================================================================
@@ -270,144 +282,135 @@ export interface ActivoExtendido extends ActivoFijoRecord {
 // ============================================================================
 
 /**
- * Datos del formulario de registro de nuevo activo
+ * Cuerpo aceptado por `/api/activos/create` y `/api/activos/update/[id]`.
+ * Las claves son nombres de campo de Airtable; la API las traduce a field IDs.
  */
-export interface RegistroActivoFormData {
-  'Nombre del Activo': string;
-  'Tipo de Activo': string[]; // Array de record IDs
-  'Estado Operativo': EstadoOperativo;
-  'Ubicación Actual': string[]; // Array de record IDs
-  'Área Responsable': string;
+export interface ActivoFormPayload {
+  'Nombre del Activo'?: string;
+  'Descripción'?: string;
+  'Tipo de Activo'?: string[];
+  'Estado Operativo'?: EstadoOperativo;
+  'Ubicación Actual'?: string[];
+  'Área Responsable'?: string;
+  'Responsable Asignado'?: string;
   'Número de Serie'?: string;
-  'Código Interno'?: string;
   'Fecha de Adquisición'?: string;
-  'Valor de Adquisición'?: number;
+  'Valor de Adquisición'?: number | null;
   'Proveedor'?: string;
   'Marca'?: string;
   'Modelo'?: string;
-  'Descripción'?: string;
   'Fecha de Vencimiento'?: string;
   'Próximo Mantenimiento'?: string;
   'Notas'?: string;
 }
 
-/**
- * Datos del formulario de asignación de activo
- */
-export interface AsignarActivoFormData {
+/** Cuerpo de `/api/activos/asignar`. */
+export interface AsignarActivoPayload {
   activoId: string;
   responsable: string;
-  areaResponsable: string;
+  areaResponsable?: string;
   fechaAsignacion: string;
-  ubicacionDestino?: string[]; // Array de record IDs
-  propositoUso: string;
+  ubicacionDestino?: string[];
+  propositoUso?: string;
   condicionAlAsignar: CondicionActivo;
   observacionesAsignacion?: string;
-  usuarioQueAsigna: string;
+  usuarioQueAsigna?: string;
 }
 
 /**
- * Datos del formulario de devolución de activo
+ * Cuerpo de `/api/activos/devolver`.
+ * Se identifica la asignación por `asignacionId` o, más cómodo desde la UI,
+ * por `activoId` (la API busca la asignación abierta de ese activo).
  */
-export interface DevolverActivoFormData {
-  asignacionId: string;
+export interface DevolverActivoPayload {
+  asignacionId?: string;
+  activoId?: string;
   fechaDevolucion: string;
   condicionAlDevolver: CondicionActivo;
   observacionesDevolucion?: string;
-  usuarioQueRecibe: string;
-  requiereMantenimiento: boolean;
+  usuarioQueRecibe?: string;
+  requiereMantenimiento?: boolean;
 }
 
-/**
- * Datos del formulario de evento en hoja de vida
- */
-export interface RegistroEventoFormData {
-  activoId: string[];
-  tipoEvento: TipoEvento;
-  fechaEvento: string;
-  descripcion: string;
-  realizadoPor: string;
-  empresaProveedor?: string;
-  costoEvento?: number;
-  proximaAccionRequerida?: string;
-  fechaProximaAccion?: string;
-  estadoResultado: EstadoResultado;
-  observaciones?: string;
+/** Cuerpo de `/api/activos/delete/[id]` (baja lógica). */
+export interface BajaActivoPayload {
+  motivoBaja?: string;
+  usuario?: string;
 }
 
 // ============================================================================
-// PROPS DE COMPONENTES
+// GETTERS Y PROPS DE COMPONENTES
 // ============================================================================
 
 /**
- * Props base para componentes de formularios de activos
+ * Getters de un activo, compartidos por todas las vistas del módulo.
+ * Viven en `useActivos` y se pasan como props para que los componentes de
+ * presentación no necesiten conocer la forma de los campos de Airtable.
  */
+export interface ActivoGetters {
+  getActivoNombre: (record: ActivoFijoRecord) => string;
+  getActivoCodigo: (record: ActivoFijoRecord) => string;
+  getActivoCategorias: (record: ActivoFijoRecord) => string[];
+  getActivoTipos: (record: ActivoFijoRecord) => string[];
+  getActivoEstado: (record: ActivoFijoRecord) => EstadoOperativo;
+  getActivoUbicacion: (record: ActivoFijoRecord) => string;
+  getActivoArea: (record: ActivoFijoRecord) => string;
+  getActivoResponsable: (record: ActivoFijoRecord) => string;
+  getActivoEstaAsignado: (record: ActivoFijoRecord) => boolean;
+  getActivoValor: (record: ActivoFijoRecord) => number;
+  getActivoDiasVencimiento: (record: ActivoFijoRecord) => number | null;
+  getActivoEstaCompleto: (record: ActivoFijoRecord) => boolean;
+}
+
+/** Acciones que un activo expone en la tabla y en el detalle. */
+export type AccionActivo = 'detalle' | 'editar' | 'asignar' | 'devolver' | 'baja';
+
+/** Props base de los formularios del módulo. */
 export interface ActivosFormBaseProps {
-  onSuccess: () => void;
+  onSuccess: (mensaje: string) => void;
   onCancel: () => void;
 }
 
-/**
- * Props para el componente ActivoCard
- */
-export interface ActivoCardProps {
-  activo: ActivoFijoRecord;
-  getActivoNombre: (record: ActivoFijoRecord) => string;
-  getActivoCodigo: (record: ActivoFijoRecord) => string;
-  getActivoCategoria: (record: ActivoFijoRecord) => string;
-  getActivoEstado: (record: ActivoFijoRecord) => EstadoOperativo;
-  getActivoUbicacion: (record: ActivoFijoRecord) => string;
-  getActivoResponsable: (record: ActivoFijoRecord) => string;
-  getActivoEstaAsignado: (record: ActivoFijoRecord) => boolean;
-  getActivoDiasVencimiento: (record: ActivoFijoRecord) => number | null;
-  onVerDetalle?: (activo: ActivoFijoRecord) => void;
-}
-
-/**
- * Props para el componente AsignacionCard
- */
-export interface AsignacionCardProps {
-  asignacion: AsignacionRecord;
-  getAsignacionResponsable: (record: AsignacionRecord) => string;
-  getAsignacionActivoNombre: (record: AsignacionRecord) => string;
-  getAsignacionEstado: (record: AsignacionRecord) => string;
-  getAsignacionDiasEnUso: (record: AsignacionRecord) => number;
-  onDevolver?: (asignacion: AsignacionRecord) => void;
-}
-
 // ============================================================================
-// FILTROS Y BÚSQUEDA
+// FILTROS
 // ============================================================================
 
+/** Estado de asignación usado como filtro. */
+export type FiltroAsignacion = '' | 'asignados' | 'disponibles';
+
 /**
- * Filtros disponibles para activos
+ * Filtros de la vista de activos. Se aplican en memoria sobre los registros ya
+ * cargados: cambiar un filtro no dispara una consulta a Airtable.
  */
 export interface ActivosFilters {
-  categoria?: CategoriaActivo;
-  estadoOperativo?: EstadoOperativo;
+  /** Nombre de categoría tal como viene del catálogo de tipos. */
+  categoria?: string;
+  estado?: EstadoOperativo | '';
   ubicacion?: string;
   area?: string;
-  soloAsignados?: boolean;
-  soloDisponibles?: boolean;
-  proximosAVencer?: boolean; // < 30 días
+  asignacion?: FiltroAsignacion;
+  /** Texto libre: nombre, código, serie, marca, modelo, responsable. */
+  busqueda?: string;
+  /** Solo activos sin tipo o sin ubicación. */
+  soloIncompletos?: boolean;
 }
 
-/**
- * Filtros disponibles para asignaciones
- */
+/** Filtros de asignaciones. */
 export interface AsignacionesFilters {
   responsable?: string;
   area?: string;
-  soloActivas?: boolean; // Sin fecha de devolución
+  soloActivas?: boolean;
   activoId?: string;
 }
 
 // ============================================================================
-// TIPOS ENUMERADOS
+// TIPOS ENUMERADOS (verificados contra los singleSelect de Airtable)
 // ============================================================================
 
 /**
- * Categorías de activos
+ * Categorías de activo. Vienen del campo texto `Categoría` del catálogo de
+ * tipos, así que la lista real la manda el dato: esta unión solo cubre las
+ * categorías conocidas para efectos de iconos y descripciones.
  */
 export type CategoriaActivo =
   | 'Herramienta'
@@ -418,9 +421,7 @@ export type CategoriaActivo =
   | 'Mobiliario y Enseres'
   | 'Seguridad';
 
-/**
- * Estados operativos de activos
- */
+/** Estados operativos (singleSelect `Estado Operativo`). */
 export type EstadoOperativo =
   | 'Operativo'
   | 'En Mantenimiento'
@@ -428,11 +429,10 @@ export type EstadoOperativo =
   | 'Fuera de Servicio'
   | 'En Tránsito'
   | 'Disponible en Almacén'
-  | 'Dado de Baja';
+  | 'Dado de Baja'
+  | 'Incompleto';
 
-/**
- * Condición física de un activo
- */
+/** Condición física (singleSelect `Condición al Asignar` / `al Devolver`). */
 export type CondicionActivo =
   | 'Excelente'
   | 'Buena'
@@ -440,83 +440,26 @@ export type CondicionActivo =
   | 'Necesita Reparación'
   | 'Dañada';
 
-/**
- * Tipos de ubicación
- */
+/** Tipos de ubicación (singleSelect `Tipo Ubicación`). */
 export type TipoUbicacion =
-  | 'Planta Industrial'
+  | 'Planta'
   | 'Oficina'
-  | 'Bodega/Almacén'
-  | 'Taller'
-  | 'Finca/Campo'
-  | 'Área de Carga'
-  | 'Parqueadero'
-  | 'Obra'
-  | 'Externa';
+  | 'Bodega'
+  | 'Área Operativa'
+  | 'Laboratorio'
+  | 'Exterior / Campo';
 
-/**
- * Tipos de eventos en hoja de vida
- */
+/** Tipos de evento de la hoja de vida (singleSelect `Tipo Evento`). */
 export type TipoEvento =
   | 'Mantenimiento Preventivo'
-  | 'Reparación Correctiva'
-  | 'Recarga'
+  | 'Mantenimiento Correctivo'
+  | 'Recarga / Reposición'
   | 'Calibración'
-  | 'Traslado'
-  | 'Mejora/Actualización'
   | 'Inspección'
-  | 'Baja'
-  | 'Cambio de Responsable';
+  | 'Traslado'
+  | 'Reparación'
+  | 'Baja de Activo'
+  | 'Actualización Técnica';
 
-/**
- * Estados de resultado de eventos
- */
-export type EstadoResultado =
-  | 'Exitoso'
-  | 'Parcial'
-  | 'Fallido'
-  | 'Pendiente';
-
-// ============================================================================
-// UTILIDADES
-// ============================================================================
-
-/**
- * Resultado de subida de archivo a S3
- */
-export interface S3UploadResult {
-  fileUrl: string;
-  s3Path: string;
-}
-
-/**
- * Respuesta estándar de la API
- */
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-}
-
-/**
- * Opciones para búsqueda de activos
- */
-export interface BusquedaActivosOptions {
-  searchTerm?: string;
-  filters?: ActivosFilters;
-  sortBy?: 'nombre' | 'codigo' | 'fecha' | 'vencimiento';
-  sortOrder?: 'asc' | 'desc';
-  limit?: number;
-  offset?: number;
-}
-
-/**
- * Resultado de búsqueda de activos
- */
-export interface BusquedaActivosResult {
-  activos: ActivoFijoRecord[];
-  total: number;
-  hasMore: boolean;
-  offset?: string;
-}
+/** Estados de resultado de un evento (singleSelect `Estado Resultado`). */
+export type EstadoResultado = 'Exitoso' | 'Parcial' | 'Fallido' | 'Pendiente';

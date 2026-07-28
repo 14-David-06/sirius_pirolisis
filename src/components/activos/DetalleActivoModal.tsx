@@ -1,353 +1,457 @@
 /**
- * DetalleActivoModal - Modal para mostrar información detallada de un activo
+ * Detalle de un activo, con cambio rápido de estado y accesos a las acciones.
+ *
+ * Dos cosas que la versión anterior hacía mal:
+ *  - mutaba las props (`fields['Estado Operativo'] = …`) para "refrescar" la
+ *    vista, lo que dejaba la UI y Airtable desincronizados si el PATCH fallaba
+ *    a medias. Ahora se recarga el listado y el estado se muestra optimista solo
+ *    tras confirmar la respuesta.
+ *  - se cerraba únicamente con el botón: no respondía a Escape ni marcaba el
+ *    contenido como diálogo.
  */
 
 'use client';
 
-import { useState } from 'react';
-import type { ActivoFijoRecord } from '@/types/activos';
-import { ESTADOS_OPERATIVO_ICONS, ESTADOS_OPERATIVO } from '@/lib/activos.constants';
+import { useEffect, useRef, useState } from 'react';
+import { cambiarEstadoActivo, reactivarActivo } from '@/lib/activos.client';
+import { ESTADOS_OPERATIVO, MENSAJES } from '@/lib/activos.constants';
+import {
+  ASIGNACION_UI,
+  clasificarVencimiento,
+  estiloEstado,
+  formatDias,
+  formatFecha,
+  formatMoneda,
+  VENCIMIENTO_UI,
+} from '@/lib/activos.format';
+import { DIAS_ALERTA_VENCIMIENTO } from '@/lib/activos.constants';
+import type { AccionActivo, ActivoFijoRecord, EstadoOperativo } from '@/types/activos';
+import { Select } from './FormFields';
+import {
+  IconArchive,
+  IconCheck,
+  IconHistory,
+  IconPencil,
+  IconRotate,
+  IconUndo,
+  IconUserPlus,
+  IconX,
+} from './Icons';
 
 interface DetalleActivoModalProps {
-  activo: ActivoFijoRecord | null;
+  activo: ActivoFijoRecord;
   onClose: () => void;
-  onUpdate?: () => void;
+  /** Recarga el listado tras una mutación. */
+  onRefresh: () => Promise<void> | void;
+  onAccion: (activo: ActivoFijoRecord, accion: AccionActivo) => void;
+  onMensaje: (mensaje: string) => void;
 }
 
-export default function DetalleActivoModal({ activo, onClose, onUpdate }: DetalleActivoModalProps) {
-  const [estadoEditado, setEstadoEditado] = useState<string>('');
-  const [modoEdicion, setModoEdicion] = useState(false);
+function Dato({
+  etiqueta,
+  children,
+  className = '',
+}: {
+  etiqueta: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-xs uppercase tracking-wider text-white/45">{etiqueta}</dt>
+      <dd className="mt-0.5 text-sm text-white">{children}</dd>
+    </div>
+  );
+}
+
+export default function DetalleActivoModal({
+  activo,
+  onClose,
+  onRefresh,
+  onAccion,
+  onMensaje,
+}: DetalleActivoModalProps) {
+  const f = activo.fields;
+  const estadoActual = (f.estado as EstadoOperativo) || 'Operativo';
+
+  const [editandoEstado, setEditandoEstado] = useState(false);
+  const [estadoNuevo, setEstadoNuevo] = useState<EstadoOperativo>(estadoActual);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cerrarRef = useRef<HTMLButtonElement>(null);
 
-  if (!activo) return null;
+  // Escape cierra el diálogo; el foco entra en el botón de cierre.
+  useEffect(() => {
+    cerrarRef.current?.focus();
 
-  const fields = activo.fields;
-  const estadoActual = estadoEditado || fields['Estado Operativo'] || '';
+    const alPulsar = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', alPulsar);
+    return () => document.removeEventListener('keydown', alPulsar);
+  }, [onClose]);
 
-  const handleEditarEstado = () => {
-    setEstadoEditado(fields['Estado Operativo'] || '');
-    setModoEdicion(true);
-    setError(null);
-  };
+  const asignado = Boolean(f.asignado);
+  const deBaja = estadoActual === 'Dado de Baja';
+  const estado = estiloEstado(estadoActual);
+  const asignacion = asignado ? ASIGNACION_UI.asignado : ASIGNACION_UI.disponible;
+  const nivelVencimiento = clasificarVencimiento(
+    f.diasVencimiento as number | null,
+    DIAS_ALERTA_VENCIMIENTO
+  );
 
-  const handleCancelarEdicion = () => {
-    setModoEdicion(false);
-    setEstadoEditado('');
-    setError(null);
-  };
-
-  const handleGuardarEstado = async () => {
-    if (!estadoEditado || estadoEditado === fields['Estado Operativo']) {
-      setModoEdicion(false);
+  const guardarEstado = async () => {
+    if (estadoNuevo === estadoActual) {
+      setEditandoEstado(false);
       return;
     }
 
     setGuardando(true);
     setError(null);
-
     try {
-      const response = await fetch(`/api/activos/update/${activo.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          'Estado Operativo': estadoEditado,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Error al actualizar el estado');
-      }
-
-      // Actualizar el campo localmente
-      fields['Estado Operativo'] = estadoEditado as any;
-      setModoEdicion(false);
-      onUpdate?.();
-
-      // Mostrar mensaje de éxito
-      alert('✅ Estado actualizado exitosamente');
+      await cambiarEstadoActivo(activo.id, estadoNuevo);
+      setEditandoEstado(false);
+      await onRefresh();
+      onMensaje(MENSAJES.EXITO.ESTADO_ACTUALIZADO);
+      onClose();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      setError(message);
-      console.error('❌ Error al actualizar estado:', message);
+      setError(err instanceof Error ? err.message : 'Error al actualizar el estado');
     } finally {
       setGuardando(false);
     }
   };
 
+  const reactivar = async () => {
+    setGuardando(true);
+    setError(null);
+    try {
+      await reactivarActivo(activo.id);
+      await onRefresh();
+      onMensaje(MENSAJES.EXITO.ACTIVO_REACTIVADO);
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al reactivar el activo');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const acciones: Array<{ etiqueta: string; icono: React.ReactNode; onClick: () => void }> = [
+    {
+      etiqueta: 'Editar',
+      icono: <IconPencil className="w-4 h-4" />,
+      onClick: () => onAccion(activo, 'editar'),
+    },
+  ];
+
+  if (!deBaja) {
+    acciones.push(
+      asignado
+        ? {
+            etiqueta: 'Registrar devolución',
+            icono: <IconUndo className="w-4 h-4" />,
+            onClick: () => onAccion(activo, 'devolver'),
+          }
+        : {
+            etiqueta: 'Asignar',
+            icono: <IconUserPlus className="w-4 h-4" />,
+            onClick: () => onAccion(activo, 'asignar'),
+          }
+    );
+    acciones.push({
+      etiqueta: 'Dar de baja',
+      icono: <IconArchive className="w-4 h-4" />,
+      onClick: () => onAccion(activo, 'baja'),
+    });
+  } else {
+    acciones.push({
+      etiqueta: 'Reactivar',
+      icono: <IconRotate className="w-4 h-4" />,
+      onClick: reactivar,
+    });
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white/10 backdrop-blur-md rounded-xl shadow-2xl w-full max-w-4xl mx-auto border border-white/20 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 p-6 rounded-t-xl border-b border-white/10 sticky top-0">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-white drop-shadow-lg">
-                📋 Detalle del Activo
-              </h2>
-              <p className="text-white/80 text-sm mt-1">
-                {fields['Código Activo'] || 'Sin código'}
-              </p>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="detalle-activo-titulo"
+    >
+      <div className="my-auto w-full max-w-2xl overflow-hidden rounded-xl bg-slate-900/95 ring-1 ring-white/15 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/50 tabular-nums">
+              {String(f.codigo || 'Sin código')}
+            </p>
+            <h2 id="detalle-activo-titulo" className="mt-1 text-lg font-semibold text-white">
+              {String(f.nombre || 'Sin nombre')}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-xs ${estado.badge}`}>
+                {estado.label}
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${asignacion.badge}`}>
+                {asignado ? `Asignado a ${String(f.responsable)}` : 'Disponible'}
+              </span>
+              {nivelVencimiento !== 'sin_fecha' && nivelVencimiento !== 'vigente' && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs ${VENCIMIENTO_UI[nivelVencimiento].badge}`}
+                >
+                  {VENCIMIENTO_UI[nivelVencimiento].label}
+                </span>
+              )}
             </div>
-            <button
-              onClick={onClose}
-              className="text-white/80 hover:text-white text-2xl transition-colors"
-            >
-              ✕
-            </button>
           </div>
+
+          <button
+            ref={cerrarRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="shrink-0 rounded-lg p-1.5 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+          >
+            <IconX className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Contenido */}
-        <div className="p-6 space-y-6">
-          {/* Información Básica */}
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-              <span>📋</span>
-              <span>Información Básica</span>
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-white/60 text-sm">Nombre</p>
-                <p className="text-white font-semibold">
-                  {fields['Nombre del Activo'] || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Código</p>
-                <p className="text-white font-mono font-semibold">
-                  {fields['Código Activo'] || 'N/A'}
-                </p>
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-white/60 text-sm">Descripción</p>
-                <p className="text-white">
-                  {fields['Descripción'] || 'Sin descripción'}
-                </p>
-              </div>
+        <div className="max-h-[70vh] overflow-y-auto px-6 py-5 space-y-5">
+          {error && (
+            <div
+              role="alert"
+              className="rounded-lg bg-rose-500/10 ring-1 ring-rose-400/25 px-4 py-3 text-sm text-rose-100"
+            >
+              {error}
             </div>
-          </div>
+          )}
 
-          {/* Estado y Ubicación */}
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
-                <span>📍</span>
-                <span>Estado y Ubicación</span>
+          {!f.completo && (
+            <div className="rounded-lg bg-orange-500/10 ring-1 ring-orange-400/25 px-4 py-3 text-sm text-orange-100">
+              Faltan datos de clasificación ({!f.tipoIds || (f.tipoIds as string[]).length === 0 ? 'tipo' : ''}
+              {(!f.tipoIds || (f.tipoIds as string[]).length === 0) && !f.ubicacionId ? ' y ' : ''}
+              {!f.ubicacionId ? 'ubicación' : ''}). Complétalos con «Editar» para que el activo entre
+              en las categorías y los reportes.
+            </div>
+          )}
+
+          {/* Cambio rápido de estado */}
+          <section className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-white/50">
+                Estado operativo
               </h3>
-              {!modoEdicion && (
+              {!editandoEstado && !deBaja && (
                 <button
-                  onClick={handleEditarEstado}
-                  className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setEstadoNuevo(estadoActual);
+                    setEditandoEstado(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 ring-1 ring-white/15 px-2.5 py-1 text-xs text-white/80 transition-colors duration-200 hover:bg-white/20 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
                 >
-                  ✏️ Editar Estado
+                  <IconPencil className="w-3.5 h-3.5" />
+                  Cambiar
                 </button>
               )}
             </div>
 
-            {error && (
-              <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 mb-4">
-                <p className="text-white text-sm">⚠️ {error}</p>
+            {editandoEstado ? (
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[12rem] flex-1">
+                  <label
+                    htmlFor="detalle-estado"
+                    className="block text-xs font-medium text-white/60 mb-1"
+                  >
+                    Nuevo estado
+                  </label>
+                  <Select
+                    id="detalle-estado"
+                    value={estadoNuevo}
+                    disabled={guardando}
+                    onChange={(event) => setEstadoNuevo(event.target.value as EstadoOperativo)}
+                  >
+                    {ESTADOS_OPERATIVO.filter((opcion) => opcion !== 'Dado de Baja').map((opcion) => (
+                      <option key={opcion} value={opcion} className="bg-slate-800">
+                        {estiloEstado(opcion).label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <button
+                  type="button"
+                  onClick={guardarEstado}
+                  disabled={guardando}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors duration-200 hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <IconCheck className="w-4 h-4" />
+                  {guardando ? 'Guardando…' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoEstado(false)}
+                  disabled={guardando}
+                  className="rounded-lg bg-white/10 ring-1 ring-white/15 px-3 py-2 text-sm text-white/80 transition-colors duration-200 hover:bg-white/20 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 disabled:opacity-60 cursor-pointer"
+                >
+                  Cancelar
+                </button>
               </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-white/60 text-sm mb-2">Estado Operativo</p>
-                {modoEdicion ? (
-                  <div className="space-y-2">
-                    <select
-                      value={estadoEditado}
-                      onChange={(e) => setEstadoEditado(e.target.value)}
-                      disabled={guardando}
-                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {ESTADOS_OPERATIVO.map((estado) => (
-                        <option key={estado} value={estado} className="bg-gray-800">
-                          {ESTADOS_OPERATIVO_ICONS[estado]} {estado}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={handleGuardarEstado}
-                        disabled={guardando}
-                        className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-3 py-1 rounded text-sm transition-colors"
-                      >
-                        {guardando ? '⏳ Guardando...' : '✅ Guardar'}
-                      </button>
-                      <button
-                        onClick={handleCancelarEdicion}
-                        disabled={guardando}
-                        className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white px-3 py-1 rounded text-sm transition-colors"
-                      >
-                        ✖ Cancelar
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-white font-semibold flex items-center space-x-2">
-                    <span>
-                      {ESTADOS_OPERATIVO_ICONS[estadoActual as keyof typeof ESTADOS_OPERATIVO_ICONS] || '⚪'}
-                    </span>
-                    <span>{estadoActual || 'N/A'}</span>
-                  </p>
+            ) : (
+              <p className={`mt-2 text-sm ${estado.texto}`}>
+                {estado.label}
+                {deBaja && (
+                  <span className="ml-2 text-white/50">
+                    · usa «Reactivar» para devolverlo al parque
+                  </span>
                 )}
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Ubicación Actual</p>
-                <p className="text-white">
-                  {Array.isArray(fields['Ubicación Actual'])
-                    ? fields['Ubicación Actual'].join(', ')
-                    : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Área Responsable</p>
-                <p className="text-white">
-                  {fields['Área Responsable'] || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Responsable Asignado</p>
-                <p className="text-white">
-                  {fields['Responsable Asignado'] ? (
-                    <span className="text-blue-300">👤 {fields['Responsable Asignado']}</span>
-                  ) : (
-                    <span className="text-green-300">✅ Disponible</span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
+              </p>
+            )}
+          </section>
+
+          {/* Clasificación y ubicación */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+              Clasificación y ubicación
+            </h3>
+            <dl className="grid gap-3 rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:grid-cols-2">
+              <Dato etiqueta="Tipo">
+                {(f.tipos as string[])?.join(' · ') || <span className="text-white/40">—</span>}
+              </Dato>
+              <Dato etiqueta="Categoría">
+                {(f.categorias as string[])?.join(' · ') || <span className="text-white/40">—</span>}
+              </Dato>
+              <Dato etiqueta="Ubicación">
+                {String(f.ubicacion || '') || <span className="text-white/40">—</span>}
+              </Dato>
+              <Dato etiqueta="Área responsable">
+                {String(f.area || '') || <span className="text-white/40">—</span>}
+              </Dato>
+              {Boolean(f.descripcion) && (
+                <Dato etiqueta="Descripción" className="sm:col-span-2">
+                  {String(f.descripcion)}
+                </Dato>
+              )}
+            </dl>
+          </section>
 
           {/* Identificación */}
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-              <span>🔖</span>
-              <span>Identificación</span>
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+              Identificación
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-white/60 text-sm">Número de Serie</p>
-                <p className="text-white font-mono">
-                  {fields['Número de Serie'] || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Marca</p>
-                <p className="text-white">
-                  {fields['Marca'] || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Modelo</p>
-                <p className="text-white">
-                  {fields['Modelo'] || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Categoría</p>
-                <p className="text-white">
-                  {Array.isArray(fields['Categoría'])
-                    ? fields['Categoría'].join(', ')
-                    : 'N/A'}
-                </p>
-              </div>
-            </div>
-          </div>
+            <dl className="grid gap-3 rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:grid-cols-3">
+              <Dato etiqueta="Número de serie">
+                <span className="tabular-nums">
+                  {String(f.numeroSerie || '') || <span className="text-white/40">—</span>}
+                </span>
+              </Dato>
+              <Dato etiqueta="Marca">
+                {String(f.marca || '') || <span className="text-white/40">—</span>}
+              </Dato>
+              <Dato etiqueta="Modelo">
+                {String(f.modelo || '') || <span className="text-white/40">—</span>}
+              </Dato>
+            </dl>
+          </section>
 
-          {/* Información Financiera */}
-          <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-              <span>💰</span>
-              <span>Información Financiera</span>
+          {/* Adquisición */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+              Adquisición
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-white/60 text-sm">Fecha de Adquisición</p>
-                <p className="text-white">
-                  {fields['Fecha de Adquisición']
-                    ? new Date(fields['Fecha de Adquisición']).toLocaleDateString('es-CO')
-                    : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/60 text-sm">Valor de Adquisición</p>
-                <p className="text-white font-semibold">
-                  {fields['Valor de Adquisición']
-                    ? `$${fields['Valor de Adquisición'].toLocaleString('es-CO')}`
-                    : 'N/A'}
-                </p>
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-white/60 text-sm">Proveedor</p>
-                <p className="text-white">
-                  {fields['Proveedor'] || 'N/A'}
-                </p>
-              </div>
-            </div>
-          </div>
+            <dl className="grid gap-3 rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:grid-cols-3">
+              <Dato etiqueta="Fecha">{formatFecha(f.fechaAdquisicion as string | null)}</Dato>
+              <Dato etiqueta="Valor">
+                <span className="tabular-nums">
+                  {f.valorAdquisicion ? formatMoneda(Number(f.valorAdquisicion)) : '—'}
+                </span>
+              </Dato>
+              <Dato etiqueta="Proveedor">
+                {String(f.proveedor || '') || <span className="text-white/40">—</span>}
+              </Dato>
+              {Boolean(f.vidaUtil) && (
+                <Dato etiqueta="Vida útil">{`${f.vidaUtil} años`}</Dato>
+              )}
+              {Boolean(f.anioBaja) && <Dato etiqueta="Baja estimada">{String(f.anioBaja)}</Dato>}
+            </dl>
+          </section>
 
-          {/* Fechas de Control */}
-          {(fields['Fecha de Vencimiento'] || fields['Próximo Mantenimiento']) && (
-            <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                <span>📅</span>
-                <span>Fechas de Control</span>
+          {/* Control */}
+          {(f.fechaVencimiento || f.proximoMantenimiento) && (
+            <section>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+                Control
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {fields['Fecha de Vencimiento'] && (
-                  <div>
-                    <p className="text-white/60 text-sm">Fecha de Vencimiento</p>
-                    <p className="text-white">
-                      {new Date(fields['Fecha de Vencimiento']).toLocaleDateString('es-CO')}
-                      {fields['Días para Vencimiento'] !== undefined && (
-                        <span className={`ml-2 text-sm ${
-                          fields['Días para Vencimiento'] < 30 ? 'text-red-300' : 'text-green-300'
-                        }`}>
-                          ({fields['Días para Vencimiento']} días)
+              <dl className="grid gap-3 rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:grid-cols-2">
+                {Boolean(f.fechaVencimiento) && (
+                  <Dato etiqueta="Vencimiento">
+                    <span className={VENCIMIENTO_UI[nivelVencimiento].texto}>
+                      {formatFecha(f.fechaVencimiento as string)}
+                      {typeof f.diasVencimiento === 'number' && (
+                        <span className="ml-1 text-xs">
+                          (
+                          {(f.diasVencimiento as number) < 0 ? 'venció ' : 'en '}
+                          {formatDias(f.diasVencimiento as number)})
                         </span>
                       )}
-                    </p>
-                  </div>
+                    </span>
+                  </Dato>
                 )}
-                {fields['Próximo Mantenimiento'] && (
-                  <div>
-                    <p className="text-white/60 text-sm">Próximo Mantenimiento</p>
-                    <p className="text-white">
-                      {new Date(fields['Próximo Mantenimiento']).toLocaleDateString('es-CO')}
-                    </p>
-                  </div>
+                {Boolean(f.proximoMantenimiento) && (
+                  <Dato etiqueta="Próximo mantenimiento">
+                    {formatFecha(f.proximoMantenimiento as string)}
+                  </Dato>
                 )}
-              </div>
-            </div>
+              </dl>
+            </section>
           )}
 
-          {/* Notas */}
-          {fields['Notas'] && (
-            <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                <span>📝</span>
-                <span>Notas</span>
+          {/* Trazabilidad */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+              <IconHistory className="w-4 h-4" />
+              Trazabilidad
+            </h3>
+            <dl className="grid gap-3 rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:grid-cols-2">
+              <Dato etiqueta="Asignaciones registradas">
+                <span className="tabular-nums">{Number(f.totalAsignaciones || 0)}</span>
+              </Dato>
+              <Dato etiqueta="Eventos en hoja de vida">
+                <span className="tabular-nums">{Number(f.totalEventos || 0)}</span>
+              </Dato>
+              <Dato etiqueta="Última asignación">
+                {formatFecha(f.ultimaAsignacion as string | null)}
+              </Dato>
+              <Dato etiqueta="Última devolución">
+                {formatFecha(f.ultimaDevolucion as string | null)}
+              </Dato>
+            </dl>
+          </section>
+
+          {Boolean(f.notas) && (
+            <section>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+                Notas
               </h3>
-              <p className="text-white whitespace-pre-wrap">
-                {fields['Notas']}
+              <p className="whitespace-pre-wrap rounded-xl bg-white/5 ring-1 ring-white/10 p-4 text-sm text-white/80">
+                {String(f.notas)}
               </p>
-            </div>
+            </section>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-white/10 flex justify-end">
-          <button
-            onClick={onClose}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Cerrar
-          </button>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-6 py-4">
+          {acciones.map(({ etiqueta, icono, onClick }) => (
+            <button
+              key={etiqueta}
+              type="button"
+              onClick={onClick}
+              disabled={guardando}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/10 ring-1 ring-white/15 px-3 py-2 text-sm text-white/85 transition-colors duration-200 hover:bg-white/20 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {icono}
+              {etiqueta}
+            </button>
+          ))}
         </div>
       </div>
     </div>

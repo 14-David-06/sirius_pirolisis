@@ -1,137 +1,85 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { config } from '@/lib/config';
-import type { ActivoFijoRecord, EstadisticasActivos } from '@/types/activos';
+import { NextResponse } from 'next/server';
+import { ActivosError, listarActivos } from '@/lib/activos.server';
+import { DIAS_ALERTA_VENCIMIENTO } from '@/lib/activos.constants';
+import type { EstadisticasActivos } from '@/types/activos';
 
-const BASE_ID = config.airtable.activosCoreBaseId;
-const TABLE_ID = config.airtable.activosFijosTableId;
-
-export async function GET(request: NextRequest) {
-  // Verificar configuración
-  if (!BASE_ID || !TABLE_ID) {
-    return NextResponse.json({
-      error: 'Módulo de Activos Fijos no configurado'
-    }, { status: 400 });
-  }
-
+/**
+ * GET /api/activos/estadisticas — agregados de todo el parque de activos.
+ *
+ * La página de activos NO usa este endpoint: calcula sus indicadores sobre los
+ * registros que ya cargó, así no hay dos consultas ni dos definiciones de
+ * "disponible". Queda expuesto para tableros y consumidores externos.
+ */
+export async function GET() {
   try {
-    if (!config.airtable.token) {
-      return NextResponse.json({
-        error: 'Token de Airtable no configurado'
-      }, { status: 500 });
-    }
+    const activos = await listarActivos();
 
-    // Obtener todos los activos (sin filtros)
-    const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}?pageSize=100`;
-
-    let allRecords: ActivoFijoRecord[] = [];
-    let offset: string | undefined;
-
-    do {
-      const fetchUrl = offset ? `${url}&offset=${offset}` : url;
-
-      const response = await fetch(fetchUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${config.airtable.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('❌ Error de Airtable:', data);
-        return NextResponse.json({
-          error: data?.error?.type || 'Airtable error',
-          details: data
-        }, { status: response.status });
-      }
-
-      allRecords = allRecords.concat(data.records || []);
-      offset = data.offset;
-    } while (offset);
-
-    // Calcular estadísticas
     const estadisticas: EstadisticasActivos = {
-      totalActivos: allRecords.length,
+      totalActivos: activos.length,
       operativos: 0,
       enReparacion: 0,
+      enMantenimiento: 0,
       asignados: 0,
       disponibles: 0,
       porVencer: 0,
+      vencidos: 0,
+      incompletos: 0,
       valorTotalAdquisicion: 0,
       porCategoria: {},
       porUbicacion: {},
       porArea: {},
+      porEstado: {},
     };
 
-    allRecords.forEach((record) => {
-      const fields = record.fields;
+    for (const activo of activos) {
+      const f = activo.fields;
+      const estado = f.estado || 'Operativo';
 
-      // Estado Operativo
-      const estado = fields['Estado Operativo'];
+      estadisticas.porEstado[estado] = (estadisticas.porEstado[estado] || 0) + 1;
+
       if (estado === 'Operativo') estadisticas.operativos++;
       if (estado === 'En Reparación') estadisticas.enReparacion++;
+      if (estado === 'En Mantenimiento') estadisticas.enMantenimiento++;
 
-      // Asignados vs Disponibles
-      const responsable = fields['Responsable Asignado'];
-      if (responsable && responsable.trim() !== '') {
+      if (f.asignado) {
         estadisticas.asignados++;
-      } else if (estado === 'Operativo') {
+      } else if (estado === 'Operativo' || estado === 'Disponible en Almacén') {
         estadisticas.disponibles++;
       }
 
-      // Próximos a vencer (< 30 días)
-      const diasVencimiento = fields['Días para Vencimiento'];
-      if (typeof diasVencimiento === 'number' && diasVencimiento > 0 && diasVencimiento <= 30) {
-        estadisticas.porVencer++;
+      const dias = f.diasVencimiento;
+      if (typeof dias === 'number') {
+        if (dias < 0) estadisticas.vencidos++;
+        else if (dias <= DIAS_ALERTA_VENCIMIENTO) estadisticas.porVencer++;
       }
 
-      // Valor total
-      const valor = fields['Valor de Adquisición'];
-      if (typeof valor === 'number') {
-        estadisticas.valorTotalAdquisicion += valor;
+      if (!f.completo) estadisticas.incompletos++;
+
+      estadisticas.valorTotalAdquisicion += f.valorAdquisicion || 0;
+
+      for (const categoria of f.categorias || []) {
+        estadisticas.porCategoria[categoria] = (estadisticas.porCategoria[categoria] || 0) + 1;
       }
 
-      // Por Categoría
-      const categorias = fields['Categoría'];
-      if (Array.isArray(categorias)) {
-        categorias.forEach((cat) => {
-          if (typeof cat === 'string') {
-            estadisticas.porCategoria[cat] = (estadisticas.porCategoria[cat] || 0) + 1;
-          }
-        });
-      }
+      // Por nombre de ubicación, no por record ID: antes el agregado devolvía
+      // claves "rec…" que no significaban nada para quien lo consumiera.
+      const ubicacion = f.ubicacion || 'Sin ubicación';
+      estadisticas.porUbicacion[ubicacion] = (estadisticas.porUbicacion[ubicacion] || 0) + 1;
 
-      // Por Ubicación
-      const ubicaciones = fields['Ubicación Actual'];
-      if (Array.isArray(ubicaciones)) {
-        // Las ubicaciones vienen como array de record IDs, necesitamos los nombres
-        // Por ahora contaremos por ID
-        ubicaciones.forEach((ubic) => {
-          if (typeof ubic === 'string') {
-            estadisticas.porUbicacion[ubic] = (estadisticas.porUbicacion[ubic] || 0) + 1;
-          }
-        });
-      }
+      const area = f.area || 'Sin área';
+      estadisticas.porArea[area] = (estadisticas.porArea[area] || 0) + 1;
+    }
 
-      // Por Área
-      const area = fields['Área Responsable'];
-      if (typeof area === 'string' && area.trim() !== '') {
-        estadisticas.porArea[area] = (estadisticas.porArea[area] || 0) + 1;
-      }
-    });
-
-    console.log('📊 Estadísticas calculadas:', estadisticas.totalActivos, 'activos');
-
-    return NextResponse.json({
-      success: true,
-      data: estadisticas
-    }, { status: 200 });
-
+    return NextResponse.json({ success: true, data: estadisticas }, { status: 200 });
   } catch (err: unknown) {
+    if (err instanceof ActivosError) {
+      return NextResponse.json(
+        { success: false, error: err.message, details: err.details },
+        { status: err.status }
+      );
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en API activos/estadisticas:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
