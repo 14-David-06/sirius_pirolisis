@@ -3,7 +3,10 @@ import { NextResponse } from 'next/server';
 const CLIENTES_BASE_ID = process.env.AIRTABLE_CLIENTES_BASE_ID!;
 const CLIENTES_TABLE_ID = process.env.AIRTABLE_CLIENTES_TABLE_ID!;
 const PERSONAL_TABLE_ID = process.env.AIRTABLE_CLIENTES_PERSONAL_TABLE_ID;
-const TOKEN = process.env.AIRTABLE_CLIENTES_TOKEN || process.env.AIRTABLE_TOKEN!;
+const TOKEN =
+  process.env.AIRTABLE_CLIENTES_TOKEN ||
+  process.env.AIRTABLE_TOKEN ||
+  process.env.AIRTABLE_GLOBAL_TOKEN!;
 
 export interface PersonaCliente {
   recordId: string;

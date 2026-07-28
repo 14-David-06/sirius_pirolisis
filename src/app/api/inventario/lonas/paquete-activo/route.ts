@@ -59,6 +59,9 @@ export async function GET() {
         cantidad_lonas: cantidadLonas,
         dias_en_uso: diasEnUso,
         total_balances_vinculados: balancesVinculados.length,
+        // FK simbólica al Core (MOV-INS-XXXX). En paquetes anteriores a la
+        // migración es un record ID de la tabla local `Salida Insumos Pirolisis`.
+        id_salida_origen: (paquete.fields['ID Salida Origen'] as string) ?? null,
       },
     });
   } catch (err) {

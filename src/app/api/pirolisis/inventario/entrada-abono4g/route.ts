@@ -4,6 +4,10 @@ import {
   appendMovimientoToStock,
   findStockByInsumo,
 } from '../../../../../lib/stock-insumos';
+import {
+  buildCamposIdCore,
+  resolveIdResponsableCore,
+} from '../../../../../lib/movimientos-insumos';
 
 /**
  * POST /api/pirolisis/inventario/entrada-abono4g
@@ -32,7 +36,6 @@ export async function POST(request: Request) {
     const token = config.airtable.insumosCoreToken;
     const coreBaseId = config.airtable.insumosCoreBaseId;
     const movimientosTableId = config.airtable.movimientosInsumosTableId;
-    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
     const movFields = config.airtable.movimientoFields;
     const abono4gRecordId = config.airtable.blendAbono4gRecordId;
 
@@ -47,6 +50,7 @@ export async function POST(request: Request) {
     console.log('📥 Entrada de Abono 4G:', body);
 
     const { cantidad, realizaRegistro, notas } = body;
+    const idResponsableCore = await resolveIdResponsableCore(body.idResponsableCore);
 
     if (!cantidad || isNaN(parseFloat(cantidad)) || parseFloat(cantidad) <= 0) {
       return NextResponse.json({
@@ -63,12 +67,9 @@ export async function POST(request: Request) {
       [movFields.insumo!]: [abono4gRecordId],
       [movFields.cantidad!]: cantidadNumerica,
       [movFields.tipoMovimiento!]: 'Entrada',
-      [movFields.idAreaDestino!]: pirolisisAreaCode,
+      // IDs core: área origen, área destino y responsable (SIRIUS-PER)
+      ...buildCamposIdCore(idResponsableCore, 'entrada de Abono 4G'),
     };
-
-    if (realizaRegistro) {
-      movimientoFields[movFields.idResponsable!] = realizaRegistro;
-    }
 
     if (notas) {
       movimientoFields[movFields.notas!] = notas;

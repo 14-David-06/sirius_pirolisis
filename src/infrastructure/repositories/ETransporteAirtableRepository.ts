@@ -5,7 +5,7 @@ import { IETransporteRepository } from '../../domain/repositories/IETransporteRe
 import { ETransporteResultado, ETransporteConstantes } from '../../domain/entities/ETransporteCalculo';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_GLOBAL_TOKEN;
 const BACHES_TABLE_ID = process.env.AIRTABLE_BACHES_TABLE_ID!;
 const CARBON_RESULTADOS_TABLE = process.env.CARBON_ETRANSPORTE_RESULTADOS_TABLE_ID!;
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
+import { resolveIdResponsableCore } from '../../../../lib/movimientos-insumos';
 
 /**
  * POST /api/inventario/create
@@ -78,9 +79,13 @@ export async function POST(request: Request) {
       fields[insumoFields.idAreaOrigen] = pirolisisAreaCode;
     }
 
-    // Responsable/Creador del insumo
-    if (insumoFields.idResponsableCore && realizaRegistro) {
-      fields[insumoFields.idResponsableCore] = realizaRegistro;
+    // Creador del insumo: el campo es un ID simbólico del Core (SIRIUS-PER),
+    // no el nombre de la persona.
+    const idCreadorCore = await resolveIdResponsableCore(body['ID Responsable Core']);
+    if (insumoFields.idResponsableCore && idCreadorCore) {
+      fields[insumoFields.idResponsableCore] = idCreadorCore;
+    } else if (!idCreadorCore) {
+      console.warn('⚠️ [crear insumo] Sin SIRIUS-PER del creador: ID Creador Core quedará vacío.');
     }
 
     // Stock mínimo (0 por defecto)

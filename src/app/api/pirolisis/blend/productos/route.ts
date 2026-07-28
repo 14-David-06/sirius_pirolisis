@@ -6,7 +6,8 @@ const PRODUCTS_TABLE_ID = process.env.AIRTABLE_PRODUCTS_TABLE_ID;
 const PRODUCTS_TOKEN =
   process.env.AIRTABLE_PRODUCTS_TOKEN ||
   process.env.AIRTABLE_CLIENTES_TOKEN ||
-  process.env.AIRTABLE_TOKEN;
+  process.env.AIRTABLE_TOKEN ||
+  process.env.AIRTABLE_GLOBAL_TOKEN;
 
 function headers() {
   return {

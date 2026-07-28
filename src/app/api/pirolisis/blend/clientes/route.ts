@@ -4,7 +4,10 @@ const CLIENTES_BASE_ID = process.env.AIRTABLE_CLIENTES_BASE_ID!;
 const CLIENTES_TABLE_ID = process.env.AIRTABLE_CLIENTES_TABLE_ID!;
 // AIRTABLE_CLIENTES_TOKEN: token opcional con acceso a Sirius Clients Core.
 // Si no está definido, se usa el token principal (debe tener scope a AIRTABLE_CLIENTES_BASE_ID).
-const TOKEN = process.env.AIRTABLE_CLIENTES_TOKEN || process.env.AIRTABLE_TOKEN!;
+const TOKEN =
+  process.env.AIRTABLE_CLIENTES_TOKEN ||
+  process.env.AIRTABLE_TOKEN ||
+  process.env.AIRTABLE_GLOBAL_TOKEN!;
 
 // GET /api/pirolisis/blend/clientes
 // Retorna todos los clientes activos de Sirius Clients Core, ordenados por nombre.

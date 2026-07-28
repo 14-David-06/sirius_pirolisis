@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_GLOBAL_TOKEN;
+const AIRTABLE_BALANCE_MASA_TABLE = process.env.AIRTABLE_BALANCE_MASA_TABLE;
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,15 +12,21 @@ export async function GET(request: NextRequest) {
 
     console.log('📊 Listando balances de masa...');
 
-    if (!AIRTABLE_BASE_ID || !AIRTABLE_TOKEN) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Configuración de Airtable faltante' 
+    if (!AIRTABLE_BASE_ID || !AIRTABLE_TOKEN || !AIRTABLE_BALANCE_MASA_TABLE) {
+      const faltantes = [
+        !AIRTABLE_BASE_ID && 'AIRTABLE_BASE_ID',
+        !AIRTABLE_TOKEN && 'AIRTABLE_TOKEN o AIRTABLE_GLOBAL_TOKEN',
+        !AIRTABLE_BALANCE_MASA_TABLE && 'AIRTABLE_BALANCE_MASA_TABLE',
+      ].filter(Boolean).join(', ');
+      console.error('❌ Configuración de Airtable faltante:', faltantes);
+      return NextResponse.json({
+        success: false,
+        error: `Configuración de Airtable faltante: ${faltantes}`
       }, { status: 500 });
     }
 
     // Construir la URL con parámetros
-    let url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${process.env.AIRTABLE_BALANCE_MASA_TABLE}?maxRecords=${maxRecords}&sort[0][field]=Fecha%20Creacion&sort[0][direction]=desc`;
+    let url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_BALANCE_MASA_TABLE}?maxRecords=${maxRecords}&sort[0][field]=Fecha%20Creacion&sort[0][direction]=desc`;
     
     // Si se especifica un turno, filtrar por él
     if (turnoPirolisis) {
@@ -65,6 +72,8 @@ export async function GET(request: NextRequest) {
         ductoG9: record.fields['Temperatura Ducto (G9)']
       },
       qrLona: record.fields['QR_lona'],
+      // FK simbólica al movimiento de salida de lonas en Sirius Insumos Core.
+      idMovimientoLonas: record.fields['ID Movimiento Lonas'] ?? null,
       realizaRegistro: record.fields['Realiza Registro'],
       turnoPirolisis: record.fields['Turno Pirolisis'],
       createdTime: record.createdTime

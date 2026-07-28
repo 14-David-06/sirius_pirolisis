@@ -322,13 +322,20 @@ export function validateEnvVars() {
     'AIRTABLE_TABLE_NAME',
     'AIRTABLE_BACHES_TABLE_ID',
     'AIRTABLE_REMISIONES_BACHES_TABLE_ID',
-    'AIRTABLE_INVENTARIO_TABLE_ID',
     'AIRTABLE_LABORATORIOS_TABLE_ID',
     'AIRTABLE_EQUIPOS_TABLE_ID',
     'AIRTABLE_TURNOS_TABLE_ID',
     'AIRTABLE_USUARIOS_TABLE_ID',
     'AIRTABLE_VIAJES_BIOMASA_TABLE_ID',
     'AIRTABLE_MONITOREO_VIAJES_BIOMASA_TABLE_ID',
+    // Sirius Insumos Core — inventario centralizado (2026-07-27)
+    'AIRTABLE_INSUMOS_CORE_BASE_ID',
+    'AIRTABLE_INSUMOS_TABLE_ID',
+    'AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID',
+    'AIRTABLE_STOCK_INSUMOS_TABLE_ID',
+    'AIRTABLE_CATEGORIA_INSUMO_TABLE_ID',
+    'AIRTABLE_UNIDADES_MEDIDA_TABLE_ID',
+    'AIRTABLE_PIROLISIS_AREA_CODE',
     // Field IDs críticas de Laboratorios (requeridas para funcionamiento)
     'AIRTABLE_LABORATORIOS_ID_FIELD_ID',
     'AIRTABLE_LABORATORIOS_NOMBRE_LABORATORIO_FIELD_ID',
@@ -481,9 +488,10 @@ export function logConfigSafely() {
   console.log(`📊 Base ID: ${config.airtable.baseId ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`📋 Tabla: ${config.airtable.tableName ? '✅ Configurado' : '❌ Faltante'}`);
   console.log(`🏗️ Tabla Baches: ${config.airtable.bachesTableId ? '✅ Configurado' : '❌ Faltante'}`);
-  console.log(`📦 Tabla Inventario: ${config.airtable.inventarioTableId ? '✅ Configurado' : '❌ Faltante'}`);
-  console.log(`� Tabla Equipos: ${config.airtable.equiposTableId ? '✅ Configurado' : '❌ Faltante'}`);
-  console.log(`�🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`📦 Insumos Core (base): ${config.airtable.insumosCoreBaseId ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`📦 Tabla Insumos: ${config.airtable.insumosTableId ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`🔧 Tabla Equipos: ${config.airtable.equiposTableId ? '✅ Configurado' : '❌ Faltante'}`);
+  console.log(`🔑 Token: ${config.airtable.token ? '✅ Configurado' : '❌ Faltante'}`);
   // ❌ REMOVIDO: AWS logging - credenciales no deben loggearse por seguridad
   console.log(`🔐 Salt rounds: ${config.security.bcryptSaltRounds}`);
   console.log(`🌍 Entorno: ${config.app.env}`);

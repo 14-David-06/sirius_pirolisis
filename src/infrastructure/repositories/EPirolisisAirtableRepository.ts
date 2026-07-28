@@ -7,7 +7,7 @@ import { IEPirolisisRepository } from '../../domain/repositories/IEPirolisisRepo
 import { EPirolisisResultado, EPirolisisDatosAgregados, EPirolisisConstantes } from '../../domain/entities/EPirolisisCalculo';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_GLOBAL_TOKEN;
 
 // Table IDs (solo lectura)
 const TURNO_PIROLISIS_TABLE = process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID!;

@@ -5,7 +5,7 @@ import { IeBiomasRepository } from '../../domain/repositories/IEBiomasRepository
 import { eBiomasResultado, eBiomasConstantes } from '../../domain/entities/EBiomasCalculo';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_GLOBAL_TOKEN;
 const VIAJES_BIOMASA_TABLE_ID = process.env.CARBON_eBiomas_VIAJES_BIOMASA_TABLE_ID!;
 const CARBON_RESULTADOS_TABLE = process.env.CARBON_eBiomas_RESULTADOS_TABLE_ID!;
 

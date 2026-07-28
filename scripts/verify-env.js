@@ -43,7 +43,7 @@ function loadEnvVars() {
 function checkVariables() {
   const requiredVars = [
     // Variables críticas de Airtable
-    'AIRTABLE_TOKEN',
+    // Nota: el token se valida aparte (AIRTABLE_TOKEN o AIRTABLE_GLOBAL_TOKEN)
     'AIRTABLE_BASE_ID',
     'AIRTABLE_TABLE_NAME',
     'AIRTABLE_USUARIOS_TABLE_ID',
@@ -52,12 +52,22 @@ function checkVariables() {
     'AIRTABLE_REMISIONES_BACHES_TABLE_ID',
     'AIRTABLE_REMISIONES_CLIENTE_FIELD_ID',
     'AIRTABLE_REMISIONES_NIT_CLIENTE_FIELD_ID',
-    'AIRTABLE_INVENTARIO_TABLE_ID',
     'AIRTABLE_LABORATORIOS_TABLE_ID',
     'AIRTABLE_EQUIPOS_TABLE_ID',
     'AIRTABLE_VIAJES_BIOMASA_TABLE_ID',
     'AIRTABLE_MONITOREO_VIAJES_BIOMASA_TABLE_ID',
-    
+
+    // Sirius Insumos Core — inventario centralizado (2026-07-27)
+    // Reemplaza AIRTABLE_INVENTARIO_TABLE_ID / AIRTABLE_ENTRADAS_TABLE_ID
+    'AIRTABLE_INSUMOS_CORE_BASE_ID',
+    'AIRTABLE_INSUMOS_TABLE_ID',
+    'AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID',
+    'AIRTABLE_STOCK_INSUMOS_TABLE_ID',
+    'AIRTABLE_CATEGORIA_INSUMO_TABLE_ID',
+    'AIRTABLE_UNIDADES_MEDIDA_TABLE_ID',
+    'AIRTABLE_PIROLISIS_AREA_CODE',
+
+
     // Field IDs de Laboratorios
     'AIRTABLE_LABORATORIOS_ID_FIELD_ID',
     'AIRTABLE_LABORATORIOS_NOMBRE_LABORATORIO_FIELD_ID',
@@ -98,10 +108,19 @@ function checkVariables() {
   ];
 
   log('\n🔍 Verificando variables de entorno requeridas...', 'cyan');
-  
+
   const missing = [];
   const configured = [];
-  
+
+  // Token de Airtable: basta con uno de los dos (el global cubre todas las bases)
+  if (process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_GLOBAL_TOKEN) {
+    log('  ✅ AIRTABLE_TOKEN | AIRTABLE_GLOBAL_TOKEN', 'green');
+  } else {
+    missing.push('AIRTABLE_GLOBAL_TOKEN');
+    log('  ❌ AIRTABLE_TOKEN | AIRTABLE_GLOBAL_TOKEN', 'red');
+  }
+
+
   requiredVars.forEach(varName => {
     if (process.env[varName]) {
       configured.push(varName);

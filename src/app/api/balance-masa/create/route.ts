@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config } from '../../../../lib/config';
+import { findUltimaSalidaCodigo } from '../../../../lib/movimientos-insumos';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_GLOBAL_TOKEN;
 const AIRTABLE_BALANCE_MASA_TABLE = process.env.AIRTABLE_BALANCE_MASA_TABLE;
 
 interface BalanceMasaData {
@@ -16,6 +18,42 @@ interface BalanceMasaData {
   temperaturaG9: number;
   realizaRegistro?: string;
   turnoPirolisis?: string[];
+}
+
+/** Formato del código de movimiento en Sirius Insumos Core. */
+const CODIGO_MOVIMIENTO = /^MOV-INS-\d{4,}$/;
+
+/**
+ * Resuelve el código MOV-INS de la salida de lonas que corresponde a un balance.
+ *
+ * Prefiere `ID Salida Origen` del paquete activo: ese es el paquete de lonas que
+ * realmente se está consumiendo. Solo cae al barrido de movimientos del Core
+ * cuando el paquete no existe o guarda un record ID de la tabla local deprecada.
+ */
+async function resolverMovimientoLonas(
+  paqueteActivo?: { fields?: Record<string, unknown> }
+): Promise<string | null> {
+  const origen = paqueteActivo?.fields?.['ID Salida Origen'];
+  if (typeof origen === 'string' && CODIGO_MOVIMIENTO.test(origen.trim())) {
+    return origen.trim();
+  }
+
+  const lonaInsumoId = config.airtable.lonaInsumoId;
+  if (!lonaInsumoId) {
+    console.warn('⚠️ AIRTABLE_LONA_INSUMO_ID no configurado: el balance queda sin ID Movimiento Lonas.');
+    return null;
+  }
+
+  try {
+    const codigo = await findUltimaSalidaCodigo(lonaInsumoId);
+    if (!codigo) {
+      console.warn('⚠️ No hay salidas de lonas en el Core: el balance queda sin ID Movimiento Lonas.');
+    }
+    return codigo;
+  } catch (err) {
+    console.warn('⚠️ Error buscando la última salida de lonas (no crítico):', err);
+    return null;
+  }
 }
 
 // Funciones auxiliares para gestión de baches
@@ -254,6 +292,14 @@ export async function POST(request: NextRequest) {
         const paqData = await paqRes.json();
         const paqueteActivo = paqData.records?.[0];
 
+        // Cadena de trazabilidad de lonas:
+        //   balance → paquete activo → salida que lo originó (MOV-INS-XXXX)
+        // El último eslabón vive en `ID Salida Origen` del paquete. Los paquetes
+        // anteriores a la migración al Core guardan ahí un record ID de la tabla
+        // local `Salida Insumos Pirolisis`, ya deprecada: en ese caso se cae al
+        // barrido de movimientos del Core.
+        const idMovimientoLonas = await resolverMovimientoLonas(paqueteActivo);
+
         if (paqueteActivo) {
           // Vincular paquete al balance via Paquete Lonas Activo field
           const linkRes = await fetch(
@@ -267,18 +313,43 @@ export async function POST(request: NextRequest) {
               body: JSON.stringify({
                 fields: {
                   [PAQUETE_ACTIVO_FIELD]: [paqueteActivo.id],
+                  ...(idMovimientoLonas ? { 'ID Movimiento Lonas': idMovimientoLonas } : {}),
                 },
               }),
             }
           );
           if (linkRes.ok) {
-            console.log(`✅ Paquete de lonas ${paqueteActivo.id} vinculado al balance ${balanceId}`);
+            console.log(
+              `✅ Paquete de lonas ${paqueteActivo.id} vinculado al balance ${balanceId}` +
+              (idMovimientoLonas ? ` (salida origen: ${idMovimientoLonas})` : '')
+            );
           } else {
             console.warn('⚠️ Error vinculando paquete de lonas:', await linkRes.text());
           }
         } else {
           warnings.lonas_sin_paquete_activo = true;
           console.warn('⚠️ No hay paquete de lonas activo para vincular al balance');
+
+          // Sin paquete activo el balance igual debe quedar trazado a la última
+          // salida de lonas conocida.
+          if (idMovimientoLonas) {
+            const codigoRes = await fetch(
+              `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_BALANCE_MASA_TABLE}/${balanceId}`,
+              {
+                method: 'PATCH',
+                headers: {
+                  'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  fields: { 'ID Movimiento Lonas': idMovimientoLonas },
+                }),
+              }
+            );
+            if (!codigoRes.ok) {
+              console.warn('⚠️ Error escribiendo ID Movimiento Lonas:', await codigoRes.text());
+            }
+          }
         }
       } catch (lonaErr) {
         console.warn('⚠️ Error en vinculación de paquete de lonas (no crítico):', lonaErr);

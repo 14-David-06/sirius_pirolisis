@@ -10,6 +10,11 @@ import {
   findStockByInsumo,
   getStockActual,
 } from '../../../../lib/stock-insumos';
+import {
+  buildCamposIdCore,
+  resolveIdResponsableCore,
+  MOVIMIENTO_FIELD_NAMES,
+} from '../../../../lib/movimientos-insumos';
 
 /**
  * POST /api/inventario/remove-quantity
@@ -43,7 +48,6 @@ export async function POST(request: Request) {
     const token = config.airtable.insumosCoreToken;
     const coreBaseId = config.airtable.insumosCoreBaseId;
     const movimientosTableId = config.airtable.movimientosInsumosTableId;
-    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
     const movFields = config.airtable.movimientoFields;
 
     if (!token) {
@@ -159,15 +163,14 @@ export async function POST(request: Request) {
     //   movimientoFields[movFields.subtipo] = '';
     // }
 
-    // Área origen = Pirólisis
-    if (movFields.idAreaOrigen) {
-      movimientoFields[movFields.idAreaOrigen] = pirolisisAreaCode;
-    }
-
-    // Responsable
-    if (validData['Realiza Registro'] && movFields.idResponsable) {
-      movimientoFields[movFields.idResponsable] = validData['Realiza Registro'];
-    }
+    // IDs core: área origen, área destino y responsable (SIRIUS-PER)
+    Object.assign(
+      movimientoFields,
+      buildCamposIdCore(
+        await resolveIdResponsableCore(body['ID Responsable Core']),
+        'salida de insumo'
+      )
+    );
 
     // Notas: concatenar observaciones + referencias deprecadas (turno, mantenimiento, balance)
     if (movFields.notas) {
@@ -236,7 +239,11 @@ export async function POST(request: Request) {
     }
 
     const nuevoMovimientoId = movimientoData.records[0].id;
-    console.log(`✅ Movimiento de salida creado: ${nuevoMovimientoId}`);
+    // Código legible del movimiento (fórmula del Core). Es la FK simbólica que
+    // se propaga al paquete de lonas y de ahí al balance de masa.
+    const nuevoMovimientoCodigo: string | undefined =
+      movimientoData.records[0].fields?.[MOVIMIENTO_FIELD_NAMES.codigo];
+    console.log(`✅ Movimiento de salida creado: ${nuevoMovimientoId} (${nuevoMovimientoCodigo ?? 'sin código'})`);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PASO 3: Actualizar Stock Insumos agregando el movimiento al link
@@ -334,7 +341,10 @@ export async function POST(request: Request) {
                   'Fecha Activacion': hoy,
                   'Cantidad Lonas': validData.cantidad,
                   'Estado': 'activo',
-                  'ID Salida Origen': nuevoMovimientoId,  // Ahora es el ID del movimiento en Core
+                  // FK simbólica al Core: el código MOV-INS-XXXX, no el record
+                  // ID. El balance de masa lo lee desde aquí para su campo
+                  // "ID Movimiento Lonas".
+                  'ID Salida Origen': nuevoMovimientoCodigo || nuevoMovimientoId,
                   'Realiza Registro': validData['Realiza Registro'] || '',
                 },
               }],

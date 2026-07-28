@@ -13,7 +13,7 @@ import {
 } from '../../domain/entities/EUseCalculo';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID!;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY!;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_API_KEY || process.env.AIRTABLE_GLOBAL_TOKEN!;
 
 const REMISIONES_TABLE_ID = process.env.AIRTABLE_REMISIONES_BACHES_TABLE_ID!;
 const REMISIONES_FECHA_FIELD_ID = process.env.AIRTABLE_REMISIONES_FECHA_EVENTO_FIELD_ID!;

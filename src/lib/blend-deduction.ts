@@ -22,6 +22,7 @@
 
 import { config } from './config';
 import { appendMovimientoToStock, findStockByInsumo, getStockActual } from './stock-insumos';
+import { buildCamposIdCore, resolveIdResponsableCore } from './movimientos-insumos';
 
 const AT = 'https://api.airtable.com/v0';
 
@@ -55,8 +56,10 @@ export interface DeductionInput {
   cliente: string;
   /** Referencia simbólica del pedido origen (SIRIUS-PED-XXXX). */
   pedidoSimbolico?: string;
-  /** Quién realiza el registro. */
+  /** Quién realiza el registro (nombre legible). */
   realizaRegistro: string;
+  /** SIRIUS-PER del responsable. Si no viene, se resuelve desde la sesión. */
+  idResponsableCore?: string;
 }
 
 export interface DeductionResult {
@@ -250,7 +253,6 @@ async function deductInsumo(
   const token = config.airtable.insumosCoreToken!;
   const movimientosTableId = config.airtable.movimientosInsumosTableId;
   const stockInsumosTableId = config.airtable.stockInsumosTableId;
-  const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
   const movFields = config.airtable.movimientoFields;
 
   if (!movimientosTableId || !stockInsumosTableId) {
@@ -282,8 +284,14 @@ async function deductInsumo(
   fields[movFields.insumo!] = [insumoRecordId];
   fields[movFields.cantidad!] = cantidad;
   fields[movFields.tipoMovimiento!] = 'Salida';
-  fields[movFields.idAreaOrigen!] = pirolisisAreaCode;
-  fields[movFields.idResponsable!] = input.realizaRegistro;
+  // IDs core: área origen, área destino y responsable (SIRIUS-PER)
+  Object.assign(
+    fields,
+    buildCamposIdCore(
+      await resolveIdResponsableCore(input.idResponsableCore),
+      `consumo Blend ${input.produccionCodigo}`
+    )
+  );
   fields[movFields.notas!] = `Consumo producción Biochar Blend ${input.produccionCodigo}\nTipo uso: balance_de_masa (productivo)`;
 
   const movRes = await atFetch(`${AT}/${coreBaseId}/${movimientosTableId}`, {

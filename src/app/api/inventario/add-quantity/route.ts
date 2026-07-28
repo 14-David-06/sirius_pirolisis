@@ -4,6 +4,10 @@ import {
   appendMovimientoToStock,
   getOrCreateStockForInsumo,
 } from '../../../../lib/stock-insumos';
+import {
+  buildCamposIdCore,
+  resolveIdResponsableCore,
+} from '../../../../lib/movimientos-insumos';
 
 /**
  * POST /api/inventario/add-quantity
@@ -33,7 +37,6 @@ export async function POST(request: Request) {
     const token = config.airtable.insumosCoreToken;
     const coreBaseId = config.airtable.insumosCoreBaseId;
     const movimientosTableId = config.airtable.movimientosInsumosTableId;
-    const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
     const movFields = config.airtable.movimientoFields;
 
     if (!token) {
@@ -147,15 +150,11 @@ export async function POST(request: Request) {
     //   movimientoFields[movFields.subtipo] = '';
     // }
 
-    // Área destino = Pirólisis
-    if (movFields.idAreaDestino) {
-      movimientoFields[movFields.idAreaDestino] = pirolisisAreaCode;
-    }
-
-    // Responsable (usar ID Core si está disponible, sino el nombre)
-    if (movFields.idResponsable) {
-      movimientoFields[movFields.idResponsable] = idResponsableCore || realizaRegistro;
-    }
+    // IDs core: área origen, área destino y responsable (SIRIUS-PER)
+    Object.assign(
+      movimientoFields,
+      buildCamposIdCore(await resolveIdResponsableCore(idResponsableCore), 'entrada de insumo')
+    );
 
     // Notas: concatenar notas del usuario + referencia a turno (si hay)
     if (movFields.notas) {
