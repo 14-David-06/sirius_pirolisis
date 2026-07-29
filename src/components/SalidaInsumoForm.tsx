@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import VoiceToText from '@/components/VoiceToText';
+import EditarInsumoPanel from '@/components/inventario/EditarInsumoPanel';
+import { IconPencil } from '@/components/inventario/Icons';
 import { formatStock } from '@/lib/inventario.format';
 import {
   TIPO_USO_VALUES,
@@ -20,13 +22,17 @@ interface InventarioRecord {
 interface SalidaInsumoFormProps {
   records: InventarioRecord[];
   getItemName: (record: InventarioRecord) => string;
-  getItemCategory: (record: InventarioRecord) => string;
   /** Símbolo de la unidad base del insumo: "und", "kg", "L". */
   getItemUnit: (record: InventarioRecord) => string;
   getItemStockTotal: (record: InventarioRecord) => number;
+  getMinStock: (record: InventarioRecord) => number;
   getCurrentUserName: () => string;
+  /** Código SIRIUS-PER del usuario, para el campo "ID Responsable Core" del movimiento. */
+  getCurrentUserIdCore?: () => string;
   onSuccess: () => void;
   onCancel: () => void;
+  /** Recarga el inventario tras editar un insumo desde este formulario. */
+  onInsumoActualizado?: () => void;
 }
 
 interface BalanceMasa {
@@ -37,12 +43,14 @@ interface BalanceMasa {
 export default function SalidaInsumoForm({
   records,
   getItemName,
-  getItemCategory,
   getItemUnit,
   getItemStockTotal,
+  getMinStock,
   getCurrentUserName,
+  getCurrentUserIdCore,
   onSuccess,
   onCancel,
+  onInsumoActualizado,
 }: SalidaInsumoFormProps) {
   const [formData, setFormData] = useState({
     selectedItemId: '',
@@ -54,6 +62,7 @@ export default function SalidaInsumoForm({
   });
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editando, setEditando] = useState(false);
   const [balancesActivos, setBalancesActivos] = useState<BalanceMasa[]>([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
   const [paqueteLonasInfo, setPaqueteLonasInfo] = useState<{
@@ -148,6 +157,10 @@ export default function SalidaInsumoForm({
         observaciones: formData.observaciones,
         documentoSoporteUrl,
         'Realiza Registro': getCurrentUserName(),
+        // SIRIUS-PER del responsable: la sesión vive en localStorage, así que el
+        // servidor no puede resolverlo por su cuenta. Sin esto el movimiento se
+        // crea sin "ID Responsable Core".
+        'ID Responsable Core': getCurrentUserIdCore?.() || '',
       };
 
       const response = await fetch('/api/inventario/remove-quantity', {
@@ -210,17 +223,51 @@ export default function SalidaInsumoForm({
             <option value="" className="bg-gray-800">Seleccionar insumo existente</option>
             {records.map((item) => (
               <option key={item.id} value={item.id} className="bg-gray-800">
-                {getItemName(item)} — {getItemCategory(item)} — Stock: {formatStock(getItemStockTotal(item), getItemUnit(item))}
+                {getItemName(item)} — Stock: {formatStock(getItemStockTotal(item), getItemUnit(item))}
               </option>
             ))}
           </select>
           {selectedItem && (
-            <p className="text-sm text-blue-200 mt-2 drop-shadow">
-              Stock disponible:{' '}
-              <span className="font-semibold tabular-nums">
-                {formatStock(getItemStockTotal(selectedItem), getItemUnit(selectedItem))}
-              </span>
-            </p>
+            <>
+              {/* Click en el insumo seleccionado → editarlo (nombre y mínimo). */}
+              <button
+                type="button"
+                onClick={() => setEditando((previo) => !previo)}
+                aria-expanded={editando}
+                className="mt-2 w-full text-left rounded-lg bg-white/5 border border-white/15 p-3 hover:bg-white/10 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm text-white font-semibold">{getItemName(selectedItem)}</p>
+                  <span className="shrink-0 inline-flex items-center gap-1 text-xs text-white/70">
+                    <IconPencil className="w-3.5 h-3.5" />
+                    {editando ? 'Cerrar' : 'Editar'}
+                  </span>
+                </div>
+                <p className="text-sm text-blue-200 mt-1 drop-shadow">
+                  Stock disponible:{' '}
+                  <span className="font-semibold tabular-nums">
+                    {formatStock(getItemStockTotal(selectedItem), getItemUnit(selectedItem))}
+                  </span>
+                  <span className="text-white/50">
+                    {' '}· Mínimo: {formatStock(getMinStock(selectedItem), getItemUnit(selectedItem))}
+                  </span>
+                </p>
+              </button>
+
+              {editando && (
+                <EditarInsumoPanel
+                  item={selectedItem}
+                  getItemName={getItemName}
+                  getMinStock={getMinStock}
+                  getItemUnit={getItemUnit}
+                  onCancel={() => setEditando(false)}
+                  onSaved={() => {
+                    setEditando(false);
+                    onInsumoActualizado?.();
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
 

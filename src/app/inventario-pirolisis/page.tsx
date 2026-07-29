@@ -110,13 +110,11 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 function InventarioPirolisisContent() {
-  const [filtroCategoria, setFiltroCategoria] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoInsumo | ''>('');
   const [busqueda, setBusqueda] = useState('');
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
 
   const inventario = useInventario({
-    categoria: filtroCategoria || undefined,
     estado: filtroEstado || undefined,
     busqueda: busqueda || undefined,
   });
@@ -126,16 +124,13 @@ function InventarioPirolisisContent() {
     loading,
     error,
     refreshInventario,
-    categoriasDisponibles,
     getTotalItems,
-    getItemsByCategory,
+    getItemsOrdenados,
     getLowStockItems,
     getSinStockItems,
     getVencimientosProximos,
     getItemName,
     getItemCodigo,
-    getItemCategory,
-    getItemCategories,
     getItemStockTotal,
     getMinStock,
     getItemUnit,
@@ -191,7 +186,8 @@ function InventarioPirolisisContent() {
   const totalItems = getTotalItems();
   const lowStockItems = getLowStockItems();
   const sinStockItems = getSinStockItems();
-  const categories = getItemsByCategory();
+  const itemsDisponibles = Math.max(0, totalItems - lowStockItems.length - sinStockItems.length);
+  const itemsOrdenados = getItemsOrdenados();
   const vencimientosProximos = getVencimientosProximos(DIAS_ALERTA_VENCIMIENTO);
   const isTableEmpty = data?.records?.length === 0;
 
@@ -279,7 +275,7 @@ function InventarioPirolisisContent() {
         <div className="mt-6 space-y-6">
           <EstadisticasGenerales
             totalItems={totalItems}
-            totalCategorias={categoriasDisponibles.length}
+            itemsDisponibles={itemsDisponibles}
             itemsStockBajo={lowStockItems.length}
             itemsSinStock={sinStockItems.length}
           />
@@ -288,7 +284,7 @@ function InventarioPirolisisContent() {
             itemsStockBajo={lowStockItems}
             itemsSinStock={sinStockItems}
             getItemName={getItemName}
-            getItemCategories={getItemCategories}
+            getItemCodigo={getItemCodigo}
             getItemStockTotal={getItemStockTotal}
             getMinStock={getMinStock}
             getItemUnit={getItemUnit}
@@ -298,7 +294,7 @@ function InventarioPirolisisContent() {
             items={vencimientosProximos}
             diasAlerta={DIAS_ALERTA_VENCIMIENTO}
             getItemName={getItemName}
-            getItemCategories={getItemCategories}
+            getItemCodigo={getItemCodigo}
             getItemFechaVencimiento={getItemFechaVencimiento}
           />
 
@@ -306,18 +302,14 @@ function InventarioPirolisisContent() {
           <MetricasSection />
 
           <InventarioTable
-            categories={categories}
-            categoriasDisponibles={categoriasDisponibles}
-            filtroCategoria={filtroCategoria}
+            items={itemsOrdenados}
             filtroEstado={filtroEstado}
             busqueda={busqueda}
-            onFiltroCategoriaChange={setFiltroCategoria}
             onFiltroEstadoChange={setFiltroEstado}
             onBusquedaChange={setBusqueda}
             totalSinFiltrar={totalItems}
             getItemName={getItemName}
             getItemCodigo={getItemCodigo}
-            getItemCategories={getItemCategories}
             getItemStockTotal={getItemStockTotal}
             getMinStock={getMinStock}
             getItemUnit={getItemUnit}
@@ -357,12 +349,14 @@ function InventarioPirolisisContent() {
               <SalidaInsumoForm
                 records={data?.records || []}
                 getItemName={getItemName}
-                getItemCategory={getItemCategory}
                 getItemUnit={getItemUnit}
                 getItemStockTotal={getItemStockTotal}
+                getMinStock={getMinStock}
                 getCurrentUserName={getCurrentUserName}
+                getCurrentUserIdCore={getCurrentUserIdCore}
                 onSuccess={() => handleModalSuccess('Salida de insumo registrada exitosamente')}
                 onCancel={() => setModalMode(null)}
+                onInsumoActualizado={refreshInventario}
               />
             ) : modalMode === 'ingresar' ? (
               <IngresoInsumoForm
@@ -372,9 +366,10 @@ function InventarioPirolisisContent() {
                 getCurrentUserName={getCurrentUserName}
                 getCurrentUserIdCore={getCurrentUserIdCore}
                 getItemName={getItemName}
-                getItemCategory={getItemCategory}
                 getItemStockTotal={getItemStockTotal}
+                getMinStock={getMinStock}
                 getItemUnit={getItemUnit}
+                onInsumoActualizado={refreshInventario}
               />
             ) : (
               <RegistrarInsumoForm

@@ -14,7 +14,7 @@ interface VencimientosProximosProps {
   items: InventarioRecord[];
   diasAlerta: number;
   getItemName: (record: InventarioRecord) => string;
-  getItemCategories: (record: InventarioRecord) => string[];
+  getItemCodigo: (record: InventarioRecord) => string;
   getItemFechaVencimiento: (record: InventarioRecord) => string | null;
 }
 
@@ -30,7 +30,7 @@ export default function VencimientosProximos({
   items,
   diasAlerta,
   getItemName,
-  getItemCategories,
+  getItemCodigo,
   getItemFechaVencimiento,
 }: VencimientosProximosProps) {
   if (items.length === 0) return null;
@@ -60,9 +60,7 @@ export default function VencimientosProximos({
             <li key={item.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5">
               <div className="min-w-0">
                 <p className="text-white font-medium leading-snug">{getItemName(item)}</p>
-                <p className="text-xs text-white/50">
-                  {getItemCategories(item).join(' · ') || 'Sin categoría'}
-                </p>
+                <p className="text-xs text-white/50 tabular-nums">{getItemCodigo(item)}</p>
               </div>
               <div className="text-right">
                 <p className="font-semibold text-orange-200 tabular-nums">{formatFecha(fecha)}</p>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
+import { STOCK_MINIMO_DEFAULT } from '../../../../lib/inventario.constants';
 import { resolveIdResponsableCore } from '../../../../lib/movimientos-insumos';
 
 /**
@@ -10,9 +11,10 @@ import { resolveIdResponsableCore } from '../../../../lib/movimientos-insumos';
  * MIGRADO (2026-07-27): Antes creaba en Inventario Insumos Pirolisis (local).
  * Ahora crea en Insumo + Stock Insumos del Core.
  *
+ * SIN CATEGORÍAS (2026-07-28): los consumibles del área no se clasifican.
+ *
  * Body esperado:
  * - Nombre del Insumo (string, requerido)
- * - Categoría (string, requerido)
  * - Presentación (string, opcional)
  * - Cantidad Presentacion Insumo (number, opcional)
  * - Realiza Registro (string, opcional)
@@ -49,18 +51,14 @@ export async function POST(request: Request) {
 
     const {
       'Nombre del Insumo': nombreInsumo,
-      'Categoría': categoria,
-      'Presentación': presentacion,
-      'Cantidad Presentacion Insumo': cantidadPresentacion,
-      'Realiza Registro': realizaRegistro,
       'Ficha Seguridad URL': fichaSeguridadUrl,
     } = body;
 
     // Validar campos requeridos
-    if (!nombreInsumo || !categoria) {
+    if (!nombreInsumo) {
       return NextResponse.json({
         error: 'Campos requeridos faltantes',
-        details: 'Se requieren: Nombre del Insumo y Categoría'
+        details: 'Se requiere: Nombre del Insumo'
       }, { status: 400 });
     }
 
@@ -88,18 +86,15 @@ export async function POST(request: Request) {
       console.warn('⚠️ [crear insumo] Sin SIRIUS-PER del creador: ID Creador Core quedará vacío.');
     }
 
-    // Stock mínimo (0 por defecto)
+    // Stock mínimo: 2 und por insumo (default del área). Se ajusta después
+    // desde el editor de insumo en Ingresos/Salidas.
     if (insumoFields.stockMinimo) {
-      fields[insumoFields.stockMinimo] = 0;
+      fields[insumoFields.stockMinimo] = STOCK_MINIMO_DEFAULT;
     }
 
-    // Categoría: buscar record ID en Categoria Insumo por nombre
-    // TODO: Implementar búsqueda de categoría
-    // Por ahora dejamos el campo vacío y se debe asignar manualmente en Airtable
-    // if (insumoFields.categoria) {
-    //   // Buscar categoría por nombre
-    //   fields[insumoFields.categoria] = [categoriaRecordId];
-    // }
+    // Categoría: NO se escribe. Los consumibles de Pirólisis no se clasifican
+    // (ver src/lib/inventario.constants.ts). El campo existe en el Core para
+    // otras áreas y se deja tal cual.
 
     // Presentación/Unidad: buscar record ID en Unidades de Medida
     // TODO: Implementar búsqueda de unidad

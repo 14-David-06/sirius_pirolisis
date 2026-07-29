@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { config } from './config';
+import { STOCK_MINIMO_DEFAULT } from './inventario.constants';
 import { normalizeEstado, type EstadoStock } from './inventario.format';
 import type {
   InventarioRecord,
@@ -95,30 +96,9 @@ export function useInventario(filters?: InventarioFilters) {
   const getItemCodigo = (record: InventarioRecord): string =>
     getFieldValue(record, ['codigo', 'Código SIRIUS-INS'], '');
 
-  /**
-   * Categorías legibles del insumo.
-   * ⚠️ El campo `Categoria` del Core es un array de record IDs; leerlo directo
-   * pinta los record IDs crudos ("rec…") en pantalla. El endpoint las resuelve
-   * a nombres en `categorias`.
-   */
-  const getItemCategories = (record: InventarioRecord): string[] => {
-    const categorias = record.fields?.categorias;
-    if (Array.isArray(categorias)) {
-      return categorias.filter((c): c is string => typeof c === 'string' && c.length > 0);
-    }
-    const legible = record.fields?.['Categoria Insumo'];
-    if (typeof legible === 'string' && legible) {
-      return legible.split(',').map((c) => c.trim()).filter(Boolean);
-    }
-    return [];
-  };
-
-  /** Categoría principal, para agrupar y filtrar. */
-  const getItemCategory = (record: InventarioRecord): string =>
-    getItemCategories(record)[0] || 'Sin categoría';
-
-  const getItemCategoriaInsumo = (record: InventarioRecord): string =>
-    getItemCategories(record).join(', ');
+  // NOTA (2026-07-28): los consumibles de Pirólisis ya no se clasifican por
+  // categoría, así que este hook no expone getters de categoría. Ver
+  // src/lib/inventario.constants.ts.
 
   /** Símbolo de la unidad base del insumo: "und", "kg", "L". */
   const getItemUnit = (record: InventarioRecord): string => {
@@ -147,10 +127,14 @@ export function useInventario(filters?: InventarioFilters) {
   /** Alias: en el Core el stock del insumo ES la cantidad disponible. */
   const getItemQuantity = getItemStockTotal;
 
+  /**
+   * Umbral de reposición. Si el Core no tiene uno definido se asume el default
+   * del área (2 und), igual que hace /api/inventario/list.
+   */
   const getMinStock = (record: InventarioRecord): number => {
     const min = getFieldValue<unknown>(record, ['stock_minimo', 'Stock Minimo', 'Min Stock'], 0);
     const n = Number(min);
-    return Number.isFinite(n) ? n : 0;
+    return Number.isFinite(n) && n > 0 ? n : STOCK_MINIMO_DEFAULT;
   };
 
   /** Estado derivado del stock: 'disponible' | 'por_agotarse' | 'agotado'. */
@@ -173,59 +157,27 @@ export function useInventario(filters?: InventarioFilters) {
 
   const registros = useMemo(() => data?.records ?? [], [data]);
 
-  /** Todas las categorías presentes en los datos, ordenadas. Alimenta el filtro. */
-  const categoriasDisponibles = useMemo(() => {
-    const nombres = new Set<string>();
-    registros.forEach((record) => getItemCategories(record).forEach((c) => nombres.add(c)));
-    return [...nombres].sort((a, b) => a.localeCompare(b, 'es'));
-  }, [registros]);
-
-  /** Registros que pasan los filtros activos (categoría, estado, búsqueda). */
+  /** Registros que pasan los filtros activos (estado, búsqueda). */
   const registrosFiltrados = useMemo(() => {
     const busqueda = filters?.busqueda ? normalizarTexto(filters.busqueda) : '';
 
     return registros.filter((record) => {
-      if (filters?.categoria && !getItemCategories(record).includes(filters.categoria)) {
-        return false;
-      }
       if (filters?.estado && getItemEstado(record) !== filters.estado) {
         return false;
       }
       if (busqueda) {
-        const heno = normalizarTexto(
-          `${getItemName(record)} ${getItemCodigo(record)} ${getItemCategories(record).join(' ')}`
-        );
+        const heno = normalizarTexto(`${getItemName(record)} ${getItemCodigo(record)}`);
         if (!heno.includes(busqueda)) return false;
       }
       return true;
     });
-  }, [registros, filters?.categoria, filters?.estado, filters?.busqueda]);
+  }, [registros, filters?.estado, filters?.busqueda]);
 
   const getTotalItems = (): number => registros.length;
 
-  /**
-   * Insumos agrupados por categoría, ordenados alfabéticamente (categorías y
-   * insumos). Un insumo con varias categorías aparece en su categoría principal.
-   */
-  const getItemsByCategory = (): Record<string, InventarioRecord[]> => {
-    const grupos = new Map<string, InventarioRecord[]>();
-
-    for (const record of registrosFiltrados) {
-      const categoria = getItemCategory(record);
-      const grupo = grupos.get(categoria) ?? [];
-      grupo.push(record);
-      grupos.set(categoria, grupo);
-    }
-
-    return Object.fromEntries(
-      [...grupos.entries()]
-        .sort(([a], [b]) => a.localeCompare(b, 'es'))
-        .map(([categoria, items]) => [
-          categoria,
-          items.sort((a, b) => getItemName(a).localeCompare(getItemName(b), 'es')),
-        ])
-    );
-  };
+  /** Insumos filtrados, en orden alfabético. Sin agrupación por categoría. */
+  const getItemsOrdenados = (): InventarioRecord[] =>
+    [...registrosFiltrados].sort((a, b) => getItemName(a).localeCompare(getItemName(b), 'es'));
 
   /**
    * Insumos por agotarse: stock por debajo (o en) su mínimo definido.
@@ -274,11 +226,10 @@ export function useInventario(filters?: InventarioFilters) {
     // Datos derivados
     registros,
     registrosFiltrados,
-    categoriasDisponibles,
 
     // Conteos
     getTotalItems,
-    getItemsByCategory,
+    getItemsOrdenados,
     getLowStockItems,
     getSinStockItems,
     getItemsByStatus,
@@ -288,9 +239,6 @@ export function useInventario(filters?: InventarioFilters) {
     // Getters por registro
     getItemName,
     getItemCodigo,
-    getItemCategory,
-    getItemCategories,
-    getItemCategoriaInsumo,
     getItemQuantity,
     getItemUnit,
     getItemUnitNombre,

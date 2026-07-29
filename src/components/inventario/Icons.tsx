@@ -94,7 +94,26 @@ export const IconChart = (props: IconProps) => (
   </Svg>
 );
 
-/** Etiquetas / categorías */
+/** Disponible / confirmación */
+export const IconCheck = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="m20 6-11 11-5-5" />
+  </Svg>
+);
+
+/** Editar */
+export const IconPencil = (props: IconProps) => (
+  <Svg {...props}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </Svg>
+);
+
+/**
+ * Etiquetas / categorías.
+ * NOTA: los consumibles ya no se clasifican por categoría; se conserva por si
+ * otro módulo del área lo necesita.
+ */
 export const IconTag = (props: IconProps) => (
   <Svg {...props}>
     <path d="M12.59 2.59a2 2 0 0 0-1.42-.59H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.24 8.24a2 2 0 0 0 2.83 0l7.17-7.17a2 2 0 0 0 0-2.83Z" />

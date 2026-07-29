@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
+import { STOCK_MINIMO_DEFAULT } from '../../../../lib/inventario.constants';
 import { fetchAllStockInsumos, getInsumoIds, getMovimientoIds, getStockActual } from '../../../../lib/stock-insumos';
 
 /**
@@ -10,17 +11,17 @@ import { fetchAllStockInsumos, getInsumoIds, getMovimientoIds, getStockActual } 
  * MIGRADO (2026-07-27): Antes leía Inventario Insumos Pirolisis (local).
  * Ahora lee Insumo + Stock Insumos del Core.
  *
- * Query params opcionales:
- * - categoria: filtra por NOMBRE de categoría (ej. "Repuestos y Refacciones")
+ * SIN CATEGORÍAS (2026-07-28): los consumibles del área no se clasifican, así
+ * que ya no se lee la tabla `Categoria Insumo` ni se acepta el filtro
+ * `?categoria=`. Ver src/lib/inventario.constants.ts.
  *
  * Cada registro devuelve, además de los campos crudos del Core, campos
  * normalizados para el frontend:
  * - codigo          → "SIRIUS-INS-0059"
- * - categorias      → todos los nombres de categoría (un insumo puede tener varias)
  * - unidad          → símbolo de la unidad base ("und", "kg", "L")
  * - unidad_nombre   → nombre de la unidad ("Unidad", "Kilogramo", "Litro")
  * - stock_actual    → stock real calculado por el Core
- * - stock_minimo    → umbral de alerta
+ * - stock_minimo    → umbral de alerta (STOCK_MINIMO_DEFAULT si el Core no lo tiene)
  * - estado_calculado→ 'agotado' | 'por_agotarse' | 'disponible'
  */
 
@@ -89,7 +90,7 @@ function toNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   if (!config.airtable.insumosCoreBaseId || !config.airtable.insumosTableId) {
     console.warn('⚠️ Configuración de Sirius Insumos Core incompleta');
     return NextResponse.json({
@@ -102,7 +103,6 @@ export async function GET(request: NextRequest) {
     const token = config.airtable.insumosCoreToken;
     const coreBaseId = config.airtable.insumosCoreBaseId;
     const insumosTableId = config.airtable.insumosTableId;
-    const categoriaTableId = config.airtable.categoriaInsumoTableId;
     const unidadesTableId = config.airtable.unidadesMedidaTableId;
     const pirolisisAreaCode = config.airtable.pirolisisAreaCode;
 
@@ -113,36 +113,28 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const categoriaFilter = searchParams.get('categoria');
-
     // ═══════════════════════════════════════════════════════════════════════════
     // Cargar en PARALELO todo lo necesario.
     //
-    // ⚠️ Antes se resolvían categoría y unidad con un fetch por insumo (N+1):
-    // ~52 requests secuenciales para 26 insumos, contra un límite de 5 req/s.
-    // Las tablas de catálogo son pequeñas: se leen enteras una vez y el join
-    // se hace en memoria.
+    // ⚠️ Antes se resolvía la unidad con un fetch por insumo (N+1): ~26 requests
+    // secuenciales contra un límite de 5 req/s. La tabla de unidades es pequeña:
+    // se lee entera una vez y el join se hace en memoria.
+    //
+    // El filtro por área es la garantía de aislamiento: solo entran insumos con
+    // `ID Area Origen` = Pirólisis, así que nada de otras áreas llega a la UI.
     // ═══════════════════════════════════════════════════════════════════════════
-    const [insumos, categoriaRecords, unidadRecords, stockRecords] = await Promise.all([
+    const [insumos, unidadRecords, stockRecords] = await Promise.all([
       fetchTable(coreBaseId, insumosTableId, token, `{ID Area Origen} = '${pirolisisAreaCode}'`),
-      categoriaTableId ? fetchTable(coreBaseId, categoriaTableId, token) : Promise.resolve([]),
       unidadesTableId ? fetchTable(coreBaseId, unidadesTableId, token) : Promise.resolve([]),
       fetchAllStockInsumos(),
     ]);
 
     console.log(
-      `📦 Core: ${insumos.length} insumos, ${categoriaRecords.length} categorías, ` +
-      `${unidadRecords.length} unidades, ${stockRecords.length} registros de stock`
+      `📦 Core: ${insumos.length} insumos, ${unidadRecords.length} unidades, ` +
+      `${stockRecords.length} registros de stock`
     );
 
-    // Catálogos: recordId → nombre legible
-    const nombreCategoria = new Map<string, string>();
-    for (const cat of categoriaRecords) {
-      const nombre = cat.fields?.['Tipo de insumo'];
-      if (typeof nombre === 'string' && nombre) nombreCategoria.set(cat.id, nombre);
-    }
-
+    // Catálogo: recordId → unidad legible
     const unidadPorId = new Map<string, { simbolo: string; nombre: string }>();
     for (const unidad of unidadRecords) {
       const nombre = String(unidad.fields?.['Nombre'] ?? '');
@@ -178,11 +170,6 @@ export async function GET(request: NextRequest) {
     const registros = insumos.map((insumo) => {
       const stockActual = stockPorInsumo.get(insumo.id)?.stock ?? 0;
 
-      // Un insumo puede pertenecer a VARIAS categorías.
-      const categorias = toRecordIds(insumo.fields?.['Categoria'])
-        .map((id) => nombreCategoria.get(id))
-        .filter((nombre): nombre is string => Boolean(nombre));
-
       // Unidad: símbolo de la unidad base; si no está, el texto libre
       // "Unidad Medida" del insumo.
       const unidadIds = toRecordIds(insumo.fields?.['Unidad Base']);
@@ -194,7 +181,10 @@ export async function GET(request: NextRequest) {
       const unidad = unidadBase?.simbolo || unidadTexto || 'und';
       const unidadNombre = unidadBase?.nombre || unidadTexto || 'Unidad';
 
-      const stockMinimo = toNumber(insumo.fields?.['Stock Minimo']);
+      // Stock mínimo: el del Core si está definido; si no, el default del área
+      // (2 und), para que el insumo siempre tenga umbral de reposición.
+      const stockMinimoCore = toNumber(insumo.fields?.['Stock Minimo']);
+      const stockMinimo = stockMinimoCore > 0 ? stockMinimoCore : STOCK_MINIMO_DEFAULT;
 
       // Estado derivado del stock real. El campo "Estado Insumo" del Core
       // (Activo/Inactivo/Stock) describe el ciclo de vida del catálogo, no la
@@ -214,7 +204,6 @@ export async function GET(request: NextRequest) {
 
           // — Campos normalizados para el frontend —
           codigo: insumo.fields?.['Código SIRIUS-INS'] ?? '',
-          categorias,
           unidad,
           unidad_nombre: unidadNombre,
           stock_actual: stockActual,
@@ -224,25 +213,15 @@ export async function GET(request: NextRequest) {
 
           // — Alias de compatibilidad —
           'Insumo': insumo.fields?.['Nombre'] ?? 'Sin nombre',
-          'Categoria Insumo': categorias.join(', '),
           'Total Cantidad Stock': stockActual,
           'Unidad Base': unidad,
         },
       };
     });
 
-    // Filtro por nombre de categoría (en memoria: el campo es un link, no texto)
-    const resultados = categoriaFilter
-      ? registros.filter((r) =>
-          r.fields.categorias.some(
-            (cat) => cat.toLowerCase() === categoriaFilter.toLowerCase()
-          )
-        )
-      : registros;
+    console.log(`✅ Inventario con stock calculado: ${registros.length} registros`);
 
-    console.log(`✅ Inventario con stock calculado: ${resultados.length} registros`);
-
-    return NextResponse.json({ records: resultados }, { status: 200 });
+    return NextResponse.json({ records: registros }, { status: 200 });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

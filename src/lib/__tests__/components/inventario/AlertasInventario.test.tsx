@@ -5,7 +5,7 @@ import type { InventarioRecord } from '@/types/inventario';
 describe('AlertasInventario', () => {
   const mockGetters = {
     getItemName: (item: InventarioRecord) => String(item.fields['Nombre'] ?? 'Test'),
-    getItemCategories: () => ['Repuestos y Refacciones'],
+    getItemCodigo: () => 'SIRIUS-INS-0065',
     getItemStockTotal: (item: InventarioRecord) => Number(item.fields['stock_actual'] ?? 0),
     getMinStock: () => 5,
     getItemUnit: () => 'und',

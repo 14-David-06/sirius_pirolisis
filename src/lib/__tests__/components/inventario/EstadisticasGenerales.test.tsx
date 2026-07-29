@@ -4,7 +4,7 @@ import EstadisticasGenerales from '@/components/inventario/EstadisticasGenerales
 describe('EstadisticasGenerales', () => {
   const baseProps = {
     totalItems: 26,
-    totalCategorias: 7,
+    itemsDisponibles: 21,
     itemsStockBajo: 3,
     itemsSinStock: 2,
   };
@@ -13,7 +13,7 @@ describe('EstadisticasGenerales', () => {
     render(<EstadisticasGenerales {...baseProps} />);
 
     expect(screen.getByText('26')).toBeInTheDocument();
-    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('21')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
   });
@@ -22,7 +22,7 @@ describe('EstadisticasGenerales', () => {
     render(<EstadisticasGenerales {...baseProps} />);
 
     expect(screen.getByText('Insumos')).toBeInTheDocument();
-    expect(screen.getByText('Categorías')).toBeInTheDocument();
+    expect(screen.getByText('Disponibles')).toBeInTheDocument();
     expect(screen.getByText('Por agotarse')).toBeInTheDocument();
     expect(screen.getByText('Agotados')).toBeInTheDocument();
   });
@@ -31,6 +31,13 @@ describe('EstadisticasGenerales', () => {
     render(<EstadisticasGenerales {...baseProps} totalItems={1234} />);
 
     expect(screen.getByText('1.234')).toBeInTheDocument();
+  });
+
+  // Los consumibles del área ya no se clasifican por categoría.
+  test('no muestra un indicador de categorías', () => {
+    render(<EstadisticasGenerales {...baseProps} />);
+
+    expect(screen.queryByText(/Categor/i)).not.toBeInTheDocument();
   });
 
   // No debe existir un "total de unidades": el inventario mezcla und, kg y L,

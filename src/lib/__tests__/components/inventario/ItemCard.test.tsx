@@ -6,7 +6,6 @@ describe('ItemCard', () => {
   const mockGetters = {
     getItemName: (item: InventarioRecord) => String(item.fields['Nombre'] ?? 'Test Item'),
     getItemCodigo: () => 'SIRIUS-INS-0042',
-    getItemCategories: () => ['Insumos de Producción'],
     getItemStockTotal: () => 33614,
     getMinStock: () => 0,
     getItemUnit: () => 'kg',

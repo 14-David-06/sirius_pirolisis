@@ -10,7 +10,6 @@ export default function ItemCard({
   item,
   getItemName,
   getItemCodigo,
-  getItemCategories,
   getItemStockTotal,
   getMinStock,
   getItemUnit,
@@ -22,7 +21,6 @@ export default function ItemCard({
   const codigo = getItemCodigo(item);
   const minimo = getMinStock(item);
   const movimientos = getItemMovimientos(item).length;
-  const categorias = getItemCategories(item);
 
   return (
     <article className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4">
@@ -59,12 +57,6 @@ export default function ItemCard({
           </div>
         </dl>
       </div>
-
-      {categorias.length > 1 && (
-        <p className="mt-3 border-t border-white/10 pt-2 text-xs text-white/45">
-          {categorias.join(' · ')}
-        </p>
-      )}
     </article>
   );
 }

@@ -6,12 +6,13 @@
  * conteos de insumos, que sí son comparables.
  */
 
-import { IconAlert, IconInbox, IconPackage, IconTag } from './Icons';
+import { IconAlert, IconCheck, IconInbox, IconPackage } from './Icons';
 import { formatCantidad } from '@/lib/inventario.format';
 
 interface EstadisticasGeneralesProps {
   totalItems: number;
-  totalCategorias: number;
+  /** Insumos con stock por encima de su mínimo. */
+  itemsDisponibles: number;
   itemsStockBajo: number;
   itemsSinStock: number;
 }
@@ -44,7 +45,7 @@ function Kpi({ label, valor, icono, acento, nota }: KpiProps) {
 
 export default function EstadisticasGenerales({
   totalItems,
-  totalCategorias,
+  itemsDisponibles,
   itemsStockBajo,
   itemsSinStock,
 }: EstadisticasGeneralesProps) {
@@ -64,10 +65,11 @@ export default function EstadisticasGenerales({
           acento="text-white"
         />
         <Kpi
-          label="Categorías"
-          valor={totalCategorias}
-          icono={<IconTag className="w-4 h-4" />}
+          label="Disponibles"
+          valor={itemsDisponibles}
+          icono={<IconCheck className="w-4 h-4" />}
           acento="text-white"
+          nota="Sobre el stock mínimo"
         />
         <Kpi
           label="Por agotarse"

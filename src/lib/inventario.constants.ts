@@ -6,21 +6,27 @@
 import type { EstadoInsumo, PresentacionInsumo } from '@/types/inventario';
 
 // ============================================================================
-// CATEGORÍAS
+// CATEGORÍAS — ELIMINADAS (2026-07-28)
 // ============================================================================
 
-// NOTA: Las categorías "Herramientas" y "Equipos" se movieron al módulo de Activos Fijos
-// Este módulo ahora gestiona únicamente INSUMOS CONSUMIBLES
-export const CATEGORIAS_INSUMO = [
-  'Materiales',
-  'Químicos',
-  'Consumibles',
-] as const;
+// Los insumos consumibles de Pirólisis NO se clasifican por categoría: el área
+// maneja ~26 insumos y agruparlos añadía un nivel de navegación sin valor. El
+// campo `Categoria` sigue existiendo en Sirius Insumos Core (otras áreas lo
+// usan), pero este módulo no lo lee, ni lo muestra, ni lo escribe.
+// Las herramientas y equipos, que sí se clasifican, viven en Activos Fijos.
 
-// ⚠️ NO hay lista fija de categorías: son registros de la tabla
-// `Categoria Insumo` del Core y cambian sin tocar el código. El filtro de la UI
-// se construye con las categorías realmente presentes en los datos
-// (`categoriasDisponibles` en useInventario).
+// ============================================================================
+// STOCK MÍNIMO
+// ============================================================================
+
+/**
+ * Stock mínimo por defecto de un insumo consumible: 2 unidades.
+ *
+ * Se usa al crear el insumo y como valor mostrado cuando el Core no tiene
+ * umbral definido, para que la alerta de reposición exista siempre. Se ajusta
+ * por insumo desde el editor de ingresos/salidas.
+ */
+export const STOCK_MINIMO_DEFAULT = 2;
 
 // ============================================================================
 // ESTADOS

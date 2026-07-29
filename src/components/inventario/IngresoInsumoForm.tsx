@@ -6,6 +6,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import EditarInsumoPanel from './EditarInsumoPanel';
+import { IconPencil } from './Icons';
 import type { InventarioRecord, IngresoInsumoFormData } from '@/types/inventario';
 
 interface IngresoInsumoFormProps {
@@ -15,9 +17,11 @@ interface IngresoInsumoFormProps {
   getCurrentUserName: () => string;
   getCurrentUserIdCore?: () => string;
   getItemName: (record: InventarioRecord) => string;
-  getItemCategory: (record: InventarioRecord) => string;
   getItemStockTotal: (record: InventarioRecord) => number;
+  getMinStock: (record: InventarioRecord) => number;
   getItemUnit: (record: InventarioRecord) => string;
+  /** Recarga el inventario tras editar un insumo desde este formulario. */
+  onInsumoActualizado?: () => void;
 }
 
 export default function IngresoInsumoForm({
@@ -27,9 +31,10 @@ export default function IngresoInsumoForm({
   getCurrentUserName,
   getCurrentUserIdCore,
   getItemName,
-  getItemCategory,
   getItemStockTotal,
+  getMinStock,
   getItemUnit,
+  onInsumoActualizado,
 }: IngresoInsumoFormProps) {
   const [formData, setFormData] = useState<IngresoInsumoFormData>({
     selectedItemId: '',
@@ -39,6 +44,7 @@ export default function IngresoInsumoForm({
   const [creating, setCreating] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [editando, setEditando] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -59,12 +65,10 @@ export default function IngresoInsumoForm({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filtrar insumos por nombre o categoría
+  // Filtrar insumos por nombre
   const filteredRecords = records.filter(item => {
     const name = String(getItemName(item) || '').toLowerCase();
-    const category = String(getItemCategory(item) || '').toLowerCase();
-    const search = searchText.toLowerCase();
-    return name.includes(search) || category.includes(search);
+    return name.includes(searchText.toLowerCase());
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -175,7 +179,7 @@ export default function IngresoInsumoForm({
                     >
                       <p className="text-sm text-white font-semibold">{getItemName(item)}</p>
                       <p className="text-xs text-white/60">
-                        {String(getItemCategory(item) || 'Sin categoría')} • Stock: {getItemStockTotal(item)} {getItemUnit(item)}
+                        Stock: {getItemStockTotal(item)} {getItemUnit(item)}
                       </p>
                     </button>
                   ))
@@ -199,20 +203,49 @@ export default function IngresoInsumoForm({
               <option value="" className="bg-gray-800">-- Seleccionar de la lista --</option>
               {records.map((item) => (
                 <option key={item.id} value={item.id} className="bg-gray-800">
-                  {getItemName(item)} — {String(getItemCategory(item) || 'Sin categoría')} (Stock: {getItemStockTotal(item)} {getItemUnit(item)})
+                  {getItemName(item)} (Stock: {getItemStockTotal(item)} {getItemUnit(item)})
                 </option>
               ))}
             </select>
           </div>
 
           {selectedItem && (
-            <div className="mt-3 p-3 bg-blue-500/10 border border-blue-400/20 rounded-lg">
-              <p className="text-sm text-blue-200 font-semibold">{getItemName(selectedItem)}</p>
-              <p className="text-xs text-white/60 mt-1">Categoría: {String(getItemCategory(selectedItem) || 'Sin categoría')}</p>
-              <p className="text-xs text-blue-300 mt-1">
-                📊 Stock actual: <span className="font-bold">{getItemStockTotal(selectedItem)} {getItemUnit(selectedItem)}</span>
-              </p>
-            </div>
+            <>
+              {/* Click en el insumo seleccionado → editarlo (nombre y mínimo). */}
+              <button
+                type="button"
+                onClick={() => setEditando((previo) => !previo)}
+                aria-expanded={editando}
+                className="mt-3 w-full text-left p-3 bg-blue-500/10 border border-blue-400/20 rounded-lg hover:bg-blue-500/20 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm text-blue-200 font-semibold">{getItemName(selectedItem)}</p>
+                  <span className="shrink-0 inline-flex items-center gap-1 text-xs text-white/70">
+                    <IconPencil className="w-3.5 h-3.5" />
+                    {editando ? 'Cerrar' : 'Editar'}
+                  </span>
+                </div>
+                <p className="text-xs text-blue-300 mt-1">
+                  📊 Stock actual: <span className="font-bold">{getItemStockTotal(selectedItem)} {getItemUnit(selectedItem)}</span>
+                  <span className="text-white/50"> · Mínimo: {getMinStock(selectedItem)} {getItemUnit(selectedItem)}</span>
+                </p>
+              </button>
+
+              {editando && (
+                <EditarInsumoPanel
+                  item={selectedItem}
+                  getItemName={getItemName}
+                  getMinStock={getMinStock}
+                  getItemUnit={getItemUnit}
+                  onCancel={() => setEditando(false)}
+                  onSaved={(nombre) => {
+                    setEditando(false);
+                    setSearchText(nombre);
+                    onInsumoActualizado?.();
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
 

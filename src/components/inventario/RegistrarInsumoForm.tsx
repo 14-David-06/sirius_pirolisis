@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { CATEGORIAS_INSUMO, PRESENTACIONES_INSUMO } from '@/lib/inventario.constants';
+import { PRESENTACIONES_INSUMO } from '@/lib/inventario.constants';
 import type { RegistroInsumoFormData, S3UploadResult } from '@/types/inventario';
 
 interface RegistrarInsumoFormProps {
@@ -22,13 +22,15 @@ export default function RegistrarInsumoForm({
 }: RegistrarInsumoFormProps) {
   const [formData, setFormData] = useState<RegistroInsumoFormData>({
     'Nombre del Insumo': '',
-    'Categoría': '',
     'Presentación': '',
     'Cantidad Presentacion Insumo': '',
     'Presentación Personalizada': '',
     'Ficha Seguridad URL': '',
     'Ficha Seguridad S3 Path': ''
   });
+  // El insumo ya no tiene categoría, así que la ficha de seguridad se pide con
+  // una marca explícita en vez de derivarla de "Categoría = Químicos".
+  const [esQuimico, setEsQuimico] = useState(false);
   const [safetySheetFile, setSafetySheetFile] = useState<File | null>(null);
   const [uploadingSafetySheet, setUploadingSafetySheet] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -64,8 +66,8 @@ export default function RegistrarInsumoForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData['Nombre del Insumo'] || !formData['Categoría']) {
-      alert('Por favor completa los campos requeridos: Nombre del Insumo y Categoría');
+    if (!formData['Nombre del Insumo']) {
+      alert('Por favor completa el campo requerido: Nombre del Insumo');
       return;
     }
 
@@ -83,7 +85,7 @@ export default function RegistrarInsumoForm({
       }
 
       // Subir ficha de seguridad si es un químico y se seleccionó un archivo
-      if (itemData['Categoría'] === 'Químicos' && safetySheetFile) {
+      if (esQuimico && safetySheetFile) {
         setUploadingSafetySheet(true);
         try {
           const uploadResult = await uploadSafetySheet(safetySheetFile);
@@ -137,28 +139,31 @@ export default function RegistrarInsumoForm({
           />
         </div>
 
-        {/* Categoría */}
+        {/* ¿Es un químico? — reemplaza la categoría como disparador de la ficha */}
         <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-          <label className="block text-sm font-semibold mb-2 text-white drop-shadow">
-            Categoría *
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={esQuimico}
+              onChange={(e) => {
+                setEsQuimico(e.target.checked);
+                if (!e.target.checked) setSafetySheetFile(null);
+              }}
+              className="mt-0.5 h-4 w-4 rounded border-white/30 bg-white/10 accent-purple-500"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-white drop-shadow">
+                Es un químico
+              </span>
+              <span className="block text-xs text-white/60 mt-0.5">
+                Marca esta opción para adjuntar la ficha de seguridad del producto.
+              </span>
+            </span>
           </label>
-          <select
-            value={formData['Categoría']}
-            onChange={(e) => setFormData({...formData, 'Categoría': e.target.value})}
-            className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm"
-            required
-          >
-            <option value="" className="bg-gray-800">Seleccionar categoría</option>
-            {CATEGORIAS_INSUMO.map(cat => (
-              <option key={cat} value={cat} className="bg-gray-800">
-                {cat}
-              </option>
-            ))}
-          </select>
         </div>
 
-        {/* Ficha de Seguridad (solo para Químicos) */}
-        {formData['Categoría'] === 'Químicos' && (
+        {/* Ficha de Seguridad (solo para químicos) */}
+        {esQuimico && (
           <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg p-4 border border-yellow-500/20">
             <label className="block text-sm font-semibold mb-2 text-yellow-200 drop-shadow">
               📋 Ficha de Seguridad (PDF) *
@@ -168,7 +173,7 @@ export default function RegistrarInsumoForm({
               accept=".pdf"
               onChange={(e) => setSafetySheetFile(e.target.files?.[0] || null)}
               className="w-full p-3 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-yellow-600 file:text-white hover:file:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent backdrop-blur-sm"
-              required={formData['Categoría'] === 'Químicos'}
+              required={esQuimico}
             />
             <p className="text-xs text-yellow-200 mt-2 drop-shadow">
               Archivo PDF con ficha de seguridad del químico (mínimo 100KB)

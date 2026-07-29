@@ -29,7 +29,7 @@ export interface InventarioFields {
   // — Campos crudos de Sirius Insumos Core (tabla Insumo) —
   'Nombre'?: string;
   'Código SIRIUS-INS'?: string;
-  /** Link: array de record IDs de Categoria Insumo. Usa `categorias` para mostrar. */
+  /** Link a Categoria Insumo. El módulo de consumibles NO lo usa (ver inventario.constants). */
   'Categoria'?: string[];
   /** Link: array de record IDs de Unidades de Medida. Usa `unidad` para mostrar. */
   'Unidad Base'?: string[] | string;
@@ -43,14 +43,13 @@ export interface InventarioFields {
   // — Campos normalizados que agrega /api/inventario/list —
   /** Código legible del insumo: "SIRIUS-INS-0059". */
   codigo?: string;
-  /** Nombres de TODAS las categorías del insumo, ya resueltos. */
-  categorias?: string[];
   /** Símbolo de la unidad base: "und", "kg", "L". */
   unidad?: string;
   /** Nombre de la unidad base: "Unidad", "Kilogramo", "Litro". */
   unidad_nombre?: string;
   /** Stock real calculado por el Core. */
   stock_actual?: number;
+  /** Umbral de reposición; STOCK_MINIMO_DEFAULT si el Core no lo tiene definido. */
   stock_minimo?: number;
   /** Estado derivado del stock (no confundir con `Estado Insumo` del catálogo). */
   estado_calculado?: 'disponible' | 'por_agotarse' | 'agotado';
@@ -58,7 +57,6 @@ export interface InventarioFields {
 
   // — Alias de compatibilidad —
   'Insumo'?: string;
-  'Categoria Insumo'?: string;
   'Total Cantidad Stock'?: number;
 
   // Estado y validez
@@ -139,7 +137,6 @@ export interface BalanceMasa {
  */
 export interface RegistroInsumoFormData {
   'Nombre del Insumo': string;
-  'Categoría': string;
   'Presentación': string;
   'Cantidad Presentacion Insumo': string;
   'Presentación Personalizada': string;
@@ -186,7 +183,6 @@ export interface InventarioFormBaseProps {
  */
 export interface SalidaInsumoFormProps extends InventarioFormBaseProps {
   getItemName: (record: InventarioRecord) => string;
-  getItemCategory: (record: InventarioRecord) => string;
   getItemUnit: (record: InventarioRecord) => string;
   getItemStockTotal: (record: InventarioRecord) => number;
   getCurrentUserName: () => string;
@@ -198,7 +194,6 @@ export interface SalidaInsumoFormProps extends InventarioFormBaseProps {
 export interface InventarioItemGetters {
   getItemName: (record: InventarioRecord) => string;
   getItemCodigo: (record: InventarioRecord) => string;
-  getItemCategories: (record: InventarioRecord) => string[];
   getItemStockTotal: (record: InventarioRecord) => number;
   getMinStock: (record: InventarioRecord) => number;
   getItemUnit: (record: InventarioRecord) => string;
@@ -221,10 +216,8 @@ export interface ItemCardProps extends InventarioItemGetters {
  * Filtros disponibles para el inventario
  */
 export interface InventarioFilters {
-  /** Nombre de categoría tal como viene del Core: "Repuestos y Refacciones". */
-  categoria?: string;
   estado?: EstadoInsumo | '';
-  /** Texto libre: busca en nombre, código y categorías. */
+  /** Texto libre: busca en nombre y código. */
   busqueda?: string;
 }
 

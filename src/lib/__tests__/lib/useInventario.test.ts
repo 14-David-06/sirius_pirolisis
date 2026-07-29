@@ -33,27 +33,13 @@ describe('useInventario — getters', () => {
     expect(result.current.getItemName(record({}))).toBe('Sin nombre');
   });
 
-  test('getItemCategory usa los nombres resueltos, no los record IDs', () => {
+  test('getMinStock usa el mínimo del Core y cae al default del área (2 und)', () => {
     const { result } = renderHook(() => useInventario());
-    const item = record({
-      Nombre: 'Codo 3" acero Inox 304',
-      // El campo crudo del Core es un array de record IDs: leerlo directo
-      // pintaba los "rec…" en pantalla.
-      Categoria: ['recFAKECATEGORIA1', 'recFAKECATEGORIA2'],
-      categorias: ['Infraestructura y Construcción', 'Repuestos y Refacciones'],
-    });
 
-    expect(result.current.getItemCategory(item)).toBe('Infraestructura y Construcción');
-    expect(result.current.getItemCategory(item)).not.toMatch(/^rec/);
-    expect(result.current.getItemCategories(item)).toEqual([
-      'Infraestructura y Construcción',
-      'Repuestos y Refacciones',
-    ]);
-  });
-
-  test('getItemCategory devuelve "Sin categoría" cuando no hay ninguna', () => {
-    const { result } = renderHook(() => useInventario());
-    expect(result.current.getItemCategory(record({}))).toBe('Sin categoría');
+    expect(result.current.getMinStock(record({ stock_minimo: 5 }))).toBe(5);
+    // Sin umbral en el Core, todo insumo consumible tiene mínimo 2.
+    expect(result.current.getMinStock(record({ stock_minimo: 0 }))).toBe(2);
+    expect(result.current.getMinStock(record({}))).toBe(2);
   });
 
   test('getItemUnit devuelve el símbolo de la unidad base', () => {
@@ -91,9 +77,9 @@ describe('useInventario — getters', () => {
 
 describe('useInventario — derivados', () => {
   const insumos = [
-    record({ id: '1', Nombre: 'Rodamiento UC 208 FAG', categorias: ['Repuestos y Refacciones'], stock_actual: 4, stock_minimo: 5, unidad: 'und', estado_calculado: 'por_agotarse' }),
-    record({ id: '2', Nombre: 'Abono 4G', categorias: ['Insumos de Producción'], stock_actual: 33614, stock_minimo: 0, unidad: 'kg', estado_calculado: 'disponible' }),
-    record({ id: '3', Nombre: 'Brocha de 2"', categorias: ['Herramientas Manuales'], stock_actual: 0, stock_minimo: 0, unidad: 'und', estado_calculado: 'agotado' }),
+    record({ id: '1', Nombre: 'Rodamiento UC 208 FAG', stock_actual: 4, stock_minimo: 5, unidad: 'und', estado_calculado: 'por_agotarse' }),
+    record({ id: '2', Nombre: 'Abono 4G', stock_actual: 33614, stock_minimo: 0, unidad: 'kg', estado_calculado: 'disponible' }),
+    record({ id: '3', Nombre: 'Brocha de 2"', stock_actual: 0, stock_minimo: 0, unidad: 'und', estado_calculado: 'agotado' }),
   ];
 
   beforeEach(() => {
@@ -101,25 +87,14 @@ describe('useInventario — derivados', () => {
     mockList(insumos);
   });
 
-  test('agrupa por categoría legible y en orden alfabético', async () => {
+  test('lista los insumos en una sola secuencia alfabética, sin agrupar', async () => {
     const { result } = renderHook(() => useInventario());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(Object.keys(result.current.getItemsByCategory())).toEqual([
-      'Herramientas Manuales',
-      'Insumos de Producción',
-      'Repuestos y Refacciones',
-    ]);
-  });
-
-  test('categoriasDisponibles se construye con los datos reales', async () => {
-    const { result } = renderHook(() => useInventario());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.categoriasDisponibles).toEqual([
-      'Herramientas Manuales',
-      'Insumos de Producción',
-      'Repuestos y Refacciones',
+    expect(result.current.getItemsOrdenados().map((r) => r.fields.Nombre)).toEqual([
+      'Abono 4G',
+      'Brocha de 2"',
+      'Rodamiento UC 208 FAG',
     ]);
   });
 
@@ -131,19 +106,14 @@ describe('useInventario — derivados', () => {
     expect(result.current.getSinStockItems().map((r) => r.id)).toEqual(['3']);
   });
 
-  test('no marca stock bajo cuando el insumo no tiene mínimo definido', async () => {
+  // Con el default de 2 und, un insumo sin mínimo en el Core igual alerta: es el
+  // punto de tener un umbral por defecto.
+  test('alerta con el mínimo por defecto cuando el Core no tiene umbral', async () => {
     mockList([record({ id: '9', Nombre: 'Sin mínimo', stock_actual: 1, stock_minimo: 0 })]);
     const { result } = renderHook(() => useInventario());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.getLowStockItems()).toHaveLength(0);
-  });
-
-  test('filtra por categoría', async () => {
-    const { result } = renderHook(() => useInventario({ categoria: 'Insumos de Producción' }));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.registrosFiltrados.map((r) => r.id)).toEqual(['2']);
+    expect(result.current.getLowStockItems().map((r) => r.id)).toEqual(['9']);
   });
 
   test('filtra por estado derivado', async () => {
@@ -153,8 +123,8 @@ describe('useInventario — derivados', () => {
     expect(result.current.registrosFiltrados.map((r) => r.id)).toEqual(['3']);
   });
 
-  test('busca sin distinguir tildes ni mayúsculas', async () => {
-    const { result } = renderHook(() => useInventario({ busqueda: 'PRODUCCION' }));
+  test('busca por nombre sin distinguir tildes ni mayúsculas', async () => {
+    const { result } = renderHook(() => useInventario({ busqueda: 'ABONO' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.registrosFiltrados.map((r) => r.id)).toEqual(['2']);
