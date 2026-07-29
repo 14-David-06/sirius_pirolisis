@@ -15,6 +15,15 @@ import { fetchAllStockInsumos, getInsumoIds, getMovimientoIds, getStockActual } 
  * que ya no se lee la tabla `Categoria Insumo` ni se acepta el filtro
  * `?categoria=`. Ver src/lib/inventario.constants.ts.
  *
+ * SIN MATERIAS PRIMAS DEL BLEND (2026-07-29): el bioabono (Abono 4G) y los
+ * biológicos se excluyen de este listado. Son materias primas de producción, no
+ * consumibles del área, y se controlan en /bodega con su propia lógica (stock
+ * mínimo derivado de la fórmula, capacidad de producción, deducción automática
+ * al producir Blend). Mostrarlos también aquí obligaba al operario a decidir en
+ * qué módulo mirar y hacía que las alertas de reposición de consumibles se
+ * mezclaran con las de producción. El stock sigue siendo el MISMO registro del
+ * Core: esto solo cambia dónde se ve.
+ *
  * Cada registro devuelve, además de los campos crudos del Core, campos
  * normalizados para el frontend:
  * - codigo          → "SIRIUS-INS-0059"
@@ -134,6 +143,26 @@ export async function GET() {
       `${stockRecords.length} registros de stock`
     );
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Excluir las materias primas del Blend: viven en /bodega.
+    // Se filtra por record ID (no por nombre) para que renombrar el insumo en el
+    // Core no reviva la exclusión ni la rompa. Ver src/lib/bodega.constants.ts.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const insumosBodega = new Set(
+      [
+        config.airtable.blendAbono4gRecordId,
+        config.airtable.blendBiologicosRecordId,
+      ].filter((id): id is string => Boolean(id))
+    );
+
+    const insumosConsumibles = insumos.filter((insumo) => !insumosBodega.has(insumo.id));
+
+    if (insumosConsumibles.length !== insumos.length) {
+      console.log(
+        `🏬 ${insumos.length - insumosConsumibles.length} materia(s) prima(s) del Blend excluidas del inventario de consumibles (se ven en /bodega)`
+      );
+    }
+
     // Catálogo: recordId → unidad legible
     const unidadPorId = new Map<string, { simbolo: string; nombre: string }>();
     for (const unidad of unidadRecords) {
@@ -167,7 +196,7 @@ export async function GET() {
     // ═══════════════════════════════════════════════════════════════════════════
     // Normalizar cada insumo (join en memoria, sin más requests)
     // ═══════════════════════════════════════════════════════════════════════════
-    const registros = insumos.map((insumo) => {
+    const registros = insumosConsumibles.map((insumo) => {
       const stockActual = stockPorInsumo.get(insumo.id)?.stock ?? 0;
 
       // Unidad: símbolo de la unidad base; si no está, el texto libre
