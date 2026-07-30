@@ -30,6 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# logs generados en runtime por winston (LoggerService crea el directorio)
+/logs
+
+# cache del compilador swc
+/.swc
+
 # env files (can opt-in for committing if needed)
 .env*
 
