@@ -69,7 +69,8 @@ export async function POST(
     console.log(`🔍 Verificando stock blend para ${kgSolicitados} kg (pedido ${id})...`);
     const requestOrigin = new URL(request.url).origin;
     const stockUrl = new URL('/api/pirolisis/inventario/verificar-stock-blend', requestOrigin);
-    stockUrl.searchParams.set('kg_total', String(kgSolicitados));
+    // El parámetro es `kgTotal`; `kg_total` devolvía 400 (ver iniciar-produccion).
+    stockUrl.searchParams.set('kgTotal', String(kgSolicitados));
 
     const stockRes = await fetch(stockUrl.toString(), { method: 'GET' });
     const stockData = await stockRes.json();
@@ -82,7 +83,7 @@ export async function POST(
       }, { status: 502 });
     }
 
-    console.log(`📊 Stock verificado: suficiente=${stockData.suficiente}`, stockData.proporciones);
+    console.log(`📊 Stock verificado: suficiente=${stockData.suficiente}`, stockData.requerido);
 
     if (!stockData.suficiente) {
       // 3b. Stock insuficiente → cambiar pedido a "Pendiente Stock"
@@ -99,7 +100,7 @@ export async function POST(
           error: 'Stock insuficiente y no se pudo actualizar el estado del pedido',
           details: psErr,
           stock_insuficiente: true,
-          faltante: stockData.proporciones,
+          faltante: stockData.faltante,
         }, { status: 502 });
       }
 
@@ -109,8 +110,10 @@ export async function POST(
         aprobado: false,
         message: 'Stock insuficiente — pedido marcado como Pendiente Stock',
         estado_actual: 'Pendiente Stock',
-        faltante: stockData.proporciones,
-        stock: stockData.stock,
+        // Claves reales de verificar-stock-blend (antes: proporciones / stock).
+        requerido: stockData.requerido,
+        disponible: stockData.disponible,
+        faltante: stockData.faltante,
       }, { status: 200 });
     }
 

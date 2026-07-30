@@ -108,22 +108,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const pedidoIds = Object.keys(detallesByPedidoId);
-    if (pedidoIds.length === 0) {
-      return NextResponse.json({ records: [], source: 'pedidos-core' }, { status: 200 });
-    }
-
-    // ── 2. Listar Pedidos en Core (paginado por lotes de 100 IDs) ─────────
+    // ── 2. Listar Pedidos en Core y quedarse con los de Blend ─────────────
+    //
+    // ⚠️ NO basta con seguir el link `Pedido` del detalle (2026-07-29): en Core
+    // hay detalles de Biochar Blend SIN ese link (se perdió al editar), y
+    // filtrar solo por él dejaba la lista de pedidos completamente vacía.
+    //
+    // Un pedido es de Pirólisis si cumple cualquiera de las dos condiciones:
+    //   a) tiene un detalle de Biochar Blend vinculado, o
+    //   b) `Origen del Pedido` = 'PiroliApp (Pirolisis)' — el campo que el Core
+    //      tiene justamente para separar las áreas, y que el POST siempre escribe.
+    //
+    // Se lee la tabla completa (paginada) en vez de armar un OR de RECORD_ID()
+    // por lotes: es más simple y no depende de los links para saber qué traer.
     type PedidoCoreRecord = { id: string; fields: Record<string, unknown> };
-    const allPedidos: PedidoCoreRecord[] = [];
-    const chunkSize = 80;
-    for (let i = 0; i < pedidoIds.length; i += chunkSize) {
-      const chunk = pedidoIds.slice(i, i + chunkSize);
-      const orParts = chunk.map((id) => `RECORD_ID()='${id}'`).join(',');
-      const formula = `OR(${orParts})`;
-      const pParams = new URLSearchParams();
-      pParams.set('filterByFormula', formula);
-      pParams.set('pageSize', '100');
+    const todosLosPedidos: PedidoCoreRecord[] = [];
+    let pOffset: string | undefined;
+    do {
+      const pParams = new URLSearchParams({ pageSize: '100' });
+      if (pOffset) pParams.set('offset', pOffset);
       const pRes = await fetch(
         `https://api.airtable.com/v0/${pedidosCoreBaseId}/${pedidosTable}?${pParams.toString()}`,
         { headers: coreHeaders }
@@ -136,7 +139,19 @@ export async function GET(request: NextRequest) {
           { status: pRes.status }
         );
       }
-      allPedidos.push(...(pData.records || []));
+      todosLosPedidos.push(...(pData.records || []));
+      pOffset = pData.offset;
+    } while (pOffset);
+
+    const ORIGEN_PIROLISIS = 'PiroliApp (Pirolisis)';
+    const allPedidos = todosLosPedidos.filter(
+      (p) =>
+        Boolean(detallesByPedidoId[p.id]) ||
+        String(p.fields?.['Origen del Pedido'] ?? '') === ORIGEN_PIROLISIS
+    );
+
+    if (allPedidos.length === 0) {
+      return NextResponse.json({ records: [], source: 'pedidos-core' }, { status: 200 });
     }
 
     // ── 3. Enriquecer con Clientes (Sirius Clients Core) ──────────────────
@@ -181,8 +196,14 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 4. Mapear a forma esperada por la UI ──────────────────────────────
-    const parseNotas = (notas: string): { empaque: string; observaciones: string; producto: string } => {
-      const result = { empaque: '', observaciones: '', producto: '' };
+    // Las notas del pedido son el formato que escribe el POST:
+    //   "Producto: Biochar Blend | KG: 1000 — Empaque: Big Bag | <observaciones>"
+    // Se extrae también el KG como RESPALDO: si el detalle perdió su link al
+    // pedido, es la única forma de saber cuántos kg se pidieron.
+    const parseNotas = (
+      notas: string
+    ): { empaque: string; observaciones: string; producto: string; kg: number } => {
+      const result = { empaque: '', observaciones: '', producto: '', kg: 0 };
       if (!notas) return result;
       const parts = notas.split('|').map((p) => p.trim());
       const obsParts: string[] = [];
@@ -192,13 +213,17 @@ export async function GET(request: NextRequest) {
           result.empaque = m[1].trim();
           continue;
         }
-        const kgEmpaque = p.match(/^KG:\s*[\d.]+\s*[—-]\s*Empaque:\s*(.+)$/i);
+        const kgEmpaque = p.match(/^KG:\s*([\d.]+)\s*[—-]\s*Empaque:\s*(.+)$/i);
         if (kgEmpaque) {
-          result.empaque = kgEmpaque[1].trim();
+          result.kg = parseFloat(kgEmpaque[1]) || 0;
+          result.empaque = kgEmpaque[2].trim();
           continue;
         }
-        const kgOnly = p.match(/^KG:\s*[\d.]+$/i);
-        if (kgOnly) continue; // KG ya viene del detalle
+        const kgOnly = p.match(/^KG:\s*([\d.]+)$/i);
+        if (kgOnly) {
+          result.kg = parseFloat(kgOnly[1]) || 0;
+          continue;
+        }
         const prod = p.match(/^Producto:\s*(.+)$/i);
         if (prod) {
           result.producto = prod[1].trim();
@@ -216,7 +241,11 @@ export async function GET(request: NextRequest) {
       const notas = String(p.fields?.['Notas'] ?? '');
       const parsed = parseNotas(notas);
       const detalle = detallesByPedidoId[p.id];
-      const kgTotal = Number(detalle?.fields?.['Cantidad Pedido'] ?? 0);
+      // El detalle del Core es la fuente preferida; las notas son el respaldo
+      // para los pedidos cuyo detalle quedó sin link (ver nota del bloque 2).
+      const kgDetalle = Number(detalle?.fields?.['Cantidad Pedido'] ?? 0);
+      const kgTotal = kgDetalle > 0 ? kgDetalle : parsed.kg;
+      const kgFuente = kgDetalle > 0 ? 'detalle' : parsed.kg > 0 ? 'notas' : 'sin-dato';
 
       // Mapear estados de Sirius Pedidos Core → estados internos de la app
       // Core: Recibido | Procesando | Enviado | Completado | Cancelado | Enviado Parcial
@@ -249,6 +278,9 @@ export async function GET(request: NextRequest) {
         // Metadatos internos para edición / acciones
         '_detalleRecordId': detalle?.id ?? '',
         '_pedidoCoreRecordId': p.id,
+        // De dónde salieron los KG: 'notas' avisa que el detalle del Core no está
+        // vinculado y que ese pedido no podrá iniciar producción hasta arreglarlo.
+        '_kgFuente': kgFuente,
       };
       return { id: p.id, fields: mappedFields };
     });

@@ -197,6 +197,14 @@ export const config = {
     // Insumos Blend (MIGRADOS AL CORE 2026-07-27)
     blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,  // SIRIUS-INS-0064
     blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,  // SIRIUS-INS-0065
+    // Biochar como insumo de bodega (2026-07-29).
+    // El biochar en PLANTA no es inventario: solo cuenta el que está en bodega. Al
+    // pasar un bache a "Bache Completo Bodega" se registra su biochar seco como
+    // Entrada en Insumos Core, y desde ahí lo lee la bodega.
+    // ⚠️ NO configurar esta variable hasta haber cargado el histórico de los baches
+    // que ya están en bodega: sin ese respaldo, el stock arrancaría en 0 y la
+    // producción de Blend se bloquearía por falta de biochar.
+    blendBiocharInsumoRecordId: process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID,
     // Field IDs para Remisiones Baches Pirolisis
     remisionesBachesFields: {
       id: process.env.AIRTABLE_REMISIONES_ID_FIELD_ID,

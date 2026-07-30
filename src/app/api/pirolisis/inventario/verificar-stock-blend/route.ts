@@ -5,18 +5,36 @@ import {
   findStockInRecords,
   getStockActual,
 } from '../../../../../lib/stock-insumos';
+import { getBiocharDisponibleKg } from '../../../../../lib/baches-biochar';
 
 /**
- * GET /api/pirolisis/inventario/verificar-stock-blend
+ * GET /api/pirolisis/inventario/verificar-stock-blend?kgTotal=1000
  *
- * Verifica si hay stock suficiente de Abono 4G y Biológicos DataLab
- * para producir una cantidad dada de Biochar Blend.
+ * Verifica si hay materia prima suficiente para producir una cantidad dada de
+ * Biochar Blend. Cubre las TRES materias primas de la fórmula:
  *
- * MIGRADO (2026-07-27): Antes leía de Inventario Insumos Pirolisis (local).
- * Ahora lee de Insumo + Stock Insumos del Core.
+ *   - Biochar puro  → suma de `Total Cantidad Actual Biochar Seco` de los baches
+ *   - Bioabono      → Stock Insumos del Core (Abono 4G)
+ *   - Biológicos    → Stock Insumos del Core
  *
- * Query params:
- * - kgTotal: KG totales de Blend a producir (requerido)
+ * El agua no se verifica: no se inventaría (se registra en el turno).
+ *
+ * BIOCHAR AÑADIDO (2026-07-29): antes solo se verificaban abono y biológicos, así
+ * que un pedido pasaba la verificación y después `runBlendDeduction` lo rechazaba
+ * al no encontrar biochar en los baches. La verificación aquí es GLOBAL (todos los
+ * baches); el reparto sobre los baches concretos que elige el operador lo sigue
+ * validando `validateBacheAllocations`.
+ *
+ * Query params (se acepta cualquiera de los dos nombres):
+ * - kgTotal / kg_total: KG totales de Blend a producir (requerido)
+ *
+ * Respuesta:
+ * {
+ *   suficiente, kgTotal,
+ *   requerido:  { biochar, abono, biologicos },
+ *   disponible: { biochar, abono, biologicos },
+ *   faltante:   { biochar, abono, biologicos }
+ * }
  */
 export async function GET(request: Request) {
   // Validar configuración
@@ -36,9 +54,11 @@ export async function GET(request: Request) {
       }, { status: 500 });
     }
 
-    // Leer query param kgTotal
+    // Se aceptan ambos nombres: los callers internos usaban `kg_total` y este
+    // endpoint solo leía `kgTotal`, lo que rompía iniciar-produccion y aprobar
+    // con un 400 silencioso. Tolerar los dos evita repetir esa clase de fallo.
     const { searchParams } = new URL(request.url);
-    const kgTotalStr = searchParams.get('kgTotal');
+    const kgTotalStr = searchParams.get('kgTotal') ?? searchParams.get('kg_total');
 
     if (!kgTotalStr) {
       return NextResponse.json({
@@ -55,17 +75,25 @@ export async function GET(request: Request) {
       }, { status: 400 });
     }
 
-    // Proporciones del Blend
-    const { pctAbono, pctBiologicos } = config.blend;
+    // Proporciones del Blend (las mismas que aplica runBlendDeduction)
+    const { pctBiochar, pctAbono, pctBiologicos } = config.blend;
+    const kgBiochar = kgTotal * pctBiochar;
     const kgAbono = kgTotal * pctAbono;
     const kgBiologicos = kgTotal * pctBiologicos;
 
-    console.log(`🔍 Verificando stock para ${kgTotal} kg de Blend: Abono=${kgAbono.toFixed(2)} kg, Biológicos=${kgBiologicos.toFixed(2)} kg`);
+    console.log(
+      `🔍 Verificando stock para ${kgTotal} kg de Blend: ` +
+      `biochar=${kgBiochar.toFixed(2)} kg, abono=${kgAbono.toFixed(2)} kg, biologicos=${kgBiologicos.toFixed(2)} L`
+    );
 
+    // Las dos fuentes en paralelo: baches (base local) e insumos (Core).
     // NOTA: Campo {Area} no existe en Stock Insumos
     // NOTA 2: Insumo ID es multipleRecordLinks; el match se hace en JS sobre los
     //         record IDs. Ver src/lib/stock-insumos.ts
-    const stockRecords = await fetchAllStockInsumos();
+    const [stockBiochar, stockRecords] = await Promise.all([
+      getBiocharDisponibleKg(),
+      fetchAllStockInsumos(),
+    ]);
 
     const stockDe = (insumoRecordId: string) => {
       const { record } = findStockInRecords(insumoRecordId, stockRecords);
@@ -75,34 +103,39 @@ export async function GET(request: Request) {
     const stockAbono = stockDe(config.airtable.blendAbono4gRecordId!);
     const stockBiologicos = stockDe(config.airtable.blendBiologicosRecordId!);
 
-    console.log(`📦 Stock disponible: Abono=${stockAbono} kg, Biológicos=${stockBiologicos} L`);
+    console.log(
+      `📦 Stock disponible: biochar=${stockBiochar} kg, abono=${stockAbono} kg, biologicos=${stockBiologicos} L`
+    );
 
-    // Verificar si hay suficiente
+    const suficienteBiochar = stockBiochar >= kgBiochar;
     const suficienteAbono = stockAbono >= kgAbono;
     const suficienteBiologicos = stockBiologicos >= kgBiologicos;
-    const suficiente = suficienteAbono && suficienteBiologicos;
+    const suficiente = suficienteBiochar && suficienteAbono && suficienteBiologicos;
 
     const resultado = {
       suficiente,
       kgTotal,
       requerido: {
+        biochar: Number(kgBiochar.toFixed(2)),
         abono: Number(kgAbono.toFixed(2)),
         biologicos: Number(kgBiologicos.toFixed(2)),
       },
       disponible: {
+        biochar: stockBiochar,
         abono: stockAbono,
         biologicos: stockBiologicos,
       },
       faltante: {
+        biochar: suficienteBiochar ? 0 : Number((kgBiochar - stockBiochar).toFixed(2)),
         abono: suficienteAbono ? 0 : Number((kgAbono - stockAbono).toFixed(2)),
         biologicos: suficienteBiologicos ? 0 : Number((kgBiologicos - stockBiologicos).toFixed(2)),
       },
     };
 
     if (!suficiente) {
-      console.warn('⚠️ Stock insuficiente:', resultado.faltante);
+      console.warn('⚠️ Materia prima insuficiente:', resultado.faltante);
     } else {
-      console.log('✅ Stock suficiente para la producción');
+      console.log('✅ Materia prima suficiente para la producción');
     }
 
     return NextResponse.json(resultado, { status: 200 });

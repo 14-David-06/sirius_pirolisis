@@ -166,7 +166,10 @@ export async function POST(
     console.log(`🔍 Verificando stock blend para ${kgSolicitados} kg (pedido core ${idPedidoCore})...`);
     const requestOrigin = new URL(request.url).origin;
     const stockUrl = new URL('/api/pirolisis/inventario/verificar-stock-blend', requestOrigin);
-    stockUrl.searchParams.set('kg_total', String(kgSolicitados));
+    // ⚠️ El nombre del parámetro es `kgTotal`. Enviar `kg_total` devolvía 400 y
+    // este endpoint lo traducía a un 502 "Error al verificar stock": iniciar
+    // producción era imposible desde la migración al Core (2026-07-27).
+    stockUrl.searchParams.set('kgTotal', String(kgSolicitados));
 
     const stockRes = await fetch(stockUrl.toString(), { method: 'GET' });
     const stockData = await stockRes.json();
@@ -185,12 +188,15 @@ export async function POST(
       console.log(`⚠️ Pedido ${id}: stock insuficiente → Pendiente Stock`);
       return NextResponse.json(
         {
-          error: 'Insumos insuficientes',
+          error: 'Materia prima insuficiente',
           mensaje:
-            'Faltan insumos para iniciar la producción. Registra la entrada en el inventario antes de continuar.',
+            'Falta materia prima para iniciar la producción. Registra la entrada en bodega antes de continuar.',
           estado_actual: 'Pendiente Stock',
-          insumos: stockData.proporciones,
-          stock: stockData.stock,
+          // Claves reales de verificar-stock-blend. Antes se leían `proporciones`
+          // y `stock`, que no existen: el 409 viajaba con los campos en undefined.
+          requerido: stockData.requerido,
+          disponible: stockData.disponible,
+          faltante: stockData.faltante,
         },
         { status: 409 }
       );

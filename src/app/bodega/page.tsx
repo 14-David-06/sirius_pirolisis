@@ -17,7 +17,6 @@ import {
   MateriaPrimaCard,
   CapacidadProduccionCard,
   EntradaMateriaPrimaForm,
-  SalidaMateriaPrimaForm,
   MovimientosTable,
   BachesBiocharTable,
 } from '@/components/bodega';
@@ -25,7 +24,6 @@ import { IconWarehouse } from '@/components/bodega/Icons';
 import {
   IconAlert,
   IconArrowDownToBox,
-  IconArrowUpFromBox,
   IconPackage,
   IconX,
 } from '@/components/inventario/Icons';
@@ -34,18 +32,18 @@ import { useBodega } from '@/lib/useBodega';
 const FONDO =
   "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')";
 
-type ModalMode = 'entrada' | 'salida';
-
-const MODAL_COPY: Record<ModalMode, { titulo: string; descripcion: string }> = {
-  entrada: {
-    titulo: 'Entrada a bodega',
-    descripcion: 'Registra la materia prima que llega y entra al stock del área.',
-  },
-  salida: {
-    titulo: 'Salida de bodega',
-    descripcion: 'Registra pérdidas, daños o ajustes de conteo de una materia prima.',
-  },
-};
+/**
+ * La bodega solo registra ENTRADAS a mano.
+ *
+ * Las salidas no se digitan: el consumo de materia prima lo descuenta la
+ * auto-deducción al confirmar una producción de Blend, y el biochar entra al
+ * inventario al registrar producción en baches. Ofrecer botones para eso
+ * invitaba a registrar dos veces el mismo movimiento.
+ */
+const MODAL_COPY = {
+  titulo: 'Entrada a bodega',
+  descripcion: 'Registra la materia prima que llega y entra al stock del área.',
+} as const;
 
 /** Nombre del usuario en sesión (mismo criterio que el resto de los módulos). */
 const getCurrentUserName = (): string => {
@@ -105,7 +103,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 function BodegaContent() {
-  const [modalMode, setModalMode] = useState<ModalMode | null>(null);
+  const [entradaAbierta, setEntradaAbierta] = useState(false);
 
   const {
     materiales,
@@ -122,7 +120,7 @@ function BodegaContent() {
   } = useBodega();
 
   const handleModalSuccess = async (mensaje: string) => {
-    setModalMode(null);
+    setEntradaAbierta(false);
     await refresh();
     alert(mensaje);
   };
@@ -199,28 +197,13 @@ function BodegaContent() {
         <div className="mt-5 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setModalMode('entrada')}
+            onClick={() => setEntradaAbierta(true)}
             disabled={!puedeRegistrarMovimientos}
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
           >
             <IconArrowDownToBox className="w-4 h-4" />
             Registrar entrada
           </button>
-          <button
-            type="button"
-            onClick={() => setModalMode('salida')}
-            disabled={!puedeRegistrarMovimientos}
-            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-rose-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <IconArrowUpFromBox className="w-4 h-4" />
-            Registrar salida
-          </button>
-          <Link
-            href="/sistema-baches"
-            className="inline-flex items-center gap-2 rounded-lg bg-white/5 ring-1 ring-white/15 px-4 py-2 text-sm font-medium text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
-          >
-            Ingresar biochar (baches)
-          </Link>
         </div>
       </header>
 
@@ -262,8 +245,8 @@ function BodegaContent() {
         <MovimientosTable movimientos={movimientos} error={errorMovimientos} />
       </div>
 
-      {/* Modal de formularios */}
-      {modalMode && (
+      {/* Modal de entrada */}
+      {entradaAbierta && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:items-center"
           role="dialog"
@@ -274,13 +257,13 @@ function BodegaContent() {
             <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
               <div>
                 <h2 id="modal-bodega-titulo" className="text-lg font-semibold text-white">
-                  {MODAL_COPY[modalMode].titulo}
+                  {MODAL_COPY.titulo}
                 </h2>
-                <p className="mt-1 text-sm text-white/60">{MODAL_COPY[modalMode].descripcion}</p>
+                <p className="mt-1 text-sm text-white/60">{MODAL_COPY.descripcion}</p>
               </div>
               <button
                 type="button"
-                onClick={() => setModalMode(null)}
+                onClick={() => setEntradaAbierta(false)}
                 aria-label="Cerrar"
                 className="shrink-0 rounded-lg p-1.5 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
               >
@@ -288,23 +271,13 @@ function BodegaContent() {
               </button>
             </div>
 
-            {modalMode === 'entrada' ? (
-              <EntradaMateriaPrimaForm
-                materiales={materialesGestionables}
-                getCurrentUserName={getCurrentUserName}
-                getCurrentUserIdCore={getCurrentUserIdCore}
-                onSuccess={handleModalSuccess}
-                onCancel={() => setModalMode(null)}
-              />
-            ) : (
-              <SalidaMateriaPrimaForm
-                materiales={materialesGestionables}
-                getCurrentUserName={getCurrentUserName}
-                getCurrentUserIdCore={getCurrentUserIdCore}
-                onSuccess={handleModalSuccess}
-                onCancel={() => setModalMode(null)}
-              />
-            )}
+            <EntradaMateriaPrimaForm
+              materiales={materialesGestionables}
+              getCurrentUserName={getCurrentUserName}
+              getCurrentUserIdCore={getCurrentUserIdCore}
+              onSuccess={handleModalSuccess}
+              onCancel={() => setEntradaAbierta(false)}
+            />
           </div>
         </div>
       )}

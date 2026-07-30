@@ -105,25 +105,21 @@ export function minimoPorLoteReferencia(pctBlend: number): number {
   return Number((LOTE_BLEND_REFERENCIA_KG * pctBlend).toFixed(2));
 }
 
-/** Tipos de salida manual permitidos en bodega. */
-export const TIPOS_SALIDA_BODEGA = [
-  { value: 'dano_o_perdida', label: 'Daño o pérdida' },
-  { value: 'ajuste_inventario', label: 'Ajuste de inventario' },
-  { value: 'limpieza_mantenimiento', label: 'Limpieza / mantenimiento' },
-  { value: 'otro', label: 'Otro' },
-] as const;
+// ============================================================================
+// SALIDAS: NO SE REGISTRAN A MANO (2026-07-29)
+// ============================================================================
+// La bodega solo registra ENTRADAS. Las salidas de materia prima las genera la
+// auto-deducción al confirmar una producción de Blend (src/lib/blend-deduction.ts)
+// y las del biochar salen por remisión de baches. Un formulario de salida manual
+// abría la puerta a descontar dos veces el mismo consumo.
 
 export const MENSAJES_BODEGA = {
   EXITO: {
     ENTRADA: 'Entrada registrada en bodega',
-    SALIDA: 'Salida registrada en bodega',
   },
   ERROR: {
     SELECCIONAR_MATERIAL: 'Selecciona una materia prima',
     CANTIDAD_INVALIDA: 'Ingresa una cantidad mayor que cero',
-    OBSERVACIONES_REQUERIDAS: 'Las observaciones son obligatorias cuando el tipo es "Otro"',
-    STOCK_INSUFICIENTE: (cantidad: number, disponible: number, unidad: string) =>
-      `No puedes retirar ${cantidad} ${unidad}: solo hay ${disponible} ${unidad} en bodega.`,
     BIOCHAR_NO_MANUAL:
       'El biochar no se ingresa a mano: entra al inventario al registrar producción en baches.',
   },

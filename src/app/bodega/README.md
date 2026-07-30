@@ -29,8 +29,7 @@ src/components/bodega/
 ├── MateriaPrimaCard.tsx            # Tarjeta por materia prima
 ├── BachesBiocharTable.tsx          # Biochar disponible bache por bache
 ├── MovimientosTable.tsx            # Entradas y salidas recientes
-├── EntradaMateriaPrimaForm.tsx     # Registrar entrada
-└── SalidaMateriaPrimaForm.tsx      # Registrar salida (pérdida/ajuste)
+└── EntradaMateriaPrimaForm.tsx     # Registrar entrada (única acción manual)
 
 src/lib/bodega.constants.ts         # Registro de materias primas y umbrales
 src/lib/useBodega.ts                # Hook de datos
@@ -85,9 +84,10 @@ El umbral de reposición de cada materia prima es, en orden de prioridad:
 Se prefiere derivarlo de la fórmula antes que inventar un número por materia
 prima: el umbral significa "tengo bodega para producir al menos un lote".
 
-## Entradas y salidas
+## Movimientos: solo entradas a mano
 
-**Entradas** reutilizan los endpoints que ya alimentan la producción de Blend:
+La **única acción manual** de la bodega es registrar una entrada. Reutiliza los
+endpoints que ya alimentan la producción de Blend:
 
 - `POST /api/pirolisis/inventario/entrada-abono4g`
 - `POST /api/pirolisis/inventario/entrada-biologicos`
@@ -95,11 +95,21 @@ prima: el umbral significa "tengo bodega para producir al menos un lote".
 Así una entrada hecha desde la bodega es indistinguible de una hecha desde otro
 punto del sistema, y el stock que verifica la producción es el mismo.
 
-**Salidas** van a `POST /api/inventario/remove-quantity` y **no ofrecen el tipo de
-uso `balance_de_masa`** a propósito: el consumo por producción de Blend lo
-descuenta automáticamente `blend-deduction.ts` al confirmar la producción.
-Registrarlo también a mano duplicaría el descuento. La salida manual existe para
-lo que la fórmula no explica: pérdidas, daños y ajustes de conteo.
+**No hay formulario de salida** (2026-07-29). Las salidas se generan solas:
+
+| Salida | Quién la registra |
+|---|---|
+| Consumo de bioabono y biológicos | `src/lib/blend-deduction.ts` al confirmar una producción de Blend |
+| Consumo de biochar | Remisión de baches (`Detalle Cantidades Remision Pirolisis`) |
+
+Ofrecer además una salida manual invitaba a descontar dos veces el mismo consumo.
+Tampoco hay botón para ingresar biochar: entra al inventario al registrar
+producción en `/sistema-baches`.
+
+Si algún día hace falta registrar una pérdida o un ajuste de conteo, el camino ya
+existe: `POST /api/inventario/remove-quantity` con `tipo_uso` `dano_o_perdida` o
+`ajuste_inventario` (nunca `balance_de_masa`, que es lo que descuenta la
+producción).
 
 ## Nombres de campo en Airtable
 

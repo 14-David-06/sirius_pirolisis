@@ -12,6 +12,7 @@ import {
   getStockActual,
   type StockInsumoRecord,
 } from '../../../../lib/stock-insumos';
+import { fetchBachesConBiochar } from '../../../../lib/baches-biochar';
 import type {
   BacheBiochar,
   BodegaData,
@@ -45,43 +46,6 @@ interface AirtableRecord {
   fields: Record<string, unknown>;
 }
 
-/** Lee una tabla completa siguiendo la paginación de Airtable. */
-async function fetchTable(
-  baseId: string,
-  tableId: string,
-  token: string,
-  filterByFormula?: string
-): Promise<AirtableRecord[]> {
-  const all: AirtableRecord[] = [];
-  let offset: string | undefined;
-
-  do {
-    const url = new URL(`${AT}/${baseId}/${tableId}`);
-    url.searchParams.set('pageSize', '100');
-    if (filterByFormula) url.searchParams.set('filterByFormula', filterByFormula);
-    if (offset) url.searchParams.set('offset', offset);
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(`Error al leer ${tableId}: ${JSON.stringify(data)}`);
-    }
-
-    all.push(...((data.records ?? []) as AirtableRecord[]));
-    offset = data.offset;
-  } while (offset);
-
-  return all;
-}
-
 /** Las fórmulas de Airtable pueden devolver `{ specialValue: 'NaN' }`. */
 function toNumber(value: unknown): number {
   const n = typeof value === 'object' && value !== null ? NaN : Number(value);
@@ -92,29 +56,6 @@ function estadoDeStock(stock: number, minimo: number): EstadoStock {
   if (stock <= 0) return 'agotado';
   if (minimo > 0 && stock <= minimo) return 'por_agotarse';
   return 'disponible';
-}
-
-/** Baches con biochar seco disponible, de mayor a menor cantidad. */
-async function fetchBachesConBiochar(): Promise<BacheBiochar[]> {
-  const { token, baseId, bachesTableId } = config.airtable;
-
-  if (!token || !baseId || !bachesTableId) {
-    throw new Error(
-      'Configuración de baches incompleta: faltan AIRTABLE_TOKEN, AIRTABLE_BASE_ID o AIRTABLE_BACHES_TABLE_ID'
-    );
-  }
-
-  const baches = await fetchTable(baseId, bachesTableId, token);
-
-  return baches
-    .map((bache) => ({
-      id: bache.id,
-      codigo: String(bache.fields?.['Codigo Bache'] ?? bache.id),
-      kg: toNumber(bache.fields?.['Total Cantidad Actual Biochar Seco']),
-      estado: String(bache.fields?.['Estado Bache'] ?? ''),
-    }))
-    .filter((bache) => bache.kg > 0)
-    .sort((a, b) => b.kg - a.kg);
 }
 
 /** Insumo del Core (nombre, código, stock mínimo) por record ID. */

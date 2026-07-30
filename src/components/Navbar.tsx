@@ -135,10 +135,10 @@ export default function Navbar() {
         icon: "",
         items: [
           { label: "Activos Fijos", href: "/activos-fijos", icon: "🔧", description: "Gestión de activos de la empresa" },
-          { label: "Bodega", href: "/bodega", icon: "🏬", description: "Materias primas del Biochar Blend" },
           { label: "Inventario Pirolisis", href: "/inventario-pirolisis", icon: "📦", description: "Gestión de insumos consumibles" },
           { label: "Manejo Residuos", href: "/manejo-residuos", icon: "", description: "Gestión de residuos" },
           { label: "Sistema de Baches", href: "/sistema-baches", icon: "", description: "Control por lotes" },
+          { label: "Bodega", href: "/bodega", icon: "🏬", description: "Materias primas del Biochar Blend" },
         ]
       },
       {
@@ -146,6 +146,7 @@ export default function Navbar() {
         icon: "",
         items: [
           { label: "Admin Pedidos", href: "/pirolisis/blend/admin-pedidos", icon: "", description: "Aprobar y gestionar pedidos blend" },
+          { label: "Agendamiento de Pedidos", href: "/calendario-blend", icon: "📅", description: "Calendario de entregas y cobertura de bodega" },
         ]
       },
       {
