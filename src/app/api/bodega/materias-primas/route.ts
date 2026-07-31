@@ -12,7 +12,11 @@ import {
   getStockActual,
   type StockInsumoRecord,
 } from '../../../../lib/stock-insumos';
-import { fetchBachesConBiochar } from '../../../../lib/baches-biochar';
+import {
+  fetchBachesBiocharCore,
+  fetchBachesConBiochar,
+  type BacheBiocharCore,
+} from '../../../../lib/baches-biochar';
 import type {
   BacheBiochar,
   BodegaData,
@@ -27,15 +31,19 @@ import type { EstadoStock } from '../../../../lib/inventario.format';
  * Stock de las tres materias primas del Biochar Blend, con la capacidad de
  * producción que permiten.
  *
- * Dos fuentes de verdad, una por naturaleza de la materia prima:
- *   - Bioabono y Biológicos → Insumo + Stock Insumos (Sirius Insumos Core).
- *   - Biochar puro → suma de `Total Cantidad Actual Biochar Seco` de los baches
- *     de la base de Pirólisis. No existe como insumo del Core: se produce, no se
- *     compra, y su trazabilidad es el bache.
+ * ⚠️ MIGRACIÓN 2026-07-30: UNA sola fuente de verdad, Sirius Insumos Core. Las
+ * tres materias primas son insumos del Core (`Abono 4G`, `Biochar Puro`,
+ * `Biológicos DataLab`) y su saldo es `stock_actual` de `Stock Insumos`. Antes el
+ * biochar era la excepción y salía de la tabla de baches de PiroliApp, lo que
+ * ponía dos fuentes del mismo número en la misma pantalla.
  *
- * Los fallos parciales NO tumban la respuesta: si el Core no responde, se
- * devuelve el biochar con una advertencia (y al revés). Una bodega a medias es
- * más útil que un error en pantalla.
+ * El biochar conserva su desglose BACHE POR BACHE, reconstruido del libro mayor
+ * del Core (`ID Bache Origen` de cada movimiento). La tabla de baches se sigue
+ * leyendo SOLO para contrastar: si las dos vistas se separan, es que un consumo se
+ * escribió en una y no en la otra, y eso se avisa en vez de esconderse.
+ *
+ * Los fallos parciales NO tumban la respuesta: se devuelve lo que se pudo leer con
+ * su advertencia. Una bodega a medias es más útil que un error en pantalla.
  */
 
 const AT = 'https://api.airtable.com/v0';
@@ -90,6 +98,7 @@ async function fetchInsumoCore(insumoId: string): Promise<AirtableRecord | null>
 function insumoIdDe(def: MateriaPrimaDef): string | undefined {
   if (def.key === 'bioabono') return config.airtable.blendAbono4gRecordId;
   if (def.key === 'biologicos') return config.airtable.blendBiologicosRecordId;
+  if (def.key === 'biochar') return config.airtable.blendBiocharInsumoRecordId;
   return undefined;
 }
 
@@ -117,47 +126,64 @@ function materiaVacia(def: MateriaPrimaDef): MateriaPrima {
 export async function GET() {
   const advertencias: string[] = [];
 
-  // Las dos fuentes se leen en paralelo y por separado: el fallo de una no
-  // invalida a la otra (`allSettled`, no `all`).
-  const [bachesResult, coreResult] = await Promise.allSettled([
-    fetchBachesConBiochar(),
+  // Todo en paralelo y con `allSettled`: el fallo de una lectura no invalida a las
+  // otras. Los baches son solo el contraste del biochar, no su fuente.
+  const [coreResult, bachesCoreResult, bachesLocalResult] = await Promise.allSettled([
     fetchAllStockInsumos(),
+    fetchBachesBiocharCore(),
+    fetchBachesConBiochar(),
   ]);
 
-  const baches: BacheBiochar[] = bachesResult.status === 'fulfilled' ? bachesResult.value : [];
-  if (bachesResult.status === 'rejected') {
-    console.error('❌ Bodega: no se pudo leer el biochar de los baches:', bachesResult.reason);
-    advertencias.push(
-      'No se pudo leer el biochar disponible en baches. El stock de biochar se muestra en 0.'
-    );
-  }
-
-  const stockRecords: StockInsumoRecord[] = coreResult.status === 'fulfilled' ? coreResult.value : [];
+  const stockRecords: StockInsumoRecord[] =
+    coreResult.status === 'fulfilled' ? coreResult.value : [];
   if (coreResult.status === 'rejected') {
     console.error('❌ Bodega: no se pudo leer Stock Insumos del Core:', coreResult.reason);
     advertencias.push(
-      'No se pudo leer Sirius Insumos Core. El stock de bioabono y biológicos se muestra en 0.'
+      'No se pudo leer Sirius Insumos Core. El stock de las materias primas se muestra en 0.'
     );
   }
 
-  const biocharKg = baches.reduce((total, bache) => total + bache.kg, 0);
+  // Desglose por bache desde el libro mayor del Core.
+  const bachesCore: BacheBiocharCore[] =
+    bachesCoreResult.status === 'fulfilled' ? bachesCoreResult.value ?? [] : [];
+  if (bachesCoreResult.status === 'rejected') {
+    console.error('❌ Bodega: no se pudo reconstruir el biochar por bache:', bachesCoreResult.reason);
+    advertencias.push('No se pudo reconstruir el detalle de biochar por bache desde el Core.');
+  }
+
+  // Solo con saldo > 0: es lo que hay en bodega hoy. Los agotados quedan en el
+  // historico de movimientos, no en la lista de existencias.
+  const baches: BacheBiochar[] = bachesCore
+    .filter((b) => b.kg > 0)
+    .map((b) => ({
+      id: b.codigo,
+      codigo: b.codigo,
+      kg: b.kg,
+      // El Core no guarda `Estado Bache`: el estado de BODEGA se deriva del saldo.
+      estado: b.kgConsumido > 0 ? 'Parcialmente consumido' : 'Completo en bodega',
+    }));
+
+  // Contraste con la tabla de baches de PiroliApp. No alimenta ningun numero: si
+  // las dos vistas del mismo inventario se separan, hay un consumo escrito en una
+  // sola. 1 kg de tolerancia por el redondeo a 2 decimales en cientos de movimientos.
+  if (bachesLocalResult.status === 'fulfilled') {
+    const kgLocal = bachesLocalResult.value.reduce((total, b) => total + b.kg, 0);
+    const kgCore = bachesCore.reduce((total, b) => total + b.kg, 0);
+    if (bachesCore.length && Math.abs(kgCore - kgLocal) > 1) {
+      advertencias.push(
+        `El biochar de Sirius Insumos Core (${kgCore.toFixed(2)} kg) y el de la tabla de baches ` +
+          `(${kgLocal.toFixed(2)} kg) no coinciden. Algun consumo quedo registrado en una sola de ` +
+          `las dos vistas: revisa que cada Salida de biochar del Core tenga su fila de detalle por bache.`
+      );
+    }
+  } else {
+    console.warn('⚠️ Bodega: no se pudo contrastar contra la tabla de baches:', bachesLocalResult.reason);
+  }
 
   const materiales: MateriaPrima[] = [];
 
+  // Las tres materias primas por el MISMO camino: insumo del Core + Stock Insumos.
   for (const def of MATERIAS_PRIMAS_ORDENADAS) {
-    // ── Biochar: el stock son los baches ──────────────────────────────────────
-    if (def.fuente === 'baches') {
-      const stockMinimo = minimoPorLoteReferencia(def.pctBlend);
-      materiales.push({
-        ...materiaVacia(def),
-        stock: biocharKg,
-        stockMinimo,
-        estado: estadoDeStock(biocharKg, stockMinimo),
-      });
-      continue;
-    }
-
-    // ── Bioabono y biológicos: insumos del Core ───────────────────────────────
     const insumoId = insumoIdDe(def);
 
     if (!insumoId) {
@@ -184,13 +210,13 @@ export async function GET() {
     const { record: stockRecord } = findStockInRecords(insumoId, stockRecords);
     if (!stockRecord && coreResult.status === 'fulfilled') {
       advertencias.push(
-        `${def.nombre}: no tiene registro en Stock Insumos del Core, así que no se pueden registrar movimientos.`
+        `${def.nombre}: no tiene registro en Stock Insumos del Core, asi que no se pueden registrar movimientos.`
       );
     }
 
     const stock = stockRecord ? getStockActual(stockRecord) : 0;
 
-    // El umbral del Core manda si está definido; si no, lo que consume un lote
+    // El umbral del Core manda si esta definido; si no, lo que consume un lote
     // de referencia de Blend.
     const minimoCore = toNumber(insumo.fields?.['Stock Minimo']);
     const stockMinimo = minimoCore > 0 ? minimoCore : minimoPorLoteReferencia(def.pctBlend);
@@ -198,9 +224,10 @@ export async function GET() {
     materiales.push({
       key: def.key,
       nombre: def.nombre,
-      nombreCore: typeof insumo.fields?.['Nombre'] === 'string'
-        ? (insumo.fields['Nombre'] as string)
-        : def.nombreCore ?? null,
+      nombreCore:
+        typeof insumo.fields?.['Nombre'] === 'string'
+          ? (insumo.fields['Nombre'] as string)
+          : def.nombreCore ?? null,
       codigo: String(insumo.fields?.['Código SIRIUS-INS'] ?? ''),
       insumoId,
       unidad: def.unidad,
@@ -210,6 +237,7 @@ export async function GET() {
       stockMinimo,
       estado: estadoDeStock(stock, stockMinimo),
       permiteEntradaManual: def.permiteEntradaManual,
+      tieneDesglosePorBache: def.tieneDesglosePorBache ?? false,
       descripcion: def.descripcion,
       kgBlendPosibles: 0,
     });
@@ -255,12 +283,10 @@ export async function GET() {
   };
 
   console.log(
-    `🏬 Bodega: biochar=${biocharKg} kg (${baches.length} baches), ` +
-    materiales
-      .filter((m) => m.fuente === 'insumos_core')
-      .map((m) => `${m.nombre}=${m.stock} ${m.unidad}`)
-      .join(', ') +
-    ` → capacidad ${capacidad.kgBlend} kg de Blend`
+    `🏬 Bodega (Core): ` +
+      materiales.map((m) => `${m.nombre}=${m.stock} ${m.unidad}`).join(', ') +
+      ` · ${baches.length} baches con biochar` +
+      ` → capacidad ${capacidad.kgBlend} kg de Blend`
   );
 
   return NextResponse.json(payload, { status: 200 });

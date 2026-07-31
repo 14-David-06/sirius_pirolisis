@@ -1,153 +1,86 @@
 import { NextResponse } from 'next/server';
-import { config } from '../../../../../../../lib/config';
-import { syncRemisionDispatch, remisionInputFromRecord, type SyncStep } from '../../../../../../../lib/blend-core-sync';
-
-
-// Transiciones permitidas: de → [a...]
-const TRANSICIONES: Record<string, string[]> = {
-  'Borrador':         ['Pendiente Firma', 'Cancelada'],
-  'Pendiente Firma':  ['En Transito', 'Cancelada'],
-  'En Transito':      ['Entregada', 'Cancelada'],
-  'Entregada':        [],
-  'Cancelada':        [],
-};
-
-const ESTADOS_VALIDOS = Object.keys(TRANSICIONES);
-
-function airtableHeaders() {
-  return {
-    'Authorization': `Bearer ${config.airtable.token}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-function remisionUrl(id: string) {
-  return `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.blendRemisionesTableId}/${id}`;
-}
+import {
+  ESTADO_REMISION,
+  cambiarEstado,
+  resolverRemision,
+  serializarRemision,
+} from '../../../../../../../lib/blend-remisiones-core';
 
 // PATCH /api/pirolisis/blend/remisiones/[id]/estado
-// Body: { estado: string, campos_adicionales?: Record<string, unknown> }
-//   - Al transicionar a "Pendiente Firma" se puede incluir datos de entrega
-//   - Al transicionar a "En Transito" se puede incluir Firma Timestamp, IP Firma, etc.
-//   - Al transicionar a "Entregada" → actualiza pedido origen a "Despachado"
+// Body: { estado: string }
+//
+// ⚠️ MIGRACIÓN 2026-07-30: los estados son los de Sirius Remisiones Core
+// (Borrador / Pendiente / En Tránsito / Entregada / Cancelada), no los de la
+// difunta `blend_remisiones` ("Pendiente Firma", "Despachado"…).
+//
+// La transición a `Entregada` NO se hace por aquí: pasa por
+// `POST /api/pirolisis/blend/firmar/[remisionId]`, que además registra al receptor
+// y regenera el PDF. Permitir el atajo dejaría remisiones entregadas sin firmante.
+
+/** Transiciones permitidas. Fuera de esto es un cambio inválido, no un typo. */
+const TRANSICIONES: Record<string, string[]> = {
+  [ESTADO_REMISION.borrador]: [ESTADO_REMISION.pendiente, ESTADO_REMISION.cancelada],
+  [ESTADO_REMISION.pendiente]: [ESTADO_REMISION.enTransito, ESTADO_REMISION.cancelada],
+  [ESTADO_REMISION.enTransito]: [ESTADO_REMISION.cancelada],
+  [ESTADO_REMISION.entregada]: [],
+  [ESTADO_REMISION.cancelada]: [],
+};
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!config.airtable.token || !config.airtable.baseId) {
-    return NextResponse.json(
-      { error: 'Configuración de Airtable incompleta', details: 'Faltan AIRTABLE_TOKEN o AIRTABLE_BASE_ID' },
-      { status: 500 }
-    );
-  }
-
   const { id } = await params;
 
   try {
-    const body = await request.json();
-    const { estado: estadoNuevo, campos_adicionales } = body as {
-      estado: string;
-      campos_adicionales?: Record<string, unknown>;
-    };
+    const body = await request.json().catch(() => ({}));
+    const estadoNuevo = String((body as Record<string, unknown>).estado ?? '');
 
     if (!estadoNuevo) {
       return NextResponse.json({ error: 'Campo requerido faltante: estado' }, { status: 400 });
     }
 
-    if (!ESTADOS_VALIDOS.includes(estadoNuevo)) {
-      return NextResponse.json({
-        error: 'Estado inválido',
-        details: `Valores válidos: ${ESTADOS_VALIDOS.join(', ')}`,
-      }, { status: 400 });
+    const remision = await resolverRemision(id);
+    if (!remision) {
+      return NextResponse.json({ error: 'Remisión no encontrada', details: id }, { status: 404 });
     }
 
-    // Leer estado actual de la remisión
-    const getRes = await fetch(remisionUrl(id), { headers: airtableHeaders() });
-    const getData = await getRes.json();
-
-    if (!getRes.ok) {
-      if (getRes.status === 404) return NextResponse.json({ error: 'Remisión no encontrada', details: id }, { status: 404 });
-      return NextResponse.json({ error: getData?.error || 'Airtable error', details: getData }, { status: getRes.status });
+    if (estadoNuevo === ESTADO_REMISION.entregada) {
+      return NextResponse.json(
+        {
+          error: 'Para marcar la remisión como Entregada usa el flujo de firma',
+          details: `POST /api/pirolisis/blend/firmar/${remision.recordId}`,
+        },
+        { status: 400 }
+      );
     }
 
-    const estadoActual: string = getData.fields?.['Estado'] ?? '';
-    const transicionesPermitidas: string[] = TRANSICIONES[estadoActual] ?? [];
-
-    if (!transicionesPermitidas.includes(estadoNuevo)) {
-      return NextResponse.json({
-        error: 'Transición de estado no permitida',
-        de: estadoActual,
-        a: estadoNuevo,
-        permitidas: transicionesPermitidas,
-      }, { status: 400 });
+    const permitidas = TRANSICIONES[remision.estado] ?? [];
+    if (!permitidas.includes(estadoNuevo)) {
+      return NextResponse.json(
+        {
+          error: 'Transición de estado no permitida',
+          de: remision.estado,
+          a: estadoNuevo,
+          permitidas,
+        },
+        { status: 400 }
+      );
     }
 
-    // Construir campos para el PATCH
-    const patchFields: Record<string, unknown> = {
-      'Estado': estadoNuevo,
-      ...(campos_adicionales || {}),
-    };
+    await cambiarEstado(remision.recordId, estadoNuevo);
+    const actualizada = await resolverRemision(remision.recordId);
 
-    // Si transiciona a "En Transito" y aún no hay timestamp de firma, registrarlo
-    if (estadoNuevo === 'En Transito' && !patchFields['Firma Timestamp']) {
-      patchFields['Firma Timestamp'] = new Date().toISOString();
-    }
-
-    const patchRes = await fetch(remisionUrl(id), {
-      method: 'PATCH',
-      headers: airtableHeaders(),
-      body: JSON.stringify({ fields: patchFields }),
-    });
-    const patchData = await patchRes.json();
-
-    if (!patchRes.ok) {
-      return NextResponse.json({ error: patchData?.error || 'Airtable error', details: patchData }, { status: patchRes.status });
-    }
-
-    console.log(`✅ blend_remision ${id}: ${estadoActual} → ${estadoNuevo}`);
-
-    // Efecto secundario: si se marca como Entregada → marcar pedido como Despachado
-    let pedidoActualizado = null;
-    if (estadoNuevo === 'Entregada') {
-      const pedidoIds: string[] = getData.fields?.['Pedido Origen'] ?? [];
-      const pedidoId = pedidoIds[0];
-
-      if (pedidoId) {
-        try {
-          const pedidoUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.blendPedidosTableId}/${pedidoId}`;
-          const pedidoRes = await fetch(pedidoUrl, {
-            method: 'PATCH',
-            headers: airtableHeaders(),
-            body: JSON.stringify({ fields: { 'Estado': 'Despachado' } }),
-          });
-          pedidoActualizado = await pedidoRes.json();
-          if (!pedidoRes.ok) {
-            console.warn(`⚠️ Remisión ${id} marcada Entregada, pero no se pudo actualizar pedido ${pedidoId}:`, pedidoActualizado);
-          } else {
-            console.log(`✅ Pedido ${pedidoId} → Despachado`);
-          }
-        } catch (pedidoErr) {
-          console.warn(`⚠️ Error al actualizar pedido ${pedidoId} (no crítico):`, pedidoErr);
-        }
-      }
-    }
-
-    // Sincronización aditiva a Core al despachar (Salida de inventario + espejo
-    // de remisión). Idempotente y best-effort: nunca rompe la transición local.
-    let coreSync: SyncStep[] | undefined;
-    if (estadoNuevo === 'En Transito' || estadoNuevo === 'Entregada') {
-      const rem = remisionInputFromRecord(id, patchData.fields ?? getData.fields ?? {});
-      coreSync = await syncRemisionDispatch(rem);
-      console.log(`🔄 Core sync (${id}):`, coreSync.map((s) => `${s.step}=${s.skipped ? 'skip' : s.ok ? 'ok' : 'err'}`).join(', '));
-    }
-
-    return NextResponse.json({
-      success: true,
-      record: patchData,
-      transicion: { de: estadoActual, a: estadoNuevo },
-      ...(pedidoActualizado ? { pedido_actualizado: pedidoActualizado } : {}),
-      ...(coreSync ? { core_sync: coreSync } : {}),
-    }, { status: 200 });
+    console.log(`🔄 Remisión ${remision.codigo}: ${remision.estado} → ${estadoNuevo}`);
+    return NextResponse.json(
+      {
+        success: true,
+        estado_anterior: remision.estado,
+        estado_actual: estadoNuevo,
+        record: actualizada ? serializarRemision(actualizada) : null,
+      },
+      { status: 200 }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en PATCH blend/remisiones/[id]/estado:', message);

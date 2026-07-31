@@ -5,7 +5,7 @@ import {
   findStockInRecords,
   getStockActual,
 } from '../../../../../lib/stock-insumos';
-import { getBiocharDisponibleKg } from '../../../../../lib/baches-biochar';
+import { resolverBiocharDisponible } from '../../../../../lib/baches-biochar';
 
 /**
  * GET /api/pirolisis/inventario/verificar-stock-blend?kgTotal=1000
@@ -86,14 +86,16 @@ export async function GET(request: Request) {
       `biochar=${kgBiochar.toFixed(2)} kg, abono=${kgAbono.toFixed(2)} kg, biologicos=${kgBiologicos.toFixed(2)} L`
     );
 
-    // Las dos fuentes en paralelo: baches (base local) e insumos (Core).
+    // Las dos fuentes en paralelo: biochar (Sirius Insumos Core, con los baches
+    // como respaldo — ver `resolverBiocharDisponible`) e insumos (Core).
     // NOTA: Campo {Area} no existe en Stock Insumos
     // NOTA 2: Insumo ID es multipleRecordLinks; el match se hace en JS sobre los
     //         record IDs. Ver src/lib/stock-insumos.ts
-    const [stockBiochar, stockRecords] = await Promise.all([
-      getBiocharDisponibleKg(),
+    const [biochar, stockRecords] = await Promise.all([
+      resolverBiocharDisponible(),
       fetchAllStockInsumos(),
     ]);
+    const stockBiochar = biochar.kg;
 
     const stockDe = (insumoRecordId: string) => {
       const { record } = findStockInRecords(insumoRecordId, stockRecords);

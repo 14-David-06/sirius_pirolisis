@@ -18,7 +18,28 @@ function DashboardProduccionContent() {
   const [balanceMasaData, setBalanceMasaData] = useState<any[]>([]);
   const [viajesBiomasa, setViajesBiomasa] = useState<any[]>([]);
   const [loadingPromedios, setLoadingPromedios] = useState(false);
-  
+
+  // Biochar seco disponible según Sirius Insumos Core, que desde el 2026-07-30 es
+  // el libro mayor del biochar. Antes esta cifra se sumaba en el cliente desde la
+  // lista de baches: mostraba biochar que la producción de Blend ya había
+  // consumido. `null` mientras carga o si el endpoint falla → se cae a la suma de
+  // los baches, que es la misma fuente de siempre.
+  const [biocharCoreKg, setBiocharCoreKg] = useState<number | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    fetch('/api/pirolisis/inventario/biochar-disponible')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (vigente && data && typeof data.kg === 'number') setBiocharCoreKg(data.kg);
+      })
+      .catch((err) => console.error('No se pudo leer el biochar disponible:', err));
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+
   // Usar el hook de baches para obtener datos reales
   const { 
     data: bachesData, 
@@ -757,12 +778,19 @@ function DashboardProduccionContent() {
                       <span className="inline-block animate-pulse bg-black/35 h-8 w-20 rounded"></span>
                     ) : (
                       <>
-                        {metrics.biocharSecoTotal.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {(biocharCoreKg ?? metrics.biocharSecoTotal).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         <span className="text-lg ml-1 text-white/90">kg</span>
                       </>
                     )}
                   </div>
-                  <div className="text-sm drop-shadow text-white/80">Biochar Seco Actual</div>
+                  <div className="text-sm drop-shadow text-white/80">
+                    Biochar Seco Actual
+                    {biocharCoreKg !== null && (
+                      <span className="ml-1 text-white/50" title="Fuente: Sirius Insumos Core">
+                        · Core
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="text-center bg-black/25 p-4 rounded-lg border border-white/20">

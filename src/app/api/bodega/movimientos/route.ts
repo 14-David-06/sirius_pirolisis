@@ -8,11 +8,13 @@ import type { MateriaPrimaKey } from '../../../../lib/bodega.constants';
 /**
  * GET /api/bodega/movimientos?limit=20
  *
- * Últimos movimientos (entradas y salidas) de las materias primas del Blend que
- * viven en Sirius Insumos Core: bioabono y biológicos.
+ * Movimientos (entradas y salidas) de las TRES materias primas del Blend en
+ * Sirius Insumos Core: bioabono, biochar y biologicos.
  *
- * El biochar NO aparece aquí: sus movimientos son remisiones de baches, no
- * movimientos de insumos. Se consultan en /sistema-baches.
+ * ⚠️ MIGRACION 2026-07-30: antes excluia el biochar ("sus movimientos son
+ * remisiones de baches"). Ya no: el biochar es SIRIUS-INS-0067 y sus movimientos
+ * viven aqui, uno por bache. Excluirlo ocultaba mas de un tercio de la actividad
+ * de la bodega.
  *
  * ⚠️ El match del insumo se hace en JS sobre los record IDs: en una fórmula de
  * Airtable un campo link se evalúa como el texto del campo primario del registro
@@ -104,6 +106,9 @@ export async function GET(request: Request) {
   }
   if (config.airtable.blendBiologicosRecordId) {
     materiaPorInsumo.set(config.airtable.blendBiologicosRecordId, 'biologicos');
+  }
+  if (config.airtable.blendBiocharInsumoRecordId) {
+    materiaPorInsumo.set(config.airtable.blendBiocharInsumoRecordId, 'biochar');
   }
 
   if (materiaPorInsumo.size === 0) {

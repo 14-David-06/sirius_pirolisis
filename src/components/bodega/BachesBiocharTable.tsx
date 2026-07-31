@@ -23,6 +23,7 @@ interface BachesBiocharTableProps {
 
 export default function BachesBiocharTable({ baches }: BachesBiocharTableProps) {
   const total = baches.reduce((suma, bache) => suma + bache.kg, 0);
+  const parciales = baches.filter((bache) => bache.estado === 'Parcialmente consumido').length;
   const visibles = baches.slice(0, MAX_VISIBLES);
   const restantes = baches.slice(MAX_VISIBLES);
   const kgRestantes = restantes.reduce((suma, bache) => suma + bache.kg, 0);
@@ -36,6 +37,11 @@ export default function BachesBiocharTable({ baches }: BachesBiocharTableProps) 
         </h2>
         <p className="text-xs text-white/50">
           {baches.length} {baches.length === 1 ? 'bache' : 'baches'} · {formatStock(total, 'kg')}
+          {/* Los parcialmente consumidos se distinguen: un bache abierto no es lo
+              mismo que uno completo a la hora de despachar. */}
+          {parciales > 0 && (
+            <span className="text-white/40"> · {parciales} abierto{parciales === 1 ? '' : 's'}</span>
+          )}
         </p>
       </header>
 

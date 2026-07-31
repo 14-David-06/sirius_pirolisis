@@ -152,7 +152,10 @@ export function calcularAgenda(
       kgCubiertos,
       kgSinCobertura: redondear(kgComprometidos - kgCubiertos),
       primeraFechaSinCobertura,
-      pedidosSinDetalle: eventos.filter((e) => e.kgFuente === 'notas').length,
+      // Solo los ABIERTOS: el aviso dice "no podrán iniciar producción hasta que se
+      // corrija el vínculo", y un pedido despachado o cancelado no va a producir
+      // nunca. Contarlos convertía el aviso en ruido permanente.
+      pedidosSinDetalle: abiertos.filter((e) => e.kgFuente === 'notas').length,
     },
   };
 }

@@ -23,7 +23,7 @@ export default function MovimientosTable({ movimientos, error }: MovimientosTabl
       <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 px-5 py-4">
         <h2 className="text-sm font-semibold text-white">Movimientos recientes</h2>
         <p className="text-xs text-white/50">
-          Bioabono y biológicos · el biochar se rastrea por bache
+          Las tres materias primas · Sirius Insumos Core
         </p>
       </header>
 

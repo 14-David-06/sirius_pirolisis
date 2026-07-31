@@ -41,9 +41,12 @@ export default function MateriaPrimaCard({ material, esLimitante }: MateriaPrima
           <div>
             <h3 className="text-sm font-semibold text-white">{material.nombre}</h3>
             <p className="text-xs text-white/50">
+              {/* Las tres materias primas son insumos del Core, así que las tres
+                  tienen código. El fallback solo aparece si el insumo no se pudo
+                  leer, y en ese caso la página ya muestra la advertencia. */}
               {material.codigo
                 ? `${material.codigo}${material.nombreCore ? ` · ${material.nombreCore}` : ''}`
-                : 'Trazabilidad por bache'}
+                : 'Sin código en Sirius Insumos Core'}
             </p>
           </div>
         </div>

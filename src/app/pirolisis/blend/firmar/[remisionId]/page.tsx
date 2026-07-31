@@ -145,6 +145,20 @@ export default function FirmarRemisionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [successTimestamp, setSuccessTimestamp] = useState<string | null>(null);
 
+  // Identificación de quien recibe, para cuando la remisión no traía receptor
+  // pre-registrado. No puede haber una firma sin firmante identificado, así que la
+  // API rechaza el POST sin estos datos y aquí se piden en vez de fallar.
+  const [nombreRecibe, setNombreRecibe] = useState('');
+  const [cedulaRecibe, setCedulaRecibe] = useState('');
+  const [emailRecibe, setEmailRecibe] = useState('');
+
+  /** La remisión no trae receptor pre-registrado: hay que identificarlo aquí. */
+  const necesitaIdentificacion = Boolean(
+    remision && (!remision.responsable_recibe || !remision.num_doc_recibe)
+  );
+  const identificacionCompleta =
+    !necesitaIdentificacion || (nombreRecibe.trim().length > 2 && cedulaRecibe.trim().length > 3);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
@@ -240,7 +254,18 @@ export default function FirmarRemisionPage() {
       const res = await fetch(`/api/pirolisis/blend/firmar/${remisionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firmaBase64, compromiso_aceptado: true }),
+        body: JSON.stringify({
+          firmaBase64,
+          compromiso_aceptado: true,
+          // Solo se envían si el receptor no venía pre-registrado en la remisión.
+          ...(necesitaIdentificacion
+            ? {
+                responsable_recibe: nombreRecibe.trim(),
+                num_doc_recibe: cedulaRecibe.trim(),
+                email_recibe: emailRecibe.trim() || undefined,
+              }
+            : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -279,7 +304,7 @@ export default function FirmarRemisionPage() {
     return <CancelledScreen idLegible={remision.id_legible} />;
   }
 
-  const canSign = compromisoAceptado && hasSignature && !submitting;
+  const canSign = compromisoAceptado && hasSignature && identificacionCompleta && !submitting;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -337,6 +362,55 @@ export default function FirmarRemisionPage() {
             </svg>
             <span>Ver documento PDF</span>
           </a>
+        )}
+
+        {/* ── Identificación del receptor (solo si no venía pre-registrado) ── */}
+        {necesitaIdentificacion && (
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+              ¿Quién recibe?
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Esta remisión no tiene registrado quién la recibe. Identifícate para poder firmar.
+            </p>
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">Nombre completo</span>
+                <input
+                  type="text"
+                  value={nombreRecibe}
+                  onChange={(e) => setNombreRecibe(e.target.value)}
+                  autoComplete="name"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/30 focus:outline-none"
+                  placeholder="Nombre y apellidos"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">Cédula</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={cedulaRecibe}
+                  onChange={(e) => setCedulaRecibe(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/30 focus:outline-none"
+                  placeholder="Número de documento"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">
+                  Correo electrónico <span className="text-gray-400">(opcional)</span>
+                </span>
+                <input
+                  type="email"
+                  value={emailRecibe}
+                  onChange={(e) => setEmailRecibe(e.target.value)}
+                  autoComplete="email"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/30 focus:outline-none"
+                  placeholder="correo@empresa.com"
+                />
+              </label>
+            </div>
+          </div>
         )}
 
         {/* ── Compromiso ── */}

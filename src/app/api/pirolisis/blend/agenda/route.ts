@@ -5,7 +5,8 @@ import {
   findStockInRecords,
   getStockActual,
 } from '../../../../../lib/stock-insumos';
-import { getBiocharDisponibleKg } from '../../../../../lib/baches-biochar';
+import { resolverBiocharDisponible } from '../../../../../lib/baches-biochar';
+import { getProduccionBlend } from '../../../../../lib/blend-produccion-core';
 import {
   calcularAgenda,
   ESTADOS_CERRADOS,
@@ -75,10 +76,12 @@ export async function GET(request: Request) {
       detalleRecordId: String(pedido.fields['_detalleRecordId'] ?? ''),
     }));
 
-    // Stock disponible de las tres materias primas, en paralelo.
-    const [biocharDisponible, stockRecords] = await Promise.all([
-      getBiocharDisponibleKg(),
+    // Stock disponible de las tres materias primas + producción registrada, en
+    // paralelo. Ninguna depende de las otras y son 4 bases distintas.
+    const [biochar, stockRecords, produccion] = await Promise.all([
+      resolverBiocharDisponible(),
       fetchAllStockInsumos(),
+      getProduccionBlend().catch(() => null),
     ]);
 
     const stockDe = (insumoRecordId: string | undefined) => {
@@ -88,7 +91,7 @@ export async function GET(request: Request) {
     };
 
     const disponible = {
-      biochar: biocharDisponible,
+      biochar: biochar.kg,
       abono: stockDe(config.airtable.blendAbono4gRecordId),
       biologicos: stockDe(config.airtable.blendBiologicosRecordId),
     };
@@ -121,6 +124,13 @@ export async function GET(request: Request) {
         disponible,
         formula: { pctBiochar, pctAbono, pctBiologicos, pctAgua },
         resumen,
+        produccion,
+        fuenteBiochar: {
+          origen: biochar.origen,
+          kgBaches: biochar.kgBaches,
+          kgCore: biochar.kgCore,
+          divergencia: biochar.divergencia,
+        },
       },
       { status: 200 }
     );

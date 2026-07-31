@@ -6,12 +6,16 @@
  * (lonas, químicos, EPP…) siguen en /inventario-pirolisis y las herramientas en
  * /activos-fijos.
  *
- * Cada materia prima tiene una fuente de verdad distinta y eso es deliberado:
- *   - Bioabono y Biológicos son insumos de Sirius Insumos Core: su stock es
- *     SUM(entradas) - SUM(salidas) en `Stock Insumos`.
- *   - El Biochar puro NO es un insumo del Core: se produce en la planta y su
- *     stock vive en los baches (`Total Cantidad Actual Biochar Seco`). Por eso
- *     en la bodega es de solo lectura: se ingresa produciendo, no digitando.
+ * ⚠️ MIGRACIÓN 2026-07-30: las TRES materias primas son insumos de Sirius Insumos
+ * Core y toda esta página sale del Core. Antes el biochar era la excepción (su
+ * stock vivía en la tabla de baches de PiroliApp), lo que dejaba dos fuentes de
+ * verdad en la misma pantalla y un flag `fuente` que decía una cosa y hacía otra.
+ *
+ * El biochar conserva una particularidad real: además del saldo tiene desglose
+ * BACHE POR BACHE, que se reconstruye del libro mayor del Core
+ * (`ID Bache Origen` en cada movimiento), no de la tabla de baches. La tabla de
+ * baches es el historial de PRODUCCIÓN de pirólisis; el Core es el libro mayor de
+ * BODEGA, y lo que dice el Core es lo que se puede despachar.
  */
 
 import { config } from './config';
@@ -21,8 +25,12 @@ export const MATERIA_PRIMA_KEYS = ['biochar', 'bioabono', 'biologicos'] as const
 
 export type MateriaPrimaKey = (typeof MATERIA_PRIMA_KEYS)[number];
 
-/** De dónde sale el stock de cada materia prima. */
-export type FuenteMateriaPrima = 'baches' | 'insumos_core';
+/**
+ * De dónde sale el stock. Ya todas son `insumos_core`; el tipo se conserva porque
+ * es parte del contrato con la UI y porque documenta que la fuente es una decisión
+ * explícita y no un accidente.
+ */
+export type FuenteMateriaPrima = 'insumos_core';
 
 export interface MateriaPrimaDef {
   key: MateriaPrimaKey;
@@ -37,6 +45,14 @@ export interface MateriaPrimaDef {
   pctBlend: number;
   /** Se pueden registrar entradas manuales desde la bodega. */
   permiteEntradaManual: boolean;
+  /**
+   * Tiene desglose bache por bache además del saldo. Solo el biochar: es lo único
+   * que entra a bodega en bultos identificados y trazables a un lote de producción.
+   *
+   * Antes esta distinción se codificaba en `fuente: 'baches'`, que además implicaba
+   * —falsamente— que el saldo salía de otra base.
+   */
+  tieneDesglosePorBache?: boolean;
   descripcion: string;
 }
 
@@ -51,12 +67,15 @@ export const MATERIAS_PRIMAS: Record<MateriaPrimaKey, MateriaPrimaDef> = {
   biochar: {
     key: 'biochar',
     nombre: 'Biochar puro',
+    nombreCore: 'Biochar Puro',
     unidad: 'kg',
-    fuente: 'baches',
+    fuente: 'insumos_core',
     pctBlend: config.blend.pctBiochar,
+    // No se digita: entra a bodega al registrar el bache, y sale al producir Blend.
     permiteEntradaManual: false,
+    tieneDesglosePorBache: true,
     descripcion:
-      'Producido en planta. El stock es la suma del biochar seco disponible en los baches.',
+      'Producido en planta. Entra a bodega por bache y sale al producir Blend. Stock en Sirius Insumos Core.',
   },
   bioabono: {
     key: 'bioabono',

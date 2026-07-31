@@ -811,22 +811,57 @@ export default function AdminPedidosBlendPage() {
     e.preventDefault();
     setSubmittingRemision(true); setSubmitRemisionError(null); setSubmitRemisionSuccess(null);
     try {
+      // ⚠️ CONTRATO NUEVO (2026-07-30): la remisión vive en Sirius Remisiones Core y
+      // se identifica por FK simbólicas, no por record IDs locales. La composición
+      // del Blend, el CO₂ y los baches ya NO se envían: el backend los DERIVA del
+      // lote, así que mandarlos sería darle una segunda fuente de verdad que puede
+      // contradecir al inventario.
+      const pedidoSel = pedidosValidos.find((p) => p.id === selectedPedidoIdRem);
+      const idPedidoCore = String(pedidoSel?.fields["ID Pedido Core"] ?? "");
+      const idClienteCore = String(pedidoSel?.fields["ID Cliente Core"] ?? "");
+
+      if (!idPedidoCore || !idClienteCore) {
+        setSubmitRemisionError(
+          "El pedido no tiene ID Pedido Core o ID Cliente Core. Sin esos códigos la remisión no puede cruzarse con los Core."
+        );
+        return;
+      }
+      // `produccionId` lo llena `fetchRemisionPedido` con el código de lote.
+      const lote = remisionFormData.produccionId;
+      if (!lote) {
+        setSubmitRemisionError(
+          "No se encontró el lote de producción del pedido. Inicia la producción antes de remitir."
+        );
+        return;
+      }
+
+      // El formulario sigue capturando los KG por componente, así que el total del
+      // despacho es su suma. Es lo único que viaja: el backend re-deriva la
+      // composición desde el lote para el PDF y el CO₂.
+      const kgDespacho = ['kgBiocharPuro', 'kgAbono4g', 'kgAgua', 'kgBiologicos']
+        .reduce((total, campo) => total + (parseFloat(remisionFormData[campo as keyof typeof remisionFormData] as string) || 0), 0);
+
+      if (!(kgDespacho > 0)) {
+        setSubmitRemisionError('Los KG del despacho deben ser mayores que 0.');
+        return;
+      }
+
       const postBody = {
-        pedido_id: selectedPedidoIdRem,
-        produccion_id: remisionFormData.produccionId,
-        cliente: remisionFormData.cliente || undefined,
-        nit_cc_cliente: remisionFormData.nitCcCliente || undefined,
-        fecha_evento: remisionFormData.fechaEvento || undefined,
-        realiza_registro: remisionFormData.realizaRegistro,
-        kg_biochar_puro: parseFloat(remisionFormData.kgBiocharPuro),
-        kg_abono_4g: parseFloat(remisionFormData.kgAbono4g),
-        kg_agua: parseFloat(remisionFormData.kgAgua),
-        kg_biologicos: parseFloat(remisionFormData.kgBiologicos),
-        baches_ids: selectedBachesIds,
+        id_pedido: idPedidoCore,
+        id_cliente: idClienteCore,
+        lote,
+        kg: Math.round(kgDespacho * 100) / 100,
         responsable_entrega: remisionFormData.responsableEntrega,
-        num_doc_entrega: remisionFormData.numDocEntrega,
-        telefono_entrega: remisionFormData.telefonoEntrega || undefined,
-        email_entrega: remisionFormData.emailEntrega || undefined,
+        transportista:
+          remisionFormData.responsableEntrega && remisionFormData.numDocEntrega
+            ? {
+                nombre: remisionFormData.responsableEntrega,
+                cedula: remisionFormData.numDocEntrega,
+                telefono: remisionFormData.telefonoEntrega || undefined,
+                email: remisionFormData.emailEntrega || undefined,
+              }
+            : undefined,
+        fecha_despacho: remisionFormData.fechaEvento || undefined,
         observaciones: remisionFormData.observaciones || undefined,
       };
       const createRes = await fetch("/api/pirolisis/blend/remisiones", {
@@ -855,8 +890,13 @@ export default function AdminPedidosBlendPage() {
           resetRemisionForm(); fetchRemisiones(); return;
         }
       }
-      const co2 = (parseFloat(remisionFormData.kgBiocharPuro) * FACTOR_CO2).toFixed(2);
-      setSubmitRemisionSuccess(`✅ Remisión creada. CO₂ secuestrado: ${co2} kg`);
+      // El CO₂ lo calcula el backend desde el biochar real del lote; se muestra el
+      // valor que devolvió y no uno recalculado aquí, para que no puedan diferir.
+      const co2 = createData.record?.co2_secuestrado_kg;
+      setSubmitRemisionSuccess(
+        `✅ Remisión ${createData.record?.codigo ?? ''} creada` +
+          (co2 != null ? `. CO₂ secuestrado: ${Number(co2).toFixed(2)} kg` : '')
+      );
       resetRemisionForm(); fetchRemisiones();
     } catch { setSubmitRemisionError("Error de red. Intenta de nuevo."); }
     finally { setSubmittingRemision(false); }

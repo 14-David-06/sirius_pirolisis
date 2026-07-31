@@ -6,11 +6,18 @@
 import type { EstadoStock } from '@/lib/inventario.format';
 import type { FuenteMateriaPrima, MateriaPrimaKey } from '@/lib/bodega.constants';
 
-/** Bache con biochar seco disponible. */
+/**
+ * Bache con biochar disponible en bodega.
+ *
+ * Se reconstruye del libro mayor de Sirius Insumos Core, no de la tabla de baches:
+ * `id` y `codigo` son el mismo `Codigo Bache` (S-00XXX) porque el Core guarda el
+ * código, no el record ID — no hay links entre bases.
+ */
 export interface BacheBiochar {
   id: string;
   codigo: string;
   kg: number;
+  /** Estado de BODEGA derivado del saldo, no el `Estado Bache` de PiroliApp. */
   estado: string;
 }
 
@@ -20,12 +27,14 @@ export interface MateriaPrima {
   nombre: string;
   /** Nombre del insumo en el Core, cuando difiere del nombre de la UI. */
   nombreCore: string | null;
-  /** Código simbólico del Core (SIRIUS-INS-XXXX); vacío para el biochar. */
+  /** Código simbólico del Core (SIRIUS-INS-XXXX). */
   codigo: string;
-  /** Record ID en Sirius Insumos Core; null para el biochar. */
+  /** Record ID en Sirius Insumos Core. */
   insumoId: string | null;
   unidad: string;
   fuente: FuenteMateriaPrima;
+  /** Tiene desglose bache por bache además del saldo. Solo el biochar. */
+  tieneDesglosePorBache?: boolean;
   /** Proporción en 1 kg de Blend. */
   pctBlend: number;
   stock: number;

@@ -6,21 +6,28 @@ import { runBlendDeduction } from '../../../../../../../lib/blend-deduction';
 //
 // id = recordId del Pedido en Sirius Pedidos Core.
 //
+// ⚠️ MIGRACIÓN 2026-07-30: la producción ya NO se registra como fila en
+// `Produccion Biochar Blend Pirolisis` (tabla local de PiroliApp). Ahora la
+// identidad de la producción es un CÓDIGO DE LOTE (`BLEND-…`) y el registro son
+// los movimientos en las bases Core que lo llevan: las Salidas de insumo en
+// Sirius Insumos Core (`ID Produccion Destino`) y la Entrada de producto terminado
+// en Sirius Inventario Production Core (`documento_referencia`). Ver
+// `src/lib/blend-deduction.ts`.
+//
 // Flujo:
-//   1. Lee el pedido en Sirius Pedidos Core (valida estado Recibido / Pendiente Stock)
+//   1. Lee el pedido en Sirius Pedidos Core (valida estado Recibido)
 //   2. Lee el Detalle del pedido para obtener KG solicitados (filtro por Biochar Blend)
-//   3. Llama internamente /api/pirolisis/inventario/verificar-stock-blend?kg_total=X
-//      → aplica fórmula abono = kg×0.74, biologicos = kg×0.007 contra inventario LOCAL.
-//   4a. Si insuficiente → PATCH pedido a "Pendiente Stock" y retorna 409 con detalle del faltante
-//        y mensaje guía: "Registra la entrada en Sirius Inventario Production Core...".
+//   3. Llama internamente /api/pirolisis/inventario/verificar-stock-blend?kgTotal=X
+//      → aplica la fórmula del Blend contra el inventario real.
+//   4a. Si insuficiente → retorna 409 con el detalle del faltante.
 //   4b. Si suficiente →
 //        - PATCH pedido en Core a "Procesando" (LOCK de idempotencia: re-invocar
 //          devuelve 409 porque el estado ya no es "Recibido" → no hay doble deducción).
-//        - Crea registro en blend_produccion local.
-//        - Auto-deducción (Paso 5) vía runBlendDeduction: descuenta biochar de los
-//          baches seleccionados + Abono/Biológicos de insumos + registra Entrada en
-//          Inventario Production Core + puebla links de la producción.
-//        - Retorna 200 (o 207 si la deducción falló en algún paso crítico).
+//        - Genera el código de lote y llama a runBlendDeduction, que descuenta
+//          biochar de los baches seleccionados (y su espejo en Insumos Core),
+//          Abono/Biológicos, registra la Entrada de producto terminado y pasa los
+//          baches consumidos a Bache Incompleto / Bache Agotado.
+//        - Retorna 200 (o 207 si algún paso falló).
 //
 // Requiere en el body: { baches: string[] } — record IDs de los baches que el
 // operador seleccionó para cubrir el biochar (Paso 3). El sistema reparte los KG.
@@ -34,9 +41,10 @@ export async function POST(
   const coreToken = config.airtable.pedidosCoreToken;
   const biocharCode = config.airtable.inventarioProdCoreBiocharBlendProductId;
 
+  // El token local sigue haciendo falta: la deduccion escribe el detalle por
+  // bache y el estado del bache en PiroliApp (ver blend-deduction.ts).
   const localToken = config.airtable.token;
   const localBaseId = config.airtable.baseId;
-  const blendProduccionTableId = config.airtable.blendProduccionTableId;
 
   if (!coreToken || !coreBaseId) {
     return NextResponse.json(
@@ -55,11 +63,6 @@ export async function POST(
     Authorization: `Bearer ${coreToken}`,
     'Content-Type': 'application/json',
   };
-  const localHeaders = {
-    Authorization: `Bearer ${localToken}`,
-    'Content-Type': 'application/json',
-  };
-
   const { id } = await params;
   const pedidoCoreUrl = `https://api.airtable.com/v0/${coreBaseId}/${pedidosTable}/${id}`;
 
@@ -82,12 +85,6 @@ export async function POST(
   }
   const realizaRegistro = String((body as any)?.realizaRegistro || 'Sistema');
 
-  if (!blendProduccionTableId) {
-    return NextResponse.json(
-      { error: 'AIRTABLE_BLEND_PRODUCCION_TABLE_ID no configurado' },
-      { status: 500 }
-    );
-  }
   if (!bacheIds.length) {
     return NextResponse.json(
       {
@@ -224,43 +221,21 @@ export async function POST(
       );
     }
 
-    // PATCH exitoso (pedido bloqueado en Procesando) → crear registro blend_produccion.
-    const produccionFields: Record<string, unknown> = {
-      'KG Total Blend': kgSolicitados,
-      'Cliente': idClienteCore || 'N/A',
-      'Empaque': empaque || 'N/A',
-      'Estado': 'En Proceso',
-      'Realiza Registro': realizaRegistro,
-    };
+    // PATCH exitoso: el pedido queda bloqueado en Procesando.
+    //
+    // El código de lote es la identidad de la producción. Se construye con la fecha
+    // y el pedido para que sea legible, único y DETERMINISTA: reintentar la misma
+    // producción el mismo día produce el mismo lote, así que los movimientos del
+    // Core quedan agrupados en vez de duplicados bajo códigos distintos. El pedido
+    // en Core ya no está en "Recibido", que es el lock real contra el doble consumo.
+    const hoy = new Date().toISOString().split('T')[0];
+    const sufijoPedido = (idPedidoCore || id).replace(/[^A-Za-z0-9]/g, '').slice(-8) || 'SINPED';
+    const lote = `BLEND-${hoy}-${sufijoPedido}`;
+    console.log(`🏷️ Lote de producción: ${lote} (${kgSolicitados} kg, empaque ${empaque || 'sin dato'})`);
 
-    const prodRes = await fetch(
-      `https://api.airtable.com/v0/${localBaseId}/${blendProduccionTableId}`,
-      {
-        method: 'POST',
-        headers: localHeaders,
-        body: JSON.stringify({ records: [{ fields: produccionFields }] }),
-      }
-    );
-    const prodData = await prodRes.json();
-    if (!prodRes.ok) {
-      console.error('❌ No se pudo crear registro de producción:', prodData);
-      return NextResponse.json(
-        {
-          error: 'No se pudo crear el registro de producción',
-          details: prodData,
-          aviso: 'El pedido ya quedó en Procesando en Core; no se aplicó ninguna deducción.',
-        },
-        { status: 502 }
-      );
-    }
-    const produccionRecordId: string = prodData.records?.[0]?.id ?? '';
-    const produccionCodigo: string = prodData.records?.[0]?.fields?.['ID'] ?? produccionRecordId;
-    console.log('✅ blend_produccion creado:', produccionRecordId, produccionCodigo);
-
-    // Auto-deducción de inventario (Paso 5)
+    // Auto-deducción de inventario y registro de la producción en los Core.
     const deduccion = await runBlendDeduction({
-      produccionRecordId,
-      produccionCodigo,
+      lote,
       kgTotal: kgSolicitados,
       bacheIds,
       bacheAllocations,
@@ -269,21 +244,31 @@ export async function POST(
       realizaRegistro,
     });
 
-    console.log(`✅ Pedido ${idPedidoCore} → En Produccion (${produccionCodigo}). Deducción ok=${deduccion.ok}`);
+    const pasosFallidos = deduccion.steps.filter((s) => !s.ok);
+    console.log(
+      `✅ Pedido ${idPedidoCore} → En Produccion (lote ${lote}). ` +
+      `Deducción ok=${deduccion.ok}, pasos fallidos=${pasosFallidos.length}`
+    );
+
     return NextResponse.json(
       {
+        // `success` refleja solo los pasos CRÍTICOS (baches e insumos). Los
+        // best-effort se reportan en `deduccion.steps` y elevan el status a 207.
         success: deduccion.ok,
         message: deduccion.ok
-          ? 'Producción iniciada y inventario descontado exitosamente'
-          : 'Producción creada, pero la deducción de inventario falló en un paso crítico. Revisa los detalles.',
+          ? pasosFallidos.length
+            ? 'Producción registrada y stock descontado, pero algún paso de trazabilidad falló. Revisa los detalles.'
+            : 'Producción iniciada y inventario descontado exitosamente'
+          : 'La deducción de inventario falló en un paso crítico. Revisa los detalles.',
         estado_actual: 'En Produccion',
         id_pedido_core: idPedidoCore,
-        produccion_record_id: produccionRecordId,
-        produccion_codigo: produccionCodigo,
+        lote,
+        // Alias por compatibilidad: la UI muestra `produccion_codigo`.
+        produccion_codigo: lote,
         kg_total: kgSolicitados,
         deduccion,
       },
-      { status: deduccion.ok ? 200 : 207 }
+      { status: deduccion.ok && !pasosFallidos.length ? 200 : 207 }
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

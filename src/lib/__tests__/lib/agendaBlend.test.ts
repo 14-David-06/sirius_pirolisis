@@ -162,6 +162,23 @@ describe('calcularAgenda', () => {
     expect(resumen.pedidosSinDetalle).toBe(2);
   });
 
+  it('no cuenta como "sin detalle" los pedidos cerrados, que ya no van a producir', () => {
+    // El aviso dice "no podrán iniciar producción hasta que se corrija el vínculo":
+    // para un pedido cancelado o despachado es ruido permanente. Los 3 pedidos de
+    // Blend en Pedidos Core están cancelados y el banner rojo salía siempre.
+    const { resumen } = calcularAgenda(
+      [
+        pedido({ pedidoRecordId: 'p1', kgFuente: 'notas', estado: 'Cancelado' }),
+        pedido({ pedidoRecordId: 'p2', kgFuente: 'notas', estado: 'Despachado' }),
+        pedido({ pedidoRecordId: 'p3', kgFuente: 'notas', estado: 'Recibido' }),
+      ],
+      STOCK_AMPLIO,
+      PCT
+    );
+
+    expect(resumen.pedidosSinDetalle).toBe(1);
+  });
+
   it('ignora los pedidos sin KG en lugar de contarlos como cubiertos', () => {
     const { eventos, resumen } = calcularAgenda(
       [pedido({ kg: 0 })],

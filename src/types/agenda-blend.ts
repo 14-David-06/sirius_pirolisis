@@ -46,6 +46,35 @@ export interface ResumenAgenda {
   pedidosSinDetalle: number;
 }
 
+/** Un lote de Blend ya producido (Sirius Inventario Production Core). */
+export interface LoteProducido {
+  /** Código de lote (BLEND-AAAA-MM-DD): la llave que une las tres bases Core. */
+  lote: string;
+  kg: number;
+  fecha: string;
+  motivo: string;
+}
+
+export interface ProduccionBlend {
+  /** Saldo de producto terminado: producido menos despachado. */
+  kgEnInventario: number;
+  kgProducidos: number;
+  lotes: LoteProducido[];
+}
+
+/**
+ * De dónde salió el número de biochar. Sirius Insumos Core es la fuente desde el
+ * 2026-07-30; el total de los baches queda como contraste para detectar consumos
+ * escritos en una sola de las dos vistas.
+ */
+export interface FuenteBiochar {
+  origen: 'insumos-core' | 'baches';
+  kgBaches: number;
+  kgCore: number | null;
+  /** kgCore − kgBaches. `null` si el Core no está disponible. */
+  divergencia: number | null;
+}
+
 export interface AgendaData {
   eventos: EventoAgenda[];
   disponible: MateriaPrimaTerna;
@@ -56,4 +85,7 @@ export interface AgendaData {
     pctAgua: number;
   };
   resumen: ResumenAgenda;
+  /** `null` si Inventario Production Core no está configurado o falló. */
+  produccion: ProduccionBlend | null;
+  fuenteBiochar: FuenteBiochar;
 }

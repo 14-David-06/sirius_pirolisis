@@ -1,73 +1,67 @@
 import { NextResponse } from 'next/server';
-import { config } from '../../../../../../../lib/config';
-
-function airtableHeaders() {
-  return {
-    Authorization: `Bearer ${config.airtable.token}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-function remisionUrl(id: string) {
-  return `https://api.airtable.com/v0/${config.airtable.baseId}/${config.airtable.blendRemisionesTableId}/${id}`;
-}
+import {
+  buscarOCrearPersona,
+  resolverRemision,
+  vincularPersonas,
+  TIPO_PERSONA,
+} from '../../../../../../../lib/blend-remisiones-core';
 
 // PATCH /api/pirolisis/blend/remisiones/[id]/receptor
-// Actualiza los campos del responsable que recibe la remisión (lado cliente).
-// Se llama justo después de crear la remisión con POST /api/pirolisis/blend/remisiones.
 // Body: { responsable_recibe, num_doc_recibe, telefono_recibe?, email_recibe? }
+//
+// Registra por adelantado a quién se le va a entregar, sin firmar todavía.
+//
+// ⚠️ MIGRACIÓN 2026-07-30: el receptor ya no son 4 campos de texto en la remisión.
+// Es un registro en `Personas` de Sirius Remisiones Core (PER-REM-XXXX) vinculado a
+// la remisión, con upsert por cédula + tipo. Así la misma persona que recibe en
+// varias fincas queda una sola vez y su correo se reutiliza.
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!config.airtable.token || !config.airtable.baseId || !config.airtable.blendRemisionesTableId) {
-    return NextResponse.json(
-      { error: 'Configuración de Airtable incompleta' },
-      { status: 500 }
-    );
-  }
-
   const { id } = await params;
 
   try {
-    const body = await request.json() as {
-      responsable_recibe?: string;
-      num_doc_recibe?: string;
-      telefono_recibe?: string;
-      email_recibe?: string;
-    };
+    const body = await request.json().catch(() => ({}));
+    const { responsable_recibe, num_doc_recibe, telefono_recibe, email_recibe } =
+      body as Record<string, unknown>;
 
-    const { responsable_recibe, num_doc_recibe, telefono_recibe, email_recibe } = body;
-
-    if (!responsable_recibe && !num_doc_recibe && !telefono_recibe && !email_recibe) {
+    if (!responsable_recibe || !num_doc_recibe) {
       return NextResponse.json(
-        { error: 'No se proporcionaron campos para actualizar' },
+        {
+          error: 'Se requieren responsable_recibe y num_doc_recibe',
+          details: 'La cédula es la llave con la que se identifica a la persona en el Core',
+        },
         { status: 400 }
       );
     }
 
-    const fields: Record<string, string> = {};
-    if (responsable_recibe) fields['Responsable Recibe'] = responsable_recibe;
-    if (num_doc_recibe)     fields['Num Doc Recibe']     = num_doc_recibe;
-    if (telefono_recibe)    fields['Telefono Recibe']    = telefono_recibe;
-    if (email_recibe)       fields['Email Recibe']       = email_recibe;
+    const remision = await resolverRemision(id);
+    if (!remision) {
+      return NextResponse.json({ error: 'Remisión no encontrada', details: id }, { status: 404 });
+    }
 
-    const res = await fetch(remisionUrl(id), {
-      method: 'PATCH',
-      headers: airtableHeaders(),
-      body: JSON.stringify({ fields }),
+    const personaId = await buscarOCrearPersona({
+      nombre: String(responsable_recibe),
+      cedula: String(num_doc_recibe),
+      tipo: TIPO_PERSONA.receptor,
+      telefono: telefono_recibe ? String(telefono_recibe) : undefined,
+      email: email_recibe ? String(email_recibe) : undefined,
     });
-    const data = await res.json();
 
-    if (!res.ok) {
-      console.error('❌ Error Airtable PATCH receptor:', data);
+    if (!personaId) {
       return NextResponse.json(
-        { error: data?.error?.message || data?.error || 'Airtable error', details: data },
-        { status: res.status }
+        { error: 'No se pudo registrar la persona receptora en Remisiones Core' },
+        { status: 502 }
       );
     }
 
-    return NextResponse.json({ success: true, record: data }, { status: 200 });
+    await vincularPersonas(remision.recordId, [personaId]);
+
+    return NextResponse.json(
+      { success: true, persona_id: personaId, codigo: remision.codigo },
+      { status: 200 }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en PATCH blend/remisiones/[id]/receptor:', message);

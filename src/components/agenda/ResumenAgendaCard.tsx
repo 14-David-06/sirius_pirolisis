@@ -8,15 +8,30 @@
 "use client";
 
 import { formatCantidad, formatFecha, formatStock } from '@/lib/inventario.format';
-import type { MateriaPrimaTerna, ResumenAgenda } from '@/types/agenda-blend';
+import type { FuenteBiochar, MateriaPrimaTerna, ResumenAgenda } from '@/types/agenda-blend';
 
 interface ResumenAgendaCardProps {
   resumen: ResumenAgenda;
   disponible: MateriaPrimaTerna;
+  fuenteBiochar?: FuenteBiochar | null;
 }
 
-export default function ResumenAgendaCard({ resumen, disponible }: ResumenAgendaCardProps) {
+/**
+ * Umbral de divergencia entre el stock de biochar del Core y el de los baches.
+ * Por debajo es redondeo a 2 decimales acumulado en cientos de movimientos; por
+ * encima significa que un consumo se escribió en una vista y no en la otra.
+ */
+const TOLERANCIA_DIVERGENCIA_KG = 1;
+
+export default function ResumenAgendaCard({
+  resumen,
+  disponible,
+  fuenteBiochar,
+}: ResumenAgendaCardProps) {
   const todoCubierto = resumen.kgSinCobertura <= 0 && resumen.kgComprometidos > 0;
+
+  const divergencia = fuenteBiochar?.divergencia ?? null;
+  const hayDivergencia = divergencia !== null && Math.abs(divergencia) > TOLERANCIA_DIVERGENCIA_KG;
 
   return (
     <section className="rounded-xl bg-gradient-to-br from-sky-500/10 to-emerald-500/10 ring-1 ring-white/15 p-6">
@@ -66,7 +81,14 @@ export default function ResumenAgendaCard({ resumen, disponible }: ResumenAgenda
 
       <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-white/10 pt-4 text-xs">
         <div>
-          <dt className="text-white/50">Biochar en stock</dt>
+          <dt className="text-white/50">
+            Biochar en stock
+            {fuenteBiochar?.origen === 'insumos-core' && (
+              <span className="ml-1.5 text-white/30" title="Fuente: Sirius Insumos Core">
+                · Core
+              </span>
+            )}
+          </dt>
           <dd className="mt-0.5 font-medium text-white/90">{formatStock(disponible.biochar, 'kg')}</dd>
         </div>
         <div>
@@ -91,6 +113,17 @@ export default function ResumenAgendaCard({ resumen, disponible }: ResumenAgenda
         <p className="mt-4 text-[11px] leading-relaxed text-amber-200/80">
           Faltan {formatCantidad(resumen.kgSinCobertura)} kg por cubrir. La cobertura se calcula en
           orden de fecha de entrega: los pedidos más próximos consumen primero.
+        </p>
+      )}
+
+      {hayDivergencia && (
+        <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200 ring-1 ring-amber-400/25">
+          El stock de biochar de Sirius Insumos Core y el de los baches difieren en{' '}
+          {formatCantidad(Math.abs(divergencia!))} kg (Core{' '}
+          {formatCantidad(fuenteBiochar!.kgCore!)} kg vs baches{' '}
+          {formatCantidad(fuenteBiochar!.kgBaches)} kg). Algún consumo se registró en una de las dos
+          vistas y no en la otra: revisa que cada Salida de biochar del Core tenga su fila de detalle
+          por bache en PiroliApp.
         </p>
       )}
 

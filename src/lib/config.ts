@@ -91,6 +91,15 @@ export const config = {
       idAreaDestino: process.env.AIRTABLE_MOVIMIENTO_ID_AREA_DESTINO_FIELD_ID,
       idResponsable: process.env.AIRTABLE_MOVIMIENTO_ID_RESPONSABLE_FIELD_ID,
       notas: process.env.AIRTABLE_MOVIMIENTO_NOTAS_FIELD_ID,
+      // Trazabilidad del biochar (2026-07-30). `Movimientos Insumos` no tenía
+      // ninguna fecha escribible —solo `Creada`, que es createdTime—, así que sin
+      // `fechaMovimiento` todo cargue histórico quedaba fechado el día de la
+      // digitación.
+      fechaMovimiento: process.env.AIRTABLE_MOVIMIENTO_FECHA_FIELD_ID,
+      /** Código Bache (S-00XXX) del que salió el biochar. */
+      idBacheOrigen: process.env.AIRTABLE_MOVIMIENTO_ID_BACHE_ORIGEN_FIELD_ID,
+      /** Lote de producción (BLEND-…) al que va dirigido el insumo. */
+      idProduccionDestino: process.env.AIRTABLE_MOVIMIENTO_ID_PRODUCCION_DESTINO_FIELD_ID,
     },
     stockFields: {
       stockActual: process.env.AIRTABLE_STOCK_ACTUAL_FIELD_ID,
@@ -156,7 +165,8 @@ export const config = {
     blendPedidosTableId: process.env.AIRTABLE_BLEND_PEDIDOS_TABLE_ID,
     blendProduccionTableId: process.env.AIRTABLE_BLEND_PRODUCCION_TABLE_ID,
     blendRemisionesTableId: process.env.AIRTABLE_BLEND_REMISIONES_TABLE_ID,
-    blendDetalleInsumosTableId: process.env.AIRTABLE_BLEND_DETALLE_INSUMOS_TABLE_ID,
+    // ⚠️ `blend_detalle_insumos` se borró de la base el 2026-07-30; ya no hay
+    // consumidores. El detalle por insumo vive en Movimientos del Insumos Core.
     // Sirius Product Core (catálogo de productos) — Blend
     productsBaseId: process.env.AIRTABLE_PRODUCTS_BASE_ID,
     productsTableId: process.env.AIRTABLE_PRODUCTS_TABLE_ID,
@@ -165,6 +175,10 @@ export const config = {
     clientesBaseId: process.env.AIRTABLE_CLIENTES_BASE_ID,
     clientesTableId: process.env.AIRTABLE_CLIENTES_TABLE_ID,
     clientesToken: process.env.AIRTABLE_CLIENTES_TOKEN || GLOBAL_TOKEN,
+    // `Personal Cliente`: los contactos del cliente. De aquí sale a quién se le
+    // notifica una remisión (`Email Notificacion`), que antes se copiaba a mano en
+    // los campos de la remisión.
+    clientesPersonalTableId: process.env.AIRTABLE_CLIENTES_PERSONAL_TABLE_ID,
     // Sirius Pedidos Core (pedidos centralizados) — Blend
     pedidosCoreBaseId: process.env.AIRTABLE_PEDIDOS_CORE_BASE_ID,
     pedidosCorePedidosTable: process.env.AIRTABLE_PEDIDOS_CORE_PEDIDOS_TABLE,
@@ -175,6 +189,9 @@ export const config = {
     remisionesCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_REMISIONES_CORE || GLOBAL_TOKEN,
     remisionesCoreRemisionesTable: process.env.AIRTABLE_TABLE_REMISIONES,
     remisionesCoreProductosTable: process.env.AIRTABLE_TABLE_PRODUCTOS_REMITIDOS,
+    // `Personas` (PER-REM-XXXX): transportista y receptor de la remisión. Es donde
+    // vive la identidad de quien firma; las firmas en sí van en el PDF de S3.
+    remisionesCorePersonasTable: process.env.AIRTABLE_TABLE_PERSONAS_REMISION,
     // Sirius Inventario Production Core (inventario de productos finales) — Blend
     inventarioProdCoreBaseId: process.env.AIRTABLE_BASE_SIRIUS_INVENTARIO,
     inventarioProdCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_INVENTARIO || GLOBAL_TOKEN,
@@ -238,7 +255,16 @@ export const config = {
     detalleCantidadesFields: {
       cantidadEspecificada: process.env.AIRTABLE_DETALLE_CANTIDAD_ESPECIFICADA_FIELD_ID,
       remisionBachePirolisis: process.env.AIRTABLE_DETALLE_REMISION_BACHE_FIELD_ID,
-      bachePirolisis: process.env.AIRTABLE_DETALLE_BACHE_PIROLISIS_FIELD_ID
+      bachePirolisis: process.env.AIRTABLE_DETALLE_BACHE_PIROLISIS_FIELD_ID,
+      // Cierra la trazabilidad KG-por-bache del Blend: dice CUÁNTO biochar salió de
+      // CADA bache para un lote. Antes la única traza era el texto de
+      // `Observaciones` de la remisión.
+      //
+      // Va como TEXTO (FK simbólica al código de lote) y no como link: la
+      // producción vive en los Core y Airtable no permite links entre bases.
+      // `produccionBlend` es el campo link que quedó de la etapa anterior, cuando
+      // la producción era una fila local; ya no se escribe.
+      idProduccionBlend: process.env.AIRTABLE_DETALLE_ID_PRODUCCION_BLEND_FIELD_ID
     },
     // Calculadora de Carbono — Table IDs
     carboneBiomasViajesBiomasaTableId: process.env.CARBON_eBiomas_VIAJES_BIOMASA_TABLE_ID,

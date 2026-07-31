@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { CalendarioMes, ResumenAgendaCard, TablaAgenda } from '@/components/agenda';
+import { CalendarioMes, ProduccionCard, ResumenAgendaCard, TablaAgenda } from '@/components/agenda';
 import { IconAlert, IconCalendar, IconPackage } from '@/components/inventario/Icons';
 import { IconWarehouse } from '@/components/bodega/Icons';
 import { useAgendaBlend } from '@/lib/useAgendaBlend';
@@ -57,8 +57,18 @@ function CalendarioBlendContent() {
   const [incluirCerrados, setIncluirCerrados] = useState(false);
   const [seleccionado, setSeleccionado] = useState<EventoAgenda | null>(null);
 
-  const { eventos, porDia, sinFecha, disponible, resumen, loading, error, refresh } =
-    useAgendaBlend(incluirCerrados);
+  const {
+    eventos,
+    porDia,
+    sinFecha,
+    disponible,
+    resumen,
+    produccion,
+    fuenteBiochar,
+    loading,
+    error,
+    refresh,
+  } = useAgendaBlend(incluirCerrados);
 
   const irMesAnterior = () => {
     if (mes === 0) {
@@ -164,7 +174,15 @@ function CalendarioBlendContent() {
       </header>
 
       <div className="mt-6 space-y-6">
-        {resumen && disponible && <ResumenAgendaCard resumen={resumen} disponible={disponible} />}
+        {resumen && disponible && (
+          <ResumenAgendaCard
+            resumen={resumen}
+            disponible={disponible}
+            fuenteBiochar={fuenteBiochar}
+          />
+        )}
+
+        {produccion && <ProduccionCard produccion={produccion} />}
 
         <CalendarioMes
           anio={anio}

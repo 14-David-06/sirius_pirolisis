@@ -1,28 +1,44 @@
 // src/lib/blend-deduction.ts
 //
 // Servicio de auto-deducción de inventario para la producción de Biochar Blend.
-// (Fase 1 — Paso 5 del flujo). Se dispara al CONFIRMAR una producción.
+// Se dispara al CONFIRMAR una producción.
 //
-// Descuenta, para una producción de `kgTotal` KG de Blend:
-//   - Biochar Puro (pctBiochar): de los baches seleccionados, vía
-//     `Detalle Cantidades Remision Pirolisis` (único mecanismo que alimenta la
-//     fórmula `Total Cantidad Actual Biochar Seco` del bache).
-//   - Abono 4G (pctAbono) y Biológicos (pctBiologicos): vía `Salida Insumos
-//     Pirolisis`, enlazando el insumo a `salidasFields.inventarioInsumos` y NO al
-//     link de turno. Esto es lo que alimenta `Total Cantidad Stock`.
-//   - Registra la ENTRADA de producto terminado en Sirius Inventario Production Core
-//     (best-effort: se omite si faltan credenciales).
-//   - Crea el detalle en `blend_detalle_insumos` y puebla los links de la producción.
+// ═══ ARQUITECTURA (migración 2026-07-30) ═══════════════════════════════════════
+// La producción NO es una fila en una tabla de PiroliApp: es un conjunto de
+// movimientos en las bases Core unidos por un CÓDIGO DE LOTE (`BLEND-…`). Airtable
+// no permite links entre bases, así que el lote es la llave. Para una producción de
+// `kgTotal` KG este servicio escribe:
+//
+//   Sirius Insumos Core — un movimiento `Salida` POR BACHE de `Biochar Puro`, con
+//     `ID Bache Origen` (S-00XXX) y `ID Produccion Destino` (el lote). Más las
+//     Salidas de Abono 4G y Biológicos.
+//   Sirius Inventario Production Core — la `Entrada` de producto terminado, cuyo
+//     `documento_referencia` es el lote. ESE movimiento es el lote producido.
+//   PiroliApp — `Detalle Cantidades Remision Pirolisis`, una fila por bache con
+//     `ID Produccion Blend` = el lote. Es el ÚNICO mecanismo que baja la fórmula
+//     `Total Cantidad Actual Biochar Seco` del bache, así que no es opcional: sin
+//     esta fila la bodega mostraría biochar que ya se consumió.
+//   PiroliApp — `Estado Bache` de cada bache consumido pasa a `Bache Incompleto` o
+//     `Bache Agotado`. La tabla de baches es el HISTORIAL de pirólisis: los baches
+//     no se borran, cambian de estado a medida que se vacían.
+//
+// El biochar se escribe en DOS vistas (Core y baches) a propósito: no son dos
+// inventarios, son dos vistas del mismo. El Core responde "cuánto biochar hay y a
+// dónde fue"; el bache responde "cuánto queda de ESTE bache", que es lo que
+// necesita la UI de selección al producir. Si se separan, la agenda y la bodega
+// avisan (ver `resolverBiocharDisponible`).
 //
 // El agua (pctAgua) NO se inventaría (se registra en el Turno).
 //
-// Diseño: cada paso captura su propio error y devuelve un StepResult. La deducción
-// de baches e insumos es crítica; el detalle, el movimiento a Core y el poblado de
-// links son best-effort (no revierten la deducción ya aplicada, pero se reportan).
+// Diseño: cada paso captura su propio error y devuelve un StepResult. Las
+// deducciones de baches e insumos son CRÍTICAS; la salida de biochar al Core, la
+// entrada de producto terminado y el estado de los baches son best-effort (no
+// revierten lo ya aplicado, pero se reportan y la respuesta sale con 207).
 
 import { config } from './config';
 import { appendMovimientoToStock, findStockByInsumo, getStockActual } from './stock-insumos';
 import { buildCamposIdCore, resolveIdResponsableCore } from './movimientos-insumos';
+import { actualizarEstadoBaches, estadoTrasConsumo } from './baches-biochar';
 
 const AT = 'https://api.airtable.com/v0';
 
@@ -31,6 +47,8 @@ export interface BacheAllocation {
   codigo: string;
   kg: number;
   stockDisponible: number;
+  /** `Estado Bache` antes del consumo: decide si hay que cambiarlo y a qué. */
+  estado: string;
 }
 
 export interface StepResult {
@@ -41,10 +59,11 @@ export interface StepResult {
 }
 
 export interface DeductionInput {
-  /** Record ID de la producción en `Produccion Biochar Blend Pirolisis`. */
-  produccionRecordId: string;
-  /** Código legible de la producción (BLEND-XXXX) para trazabilidad/documento. */
-  produccionCodigo: string;
+  /**
+   * Código de lote (`BLEND-…`): la identidad de la producción y la llave que une
+   * las tres bases. Reemplaza al viejo `produccionRecordId` de la tabla local.
+   */
+  lote: string;
   /** KG totales de Blend a producir. */
   kgTotal: number;
   /** Record IDs de los baches seleccionados por el operador para cubrir el biochar. */
@@ -64,7 +83,8 @@ export interface DeductionInput {
 
 export interface DeductionResult {
   ok: boolean;
-  produccionCodigo: string;
+  /** Codigo de lote de la produccion. */
+  lote: string;
   proporciones: { kgBiochar: number; kgAbono: number; kgBiologicos: number; kgAgua: number };
   allocations: BacheAllocation[];
   steps: StepResult[];
@@ -106,7 +126,8 @@ export async function planBacheAllocations(bacheIds: string[], kgBiochar: number
       if (!ok) throw new Error(`No se pudo leer el bache ${id}`);
       const stock = Number(data.fields?.['Total Cantidad Actual Biochar Seco'] ?? 0);
       const codigo = String(data.fields?.['Codigo Bache'] ?? id.slice(-6));
-      return { bacheId: id, codigo, stock };
+      const estado = String(data.fields?.['Estado Bache'] ?? '');
+      return { bacheId: id, codigo, stock, estado };
     })
   );
 
@@ -123,7 +144,13 @@ export async function planBacheAllocations(bacheIds: string[], kgBiochar: number
     if (restante <= 1e-6) break;
     const tomar = Math.min(b.stock, restante);
     if (tomar > 0) {
-      allocations.push({ bacheId: b.bacheId, codigo: b.codigo, kg: Number(tomar.toFixed(2)), stockDisponible: b.stock });
+      allocations.push({
+        bacheId: b.bacheId,
+        codigo: b.codigo,
+        kg: Number(tomar.toFixed(2)),
+        stockDisponible: b.stock,
+        estado: b.estado,
+      });
       restante -= tomar;
     }
   }
@@ -158,10 +185,17 @@ export async function validateBacheAllocations(
     if (!ok) throw new Error(`No se pudo leer el bache ${a.bacheId}`);
     const stock = Number(data.fields?.['Total Cantidad Actual Biochar Seco'] ?? 0);
     const codigo = String(data.fields?.['Codigo Bache'] ?? a.bacheId.slice(-6));
+    const estado = String(data.fields?.['Estado Bache'] ?? '');
     if (a.kg > stock + 1e-6) {
       throw new Error(`El bache ${codigo} solo tiene ${stock.toFixed(2)} kg de biochar (se pidieron ${a.kg.toFixed(2)})`);
     }
-    out.push({ bacheId: a.bacheId, codigo, kg: Number(a.kg.toFixed(2)), stockDisponible: stock });
+    out.push({
+      bacheId: a.bacheId,
+      codigo,
+      kg: Number(a.kg.toFixed(2)),
+      stockDisponible: stock,
+      estado,
+    });
   }
   return out;
 }
@@ -184,7 +218,7 @@ async function deductBaches(input: DeductionInput, allocations: BacheAllocation[
   }
 
   const fecha = new Date().toISOString().split('T')[0];
-  const observaciones = `Consumo interno para producción de Biochar Blend ${input.produccionCodigo}`;
+  const observaciones = `Consumo interno para producción de Biochar Blend ${input.lote}`;
 
   // 1. Remisión de baches (padre)
   const remisionFields: Record<string, unknown> = {
@@ -206,13 +240,19 @@ async function deductBaches(input: DeductionInput, allocations: BacheAllocation[
   const remisionId = remRes.data.id as string;
 
   // 2. Detalle por bache
-  const detalleRecords = allocations.map((a) => ({
-    fields: {
+  const detalleRecords = allocations.map((a) => {
+    const fields: Record<string, unknown> = {
       [df.cantidadEspecificada!]: a.kg,
       [df.remisionBachePirolisis!]: [remisionId],
       [df.bachePirolisis!]: [a.bacheId],
-    },
-  }));
+    };
+    // Amarra la fila al lote: es lo único que dice CUÁNTO biochar salió de CADA
+    // bache para este Blend. Va como texto (FK simbólica) porque la producción vive
+    // en los Core y Airtable no permite links entre bases. Opcional para no romper
+    // si la env var falta.
+    if (df.idProduccionBlend) fields[df.idProduccionBlend] = input.lote;
+    return { fields };
+  });
 
   const detRes = await atFetch(`${AT}/${base}/${detalleTable}`, {
     method: 'POST',
@@ -289,10 +329,10 @@ async function deductInsumo(
     fields,
     buildCamposIdCore(
       await resolveIdResponsableCore(input.idResponsableCore),
-      `consumo Blend ${input.produccionCodigo}`
+      `consumo Blend ${input.lote}`
     )
   );
-  fields[movFields.notas!] = `Consumo producción Biochar Blend ${input.produccionCodigo}\nTipo uso: balance_de_masa (productivo)`;
+  fields[movFields.notas!] = `Consumo producción Biochar Blend ${input.lote}\nTipo uso: balance_de_masa (productivo)`;
 
   const movRes = await atFetch(`${AT}/${coreBaseId}/${movimientosTableId}`, {
     method: 'POST',
@@ -320,33 +360,6 @@ async function deductInsumo(
     insumoRecordId,
     presentacion: 'kg',  // Unidades estándar del Core
   };
-}
-
-/** Crea los registros de `blend_detalle_insumos` (best-effort). */
-async function createDetalleInsumos(
-  input: DeductionInput,
-  items: Array<{ insumoRecordId: string; cantidad: number; presentacion?: string }>
-): Promise<StepResult> {
-  const base = config.airtable.baseId!;
-  const table = config.airtable.blendDetalleInsumosTableId;
-  if (!table) return { step: 'detalle_insumos', ok: false, error: 'blendDetalleInsumosTableId no configurado' };
-
-  const records = items.map((it) => ({
-    fields: {
-      'Produccion Blend': [input.produccionRecordId],
-      Insumo: [it.insumoRecordId],
-      'Cantidad KG': it.cantidad,
-      'Presentacion Usada': it.presentacion ?? '',
-    },
-  }));
-
-  const res = await atFetch(`${AT}/${base}/${table}`, {
-    method: 'POST',
-    headers: localHeaders(),
-    body: JSON.stringify({ records }),
-  });
-  if (!res.ok) return { step: 'detalle_insumos', ok: false, error: JSON.stringify(res.data) };
-  return { step: 'detalle_insumos', ok: true, detail: { ids: (res.data.records ?? []).map((r: any) => r.id) } };
 }
 
 /**
@@ -379,8 +392,8 @@ async function recordFinishedGoodsEntry(input: DeductionInput): Promise<StepResu
     tipo_movimiento: 'Entrada',
     cantidad: input.kgTotal,
     unidad_medida: 'kg',
-    motivo: `Producción Biochar Blend ${input.produccionCodigo}`,
-    documento_referencia: input.produccionCodigo,
+    motivo: `Producción Biochar Blend ${input.lote}`,
+    documento_referencia: input.lote,
     responsable: input.realizaRegistro,
   };
   // Atribuye la producción al pedido (lo lee produccion-status para calcular completitud).
@@ -396,34 +409,117 @@ async function recordFinishedGoodsEntry(input: DeductionInput): Promise<StepResu
   return { step: 'inventario_core', ok: true, detail: { movimientoId: res.data.records?.[0]?.id, stockRecordId } };
 }
 
-/** Puebla los linked-records y referencias simbólicas de la producción (best-effort). */
-async function linkProduccion(
+/**
+ * Registra la SALIDA de biochar en Sirius Insumos Core: un movimiento POR BACHE,
+ * con el bache de origen y el lote de destino.
+ *
+ * Es lo que cierra el circulo con el libro mayor del biochar. Hasta el 2026-07-30
+ * la app solo descontaba por los baches, asi que una produccion hecha desde la app
+ * movia la formula del bache pero NO el Core, y las dos vistas se separaban.
+ *
+ * Un movimiento por bache y no uno agregado: asi cada movimiento tiene un unico
+ * origen y un unico destino, y la trazabilidad se puede consultar en los dos
+ * sentidos (del lote a los baches y del bache a los lotes).
+ */
+async function deductBiocharCore(
   input: DeductionInput,
-  kgBiochar: number,
-  insumoIds: string[],
-  detalleIds: string[],
-  bachesUsados: string[]
+  allocations: BacheAllocation[]
 ): Promise<StepResult> {
-  const base = config.airtable.baseId!;
-  const table = config.airtable.blendProduccionTableId;
-  if (!table) return { step: 'link_produccion', ok: false, error: 'blendProduccionTableId no configurado' };
+  const coreBaseId = config.airtable.insumosCoreBaseId;
+  const token = config.airtable.insumosCoreToken;
+  const movimientosTableId = config.airtable.movimientosInsumosTableId;
+  const insumoBiochar = config.airtable.blendBiocharInsumoRecordId;
+  const mf = config.airtable.movimientoFields;
 
-  const fields: Record<string, unknown> = {
-    'KG Biochar Puro': Number(kgBiochar.toFixed(2)),
-    // Solo los baches realmente usados (con KG deducido), no todos los seleccionados.
-    'Baches Utilizados': bachesUsados,
-    'Insumos Consumidos': insumoIds,
-  };
-  if (detalleIds.length) fields['blend_detalle_insumos'] = detalleIds;
-  if (input.pedidoSimbolico) fields['Pedido Origen'] = input.pedidoSimbolico;
+  if (!coreBaseId || !token || !movimientosTableId || !insumoBiochar) {
+    return {
+      step: 'biochar_core',
+      ok: false,
+      error:
+        'Biochar Puro no esta configurado como insumo del Core (falta AIRTABLE_BLEND_BIOCHAR_RECORD_ID): ' +
+        'la salida de biochar al Core se omitio y el stock del Core quedara por encima del real.',
+    };
+  }
 
-  const res = await atFetch(`${AT}/${base}/${table}/${input.produccionRecordId}`, {
-    method: 'PATCH',
-    headers: localHeaders(),
-    body: JSON.stringify({ fields }),
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const fecha = new Date().toISOString().split('T')[0];
+  const idResponsable = await resolveIdResponsableCore(input.idResponsableCore);
+
+  const records = allocations.map((a) => {
+    const fields: Record<string, unknown> = {
+      [mf.insumo!]: [insumoBiochar],
+      [mf.cantidad!]: a.kg,
+      [mf.tipoMovimiento!]: 'Salida',
+    };
+    if (mf.fechaMovimiento) fields[mf.fechaMovimiento] = fecha;
+    if (mf.idBacheOrigen) fields[mf.idBacheOrigen] = a.codigo;
+    if (mf.idProduccionDestino) fields[mf.idProduccionDestino] = input.lote;
+    if (mf.notas) {
+      fields[mf.notas] = `Consumo para produccion de Biochar Blend ${input.lote} - bache ${a.codigo}`;
+    }
+    Object.assign(fields, buildCamposIdCore(idResponsable, `consumo Blend ${input.lote}`));
+    return { fields };
   });
-  if (!res.ok) return { step: 'link_produccion', ok: false, error: JSON.stringify(res.data) };
-  return { step: 'link_produccion', ok: true };
+
+  const res = await atFetch(`${AT}/${coreBaseId}/${movimientosTableId}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ records }),
+  });
+  if (!res.ok) {
+    return { step: 'biochar_core', ok: false, error: JSON.stringify(res.data) };
+  }
+
+  const movimientoIds: string[] = (res.data.records ?? []).map((r: any) => r.id);
+
+  // Vincular al Stock Insumos del biochar. El PATCH de un campo link REEMPLAZA el
+  // array, asi que `appendMovimientoToStock` relee y concatena: sin eso se borraria
+  // el historico de movimientos y con el el `stock_actual`.
+  const stockErrores: string[] = [];
+  try {
+    const { record } = await findStockByInsumo(insumoBiochar);
+    if (!record) {
+      stockErrores.push('No existe registro de Stock Insumos para Biochar Puro');
+    } else {
+      for (const movimientoId of movimientoIds) {
+        await appendMovimientoToStock(record.id, movimientoId);
+      }
+    }
+  } catch (err) {
+    stockErrores.push(err instanceof Error ? err.message : String(err));
+  }
+
+  if (stockErrores.length) {
+    return {
+      step: 'biochar_core',
+      ok: false,
+      error: `Movimientos creados pero no vinculados al stock: ${stockErrores.join(' | ')}`,
+      detail: { movimientoIds },
+    };
+  }
+
+  return { step: 'biochar_core', ok: true, detail: { movimientoIds, baches: allocations.length } };
+}
+
+/**
+ * Pasa cada bache consumido a `Bache Incompleto` o `Bache Agotado`.
+ *
+ * La tabla de baches es el HISTORIAL de la produccion de pirolisis: los baches no
+ * se borran, cambian de estado a medida que se vacian. Sin esto un bache consumido
+ * se queda en "Bache Completo Bodega" con 0 kg.
+ */
+async function marcarEstadoBaches(allocations: BacheAllocation[]): Promise<StepResult> {
+  const cambios = allocations
+    .map((a) => ({ bacheId: a.bacheId, estado: estadoTrasConsumo(a.stockDisponible, a.kg, a.estado) }))
+    .filter((c): c is { bacheId: string; estado: string } => c.estado !== null);
+
+  if (!cambios.length) return { step: 'estado_baches', ok: true, detail: { sinCambios: true } };
+
+  const { actualizados, errores } = await actualizarEstadoBaches(cambios);
+  if (errores.length) {
+    return { step: 'estado_baches', ok: false, error: errores.join(' | '), detail: { actualizados } };
+  }
+  return { step: 'estado_baches', ok: true, detail: { actualizados, cambios } };
 }
 
 /**
@@ -447,14 +543,14 @@ export async function runBlendDeduction(input: DeductionInput): Promise<Deductio
       : await planBacheAllocations(input.bacheIds, kgBiochar);
   } catch (err) {
     steps.push({ step: 'plan_baches', ok: false, error: err instanceof Error ? err.message : String(err) });
-    return { ok: false, produccionCodigo: input.produccionCodigo, proporciones: { kgBiochar, kgAbono, kgBiologicos, kgAgua }, allocations, steps };
+    return { ok: false, lote: input.lote, proporciones: { kgBiochar, kgAbono, kgBiologicos, kgAgua }, allocations, steps };
   }
 
   // 2. Deducción de baches (crítico)
   const bacheStep = await deductBaches(input, allocations);
   steps.push(bacheStep);
   if (!bacheStep.ok) {
-    return { ok: false, produccionCodigo: input.produccionCodigo, proporciones: { kgBiochar, kgAbono, kgBiologicos, kgAgua }, allocations, steps };
+    return { ok: false, lote: input.lote, proporciones: { kgBiochar, kgAbono, kgBiologicos, kgAgua }, allocations, steps };
   }
 
   // 3. Deducción de insumos (crítico)
@@ -464,28 +560,21 @@ export async function runBlendDeduction(input: DeductionInput): Promise<Deductio
   steps.push(biologicos);
   const insumosOk = abono.ok && biologicos.ok;
 
-  // 4. Detalle de insumos (best-effort)
-  const detalleIds: string[] = [];
-  const detalleItems = [abono, biologicos]
-    .filter((s) => s.ok)
-    .map((s) => ({ insumoRecordId: s.insumoRecordId, cantidad: (s.detail as any).cantidad as number, presentacion: s.presentacion }));
-  if (detalleItems.length) {
-    const detalleStep = await createDetalleInsumos(input, detalleItems);
-    steps.push(detalleStep);
-    if (detalleStep.ok) detalleIds.push(...((detalleStep.detail as any).ids ?? []));
-  }
+  // 4. Salida de biochar en Insumos Core, una por bache (best-effort).
+  //    Va DESPUES de la deduccion por baches: si esa falla no se llega aqui, y asi
+  //    no queda una salida en el Core sin su espejo en los baches.
+  steps.push(await deductBiocharCore(input, allocations));
 
-  // 5. Movimiento Entrada a Inventario Production Core (best-effort)
+  // 5. Movimiento Entrada de producto terminado a Inventario Production Core.
   steps.push(await recordFinishedGoodsEntry(input));
 
-  // 6. Poblar links de la producción (best-effort)
-  const insumoIds = [abono, biologicos].filter((s) => s.ok).map((s) => s.insumoRecordId);
-  const bachesUsados = allocations.map((a) => a.bacheId);
-  steps.push(await linkProduccion(input, kgBiochar, insumoIds, detalleIds, bachesUsados));
+  // 6. Estado de los baches consumidos (best-effort: es metadato de presentacion,
+  //    el stock real ya lo movio el detalle por bache).
+  steps.push(await marcarEstadoBaches(allocations));
 
   return {
     ok: bacheStep.ok && insumosOk,
-    produccionCodigo: input.produccionCodigo,
+    lote: input.lote,
     proporciones: { kgBiochar, kgAbono, kgBiologicos, kgAgua },
     allocations,
     steps,

@@ -34,10 +34,26 @@ export function formatPorcentaje(valor: number): string {
   return `${formatCantidad(valor)} %`;
 }
 
-/** Fecha ISO → "27 jul 2026". Devuelve '—' si no hay fecha válida. */
+/**
+ * Fecha ISO → "27 jul 2026". Devuelve '—' si no hay fecha válida.
+ *
+ * ⚠️ Una cadena `YYYY-MM-DD` se parsea como medianoche UTC, y al renderizarla en la
+ * zona local de Colombia (UTC-5) cae al DÍA ANTERIOR: el lote `BLEND-2026-06-24` se
+ * mostraba como "23 de jun". Los campos `date` de Airtable llegan siempre así, sin
+ * hora, así que hay que construir la fecha en hora local en vez de dejar que el
+ * parser la interprete como UTC.
+ *
+ * Las cadenas con hora (`…T12:00:00Z`) sí representan un instante real y se dejan
+ * pasar tal cual: ahí la conversión a hora local es lo correcto.
+ */
 export function formatFecha(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const fecha = new Date(iso);
+
+  const soloFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  const fecha = soloFecha
+    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    : new Date(iso);
+
   if (Number.isNaN(fecha.getTime())) return '—';
   return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 }
