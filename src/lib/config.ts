@@ -42,6 +42,12 @@ export const config = {
     entradasTableId: process.env.AIRTABLE_ENTRADAS_TABLE_ID,
     salidasTableId: process.env.AIRTABLE_SALIDAS_TABLE_ID,
     laboratoriosTableId: process.env.AIRTABLE_LABORATORIOS_TABLE_ID,
+    // Acta de Entrega de Biochar: entregas SIN contraprestación comercial
+    // (investigación, ensayo, piloto, donación). Viven en PiroliApp y no en un Core
+    // porque son evidencia metodológica de la planta, no documentos comerciales:
+    // meterlas en Pedidos/Remisiones Core mezclaría donaciones con ventas.
+    actasBiocharTableId: process.env.AIRTABLE_ACTAS_BIOCHAR_TABLE_ID,
+    receptoresBiocharTableId: process.env.AIRTABLE_RECEPTORES_BIOCHAR_TABLE_ID,
     equiposTableId: process.env.AIRTABLE_EQUIPOS_TABLE_ID,
     turnosTableId: process.env.AIRTABLE_TURNOS_TABLE_ID,
     mantenimientosTableId: process.env.AIRTABLE_MANTENIMIENTOS_TABLE_ID,

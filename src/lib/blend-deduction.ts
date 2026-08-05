@@ -54,6 +54,8 @@ export interface BacheAllocation {
 export interface StepResult {
   step: string;
   ok: boolean;
+  /** El paso no hizo falta (ya estaba escrito, o no había nada que cambiar). */
+  skipped?: boolean;
   detail?: unknown;
   error?: string;
 }

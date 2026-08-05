@@ -158,6 +158,43 @@ las dos. Si una pantalla elige su fuente, bodega y producción se contradicen.
 `Estado Bache` a `Bache Incompleto` o `Bache Agotado` al vaciarse
 (`estadoTrasConsumo()`).
 
+**Un bache también sale SIN producir.** Un bigbag al laboratorio, una muestra, un
+derrame: `runSalidaBache()` (`src/lib/salida-bache.ts`) escribe las mismas tres
+partes que la producción de Blend —el detalle que baja la fórmula del bache, la
+`Salida` de `Biochar Puro` en Insumos Core y el `Estado Bache`— con `StepResult` y
+207. Es el camino obligatorio: la UI de remisión de baches (`/api/remisiones-baches`)
+escribe SOLO el detalle, así que usarla para esto infla el stock del Core y deja el
+bache en "Completo Bodega" con 0 kg.
+
+Su llave es la referencia `SAL-<MOTIVO>-<fecha>-<bache>`, y se verifica lado por
+lado: **reintentar una salida COMPLETA la mitad que falte** en vez de duplicarla, así
+que es también la herramienta para cerrar una divergencia Core↔baches. Por eso la
+idempotencia se consulta ANTES de validar disponibilidad: con el detalle ya escrito
+el bache marca 0 y validar primero mataba el reintento con "no tiene biochar
+disponible". Acepta `dryRun` para ver el plan sin escribir.
+
+**Las entregas sin factura son un acta, no una remisión.** Biochar entregado para
+investigación, ensayo, piloto o donación se documenta con un `Acta de Entrega de
+Biochar` (`src/lib/actas-biochar.ts`): evidencia del uso previsto declarado que exige
+el numeral 5.4.2 de la Puro Biochar Methodology. Vive en PiroliApp —no en un Core—
+porque no es un documento comercial: meterla en Pedidos/Remisiones Core mezclaría
+donaciones con ventas. Sus receptores son tabla propia y **no** clientes de Clients
+Core por la misma razón.
+
+El tipo de biochar del acta decide de qué libro mayor se descuenta: **puro** → baches
++ Insumos Core (vía `runSalidaBache` con el código del acta como `referenciaBase`);
+**blend** → Salida en Inventario Production Core con `documento_referencia =
+ACTA-<código>`. El inventario se mueve al GENERAR el acta, no al firmar: el biochar
+ya salió físicamente.
+
+**Todo el biochar se maneja en MASA SECA** (decisión de David, 2026-08-05). El acta
+física deja abierta la casilla húmeda/seca, pero la app no: no hay selector ni
+conversión, los KG que se digitan son secos y `Base Cantidad` siempre se escribe
+`Seca`. Ofrecer las dos bases invitaba a digitar el peso de la balanza contra un
+inventario que se lleva en seco, y eso deja el bache con biochar que no existe. La
+humedad del lote se guarda porque la sección 2 del acta la pide, pero no participa en
+ningún cálculo. No reintroducir una ruta de masa húmeda.
+
 **La fórmula del Blend suma 99,7%** (biochar 20% / abono 74% / agua 5% / biológicos
 0,7%). Es una decisión abierta con DataLab; los componentes NO cuadran con el total
 y no se debe forzar. Centralizada en `config.blend`.

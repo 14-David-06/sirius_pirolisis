@@ -139,6 +139,7 @@ export default function Navbar() {
           { label: "Manejo Residuos", href: "/manejo-residuos", icon: "", description: "Gestión de residuos" },
           { label: "Sistema de Baches", href: "/sistema-baches", icon: "", description: "Control por lotes" },
           { label: "Bodega", href: "/bodega", icon: "🏬", description: "Materias primas del Biochar Blend" },
+          { label: "Actas de Entrega", href: "/actas-biochar", icon: "📄", description: "Entregas de biochar sin contraprestación comercial" },
           { label: "Agendamiento de Pedidos", href: "/calendario-blend", icon: "📅", description: "Calendario de entregas y cobertura de bodega" },
         ]
       },

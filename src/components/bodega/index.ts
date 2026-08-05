@@ -5,3 +5,4 @@ export { default as CapacidadProduccionCard } from './CapacidadProduccionCard';
 export { default as EntradaMateriaPrimaForm } from './EntradaMateriaPrimaForm';
 export { default as MovimientosTable } from './MovimientosTable';
 export { default as BachesBiocharTable } from './BachesBiocharTable';
+export { default as SalidaBacheForm } from './SalidaBacheForm';

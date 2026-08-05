@@ -8,24 +8,31 @@
 
 "use client";
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { formatCantidad, formatStock } from '@/lib/inventario.format';
 import { IconInbox } from '@/components/inventario/Icons';
 import { IconLayers } from './Icons';
 import type { BacheBiochar } from '@/types/bodega';
 
-/** Baches que se listan antes de plegar el resto en una fila de resumen. */
+/** Baches que se listan antes de plegar el resto tras el botón de "ver todos". */
 const MAX_VISIBLES = 8;
 
 interface BachesBiocharTableProps {
   baches: BacheBiochar[];
+  /** Abre el registro de salida del bache (laboratorio, muestra, merma, traslado). */
+  onSalida?: (bache: BacheBiochar) => void;
 }
 
-export default function BachesBiocharTable({ baches }: BachesBiocharTableProps) {
+export default function BachesBiocharTable({ baches, onSalida }: BachesBiocharTableProps) {
+  // El plegado tiene que poder abrirse: la acción de salida cuelga de cada fila, y
+  // dejar los baches pequeños detrás de un resumen los volvía inalcanzables.
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+
   const total = baches.reduce((suma, bache) => suma + bache.kg, 0);
   const parciales = baches.filter((bache) => bache.estado === 'Parcialmente consumido').length;
-  const visibles = baches.slice(0, MAX_VISIBLES);
-  const restantes = baches.slice(MAX_VISIBLES);
+  const visibles = mostrarTodos ? baches : baches.slice(0, MAX_VISIBLES);
+  const restantes = mostrarTodos ? [] : baches.slice(MAX_VISIBLES);
   const kgRestantes = restantes.reduce((suma, bache) => suma + bache.kg, 0);
 
   return (
@@ -65,6 +72,11 @@ export default function BachesBiocharTable({ baches }: BachesBiocharTableProps) 
                 <th scope="col" className="px-5 py-3 font-medium">Estado</th>
                 <th scope="col" className="px-5 py-3 font-medium text-right">Biochar seco</th>
                 <th scope="col" className="px-5 py-3 font-medium text-right">% del total</th>
+                {onSalida && (
+                  <th scope="col" className="px-5 py-3 font-medium text-right">
+                    <span className="sr-only">Acciones</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -76,17 +88,35 @@ export default function BachesBiocharTable({ baches }: BachesBiocharTableProps) 
                   <td className="px-5 py-3 text-right text-white/50">
                     {total > 0 ? `${formatCantidad(Number(((bache.kg / total) * 100).toFixed(1)))} %` : '—'}
                   </td>
+                  {onSalida && (
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onSalida(bache)}
+                        className="rounded-lg bg-white/5 ring-1 ring-white/15 px-2.5 py-1.5 text-xs font-medium text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 cursor-pointer"
+                      >
+                        Dar salida
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {restantes.length > 0 && (
                 <tr>
-                  <td colSpan={2} className="px-5 py-3 text-white/50">
-                    + {restantes.length} {restantes.length === 1 ? 'bache más' : 'baches más'}
+                  <td colSpan={2} className="px-5 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setMostrarTodos(true)}
+                      className="text-white/60 underline decoration-white/25 underline-offset-4 transition-colors duration-200 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+                    >
+                      Ver {restantes.length} {restantes.length === 1 ? 'bache más' : 'baches más'}
+                    </button>
                   </td>
                   <td className="px-5 py-3 text-right text-white/70">{formatStock(kgRestantes, 'kg')}</td>
                   <td className="px-5 py-3 text-right text-white/50">
                     {total > 0 ? `${formatCantidad(Number(((kgRestantes / total) * 100).toFixed(1)))} %` : '—'}
                   </td>
+                  {onSalida && <td />}
                 </tr>
               )}
             </tbody>

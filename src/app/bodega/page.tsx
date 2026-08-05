@@ -19,6 +19,7 @@ import {
   EntradaMateriaPrimaForm,
   MovimientosTable,
   BachesBiocharTable,
+  SalidaBacheForm,
 } from '@/components/bodega';
 import { IconWarehouse } from '@/components/bodega/Icons';
 import {
@@ -28,21 +29,32 @@ import {
   IconX,
 } from '@/components/inventario/Icons';
 import { useBodega } from '@/lib/useBodega';
+import type { BacheBiochar } from '@/types/bodega';
 
 const FONDO =
   "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')";
 
 /**
- * La bodega solo registra ENTRADAS a mano.
+ * La bodega registra ENTRADAS de materia prima y las SALIDAS DE BACHE que no son
+ * producción.
  *
- * Las salidas no se digitan: el consumo de materia prima lo descuenta la
- * auto-deducción al confirmar una producción de Blend, y el biochar entra al
- * inventario al registrar producción en baches. Ofrecer botones para eso
- * invitaba a registrar dos veces el mismo movimiento.
+ * El consumo productivo no se digita: lo descuenta la auto-deducción al confirmar
+ * una producción de Blend, y ofrecer botones para eso invitaba a registrar dos
+ * veces el mismo movimiento. Pero el biochar sí sale por otras puertas —un bigbag
+ * al laboratorio, una muestra, un derrame—, y esas salidas antes se registraban
+ * como remisiones de baches, que movían la fórmula del bache sin tocar el libro
+ * mayor del Core ni el `Estado Bache`. Ver `src/lib/salida-bache.ts`.
  */
 const MODAL_COPY = {
-  titulo: 'Entrada a bodega',
-  descripcion: 'Registra la materia prima que llega y entra al stock del área.',
+  entrada: {
+    titulo: 'Entrada a bodega',
+    descripcion: 'Registra la materia prima que llega y entra al stock del área.',
+  },
+  salida: {
+    titulo: 'Salida de bache',
+    descripcion:
+      'Para el biochar que sale sin pasar por producción: laboratorio, muestra, merma o traslado.',
+  },
 } as const;
 
 /** Nombre del usuario en sesión (mismo criterio que el resto de los módulos). */
@@ -102,8 +114,51 @@ function PageShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Diálogo compartido por la entrada de materia prima y la salida de bache. */
+function Modal({
+  copy,
+  onClose,
+  children,
+}: {
+  copy: { titulo: string; descripcion: string };
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-bodega-titulo"
+    >
+      <div className="my-auto w-full max-w-2xl overflow-hidden rounded-xl bg-slate-900/95 ring-1 ring-white/15 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <div>
+            <h2 id="modal-bodega-titulo" className="text-lg font-semibold text-white">
+              {copy.titulo}
+            </h2>
+            <p className="mt-1 text-sm text-white/60">{copy.descripcion}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="shrink-0 rounded-lg p-1.5 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
+          >
+            <IconX className="w-5 h-5" />
+          </button>
+        </div>
+
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function BodegaContent() {
   const [entradaAbierta, setEntradaAbierta] = useState(false);
+  /** Bache cuya salida se está registrando; null = modal cerrado. */
+  const [bacheSalida, setBacheSalida] = useState<BacheBiochar | null>(null);
 
   const {
     materiales,
@@ -121,6 +176,12 @@ function BodegaContent() {
 
   const handleModalSuccess = async (mensaje: string) => {
     setEntradaAbierta(false);
+    await refresh();
+    alert(mensaje);
+  };
+
+  const handleSalidaSuccess = async (mensaje: string) => {
+    setBacheSalida(null);
     await refresh();
     alert(mensaje);
   };
@@ -240,46 +301,33 @@ function BodegaContent() {
           ))}
         </div>
 
-        <BachesBiocharTable baches={baches} />
+        <BachesBiocharTable baches={baches} onSalida={setBacheSalida} />
 
         <MovimientosTable movimientos={movimientos} error={errorMovimientos} />
       </div>
 
-      {/* Modal de entrada */}
       {entradaAbierta && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-bodega-titulo"
-        >
-          <div className="my-auto w-full max-w-2xl overflow-hidden rounded-xl bg-slate-900/95 ring-1 ring-white/15 shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
-              <div>
-                <h2 id="modal-bodega-titulo" className="text-lg font-semibold text-white">
-                  {MODAL_COPY.titulo}
-                </h2>
-                <p className="mt-1 text-sm text-white/60">{MODAL_COPY.descripcion}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEntradaAbierta(false)}
-                aria-label="Cerrar"
-                className="shrink-0 rounded-lg p-1.5 text-white/60 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 cursor-pointer"
-              >
-                <IconX className="w-5 h-5" />
-              </button>
-            </div>
+        <Modal copy={MODAL_COPY.entrada} onClose={() => setEntradaAbierta(false)}>
+          <EntradaMateriaPrimaForm
+            materiales={materialesGestionables}
+            getCurrentUserName={getCurrentUserName}
+            getCurrentUserIdCore={getCurrentUserIdCore}
+            onSuccess={handleModalSuccess}
+            onCancel={() => setEntradaAbierta(false)}
+          />
+        </Modal>
+      )}
 
-            <EntradaMateriaPrimaForm
-              materiales={materialesGestionables}
-              getCurrentUserName={getCurrentUserName}
-              getCurrentUserIdCore={getCurrentUserIdCore}
-              onSuccess={handleModalSuccess}
-              onCancel={() => setEntradaAbierta(false)}
-            />
-          </div>
-        </div>
+      {bacheSalida && (
+        <Modal copy={MODAL_COPY.salida} onClose={() => setBacheSalida(null)}>
+          <SalidaBacheForm
+            bache={bacheSalida}
+            getCurrentUserName={getCurrentUserName}
+            getCurrentUserIdCore={getCurrentUserIdCore}
+            onSuccess={handleSalidaSuccess}
+            onCancel={() => setBacheSalida(null)}
+          />
+        </Modal>
       )}
     </PageShell>
   );
