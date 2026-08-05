@@ -9,7 +9,7 @@ Proyecto web para Sirius Pirólisis - Innovación en el tratamiento de residuos 
 - **Tailwind CSS** - Framework de CSS utilitario
 - **Museo Slab** - Fuente principal del proyecto
 - **React** - Biblioteca de JavaScript para interfaces de usuario
-
+hola
 ## 📁 Estructura del Proyecto
     
 ```
