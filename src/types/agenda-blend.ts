@@ -3,6 +3,8 @@
  * Contrato entre /api/pirolisis/blend/agenda y la UI de /calendario-blend.
  */
 
+import type { CapacidadBlend } from '@/lib/bodega.constants';
+
 /** Cobertura de un pedido contra la demanda ACUMULADA hasta su fecha. */
 export type Cobertura = 'cubierto' | 'parcial' | 'sin_stock' | 'no_aplica';
 
@@ -69,9 +71,10 @@ export interface ProduccionBlend {
  */
 export interface FuenteBiochar {
   origen: 'insumos-core' | 'baches';
-  kgBaches: number;
+  /** `null` si no se pudo leer la tabla de baches: no hay con qué contrastar. */
+  kgBaches: number | null;
   kgCore: number | null;
-  /** kgCore − kgBaches. `null` si el Core no está disponible. */
+  /** kgCore − kgBaches. `null` si falta cualquiera de las dos vistas. */
   divergencia: number | null;
 }
 
@@ -84,6 +87,14 @@ export interface AgendaData {
     pctBiologicos: number;
     pctAgua: number;
   };
+  /**
+   * Cuánto Blend permite producir el stock de bodega y qué materia prima lo limita.
+   *
+   * Se calcula con la MISMA función que la bodega (`calcularCapacidadBlend`): sin
+   * esto, la agenda mostraba tres stocks sueltos y podía dar pedidos por cubiertos
+   * al lado de una bodega que decía "sin stock suficiente para producir".
+   */
+  capacidad: CapacidadBlend;
   resumen: ResumenAgenda;
   /** `null` si Inventario Production Core no está configurado o falló. */
   produccion: ProduccionBlend | null;

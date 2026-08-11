@@ -8,22 +8,28 @@
 
 "use client";
 
-import { formatCantidad } from '@/lib/inventario.format';
+import { formatCantidad, formatFecha } from '@/lib/inventario.format';
+import { ETIQUETA_LIMITANTE } from '@/lib/materias-primas.labels';
 import { IconBlend } from './Icons';
-import type { CapacidadProduccion, MateriaPrima } from '@/types/bodega';
+import type { CapacidadProduccion } from '@/types/bodega';
+import type { ResumenAgenda } from '@/types/agenda-blend';
 
 interface CapacidadProduccionCardProps {
   capacidad: CapacidadProduccion;
-  materiales: MateriaPrima[];
   formula: { pctBiochar: number; pctAbono: number; pctBiologicos: number; pctAgua: number };
+  /**
+   * Lo comprometido con clientes, de la agenda de pedidos. Opcional: la agenda se
+   * carga aparte y la bodega no debe esperarla.
+   */
+  resumenAgenda?: ResumenAgenda | null;
 }
 
 export default function CapacidadProduccionCard({
   capacidad,
-  materiales,
   formula,
+  resumenAgenda,
 }: CapacidadProduccionCardProps) {
-  const limitante = materiales.find((material) => material.key === capacidad.limitante);
+  const limitante = capacidad.limitante ? ETIQUETA_LIMITANTE[capacidad.limitante] : null;
   const lotes = capacidad.loteReferenciaKg > 0
     ? Math.floor(capacidad.kgBlend / capacidad.loteReferenciaKg)
     : 0;
@@ -48,12 +54,15 @@ export default function CapacidadProduccionCard({
           </p>
           <p className="mt-1 text-sm text-white/60">
             {capacidad.kgBlend <= 0 ? (
-              'Sin stock suficiente para producir.'
+              <>
+                Sin stock suficiente para producir.
+                {limitante && <> Limita {limitante}.</>}
+              </>
             ) : (
               <>
                 Equivale a {formatCantidad(lotes)}{' '}
                 {lotes === 1 ? 'lote' : 'lotes'} de {formatCantidad(capacidad.loteReferenciaKg)} kg
-                {limitante && <> · limita el {limitante.nombre.toLowerCase()}</>}
+                {limitante && <> · limita {limitante}</>}
               </>
             )}
           </p>
@@ -70,6 +79,44 @@ export default function CapacidadProduccionCard({
           ))}
         </dl>
       </div>
+
+      {/*
+        La capacidad sola no dice si alcanza: alcanza CONTRA algo. El dato viene de
+        la agenda de pedidos —la misma fuente y el mismo cálculo de cobertura que
+        /calendario-blend— para que las dos pantallas no puedan contradecirse.
+      */}
+      {resumenAgenda && (
+        <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-white/10 pt-4 text-xs sm:grid-cols-3">
+          <div>
+            <dt className="text-white/50">Comprometido con clientes</dt>
+            <dd className="mt-0.5 font-semibold text-white/90">
+              {formatCantidad(resumenAgenda.kgComprometidos)} kg
+              <span className="ml-1 font-normal text-white/50">
+                ({resumenAgenda.pedidosAbiertos}{' '}
+                {resumenAgenda.pedidosAbiertos === 1 ? 'pedido' : 'pedidos'})
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-white/50">Sin cobertura</dt>
+            <dd
+              className={`mt-0.5 font-semibold ${
+                resumenAgenda.kgSinCobertura > 0 ? 'text-rose-200' : 'text-emerald-200'
+              }`}
+            >
+              {formatCantidad(resumenAgenda.kgSinCobertura)} kg
+            </dd>
+          </div>
+          <div>
+            <dt className="text-white/50">Primera fecha en riesgo</dt>
+            <dd className="mt-0.5 font-semibold text-white/90">
+              {resumenAgenda.primeraFechaSinCobertura
+                ? formatFecha(resumenAgenda.primeraFechaSinCobertura)
+                : '—'}
+            </dd>
+          </div>
+        </dl>
+      )}
 
       <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-white/45">
         El agua no se inventaría: se registra en el turno. Los porcentajes son la fórmula oficial

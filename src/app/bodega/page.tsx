@@ -25,10 +25,12 @@ import { IconWarehouse } from '@/components/bodega/Icons';
 import {
   IconAlert,
   IconArrowDownToBox,
+  IconCalendar,
   IconPackage,
   IconX,
 } from '@/components/inventario/Icons';
 import { useBodega } from '@/lib/useBodega';
+import { useAgendaBlend } from '@/lib/useAgendaBlend';
 import type { BacheBiochar } from '@/types/bodega';
 
 const FONDO =
@@ -174,6 +176,17 @@ function BodegaContent() {
     materialesGestionables,
   } = useBodega();
 
+  /**
+   * Lo comprometido con clientes, para leer la capacidad contra algo.
+   *
+   * Se consume la agenda entera (`incluirCerrados: false`) en vez de duplicar el
+   * cálculo de cobertura aquí: es la misma regla acumulada de /calendario-blend y
+   * recalcularla en la bodega es exactamente cómo las dos pantallas empezarían a
+   * decir cosas distintas. Va en su propio hook a propósito: tiene su loading y su
+   * error, así que la bodega se pinta completa aunque la agenda tarde o falle.
+   */
+  const { resumen: resumenAgenda } = useAgendaBlend(false);
+
   const handleModalSuccess = async (mensaje: string) => {
     setEntradaAbierta(false);
     await refresh();
@@ -245,13 +258,22 @@ function BodegaContent() {
             </p>
           </div>
 
-          <Link
-            href="/inventario-pirolisis"
-            className="inline-flex items-center gap-2 rounded-lg bg-white/5 ring-1 ring-white/15 px-3 py-2 text-sm text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
-          >
-            <IconPackage className="w-4 h-4" />
-            Insumos consumibles
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/calendario-blend"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/5 ring-1 ring-white/15 px-3 py-2 text-sm text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+            >
+              <IconCalendar className="w-4 h-4" />
+              Agendamiento de pedidos
+            </Link>
+            <Link
+              href="/inventario-pirolisis"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/5 ring-1 ring-white/15 px-3 py-2 text-sm text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+            >
+              <IconPackage className="w-4 h-4" />
+              Insumos consumibles
+            </Link>
+          </div>
         </div>
 
         {/* Acciones */}
@@ -286,8 +308,8 @@ function BodegaContent() {
         {capacidad && formula && (
           <CapacidadProduccionCard
             capacidad={capacidad}
-            materiales={materiales}
             formula={formula}
+            resumenAgenda={resumenAgenda}
           />
         )}
 

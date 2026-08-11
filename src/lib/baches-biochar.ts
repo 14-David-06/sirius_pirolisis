@@ -19,6 +19,12 @@
 // producción lo negaría.
 
 import { config } from './config';
+import {
+  fetchAllStockInsumos,
+  findStockInRecords,
+  getStockActual,
+  type StockInsumoRecord,
+} from './stock-insumos';
 
 const AT = 'https://api.airtable.com/v0';
 
@@ -189,8 +195,16 @@ export async function getBiocharDisponibleKg(): Promise<number> {
  * Devuelve `null` si el insumo no está configurado o no tiene registro de stock.
  * NO devuelve 0 en ese caso: 0 sería indistinguible de "no hay biochar" y
  * bloquearía toda producción de Blend.
+ *
+ * @param stockRecords `Stock Insumos` ya leído por el llamador. Se acepta para
+ *   que una pantalla que necesita el stock de las tres materias primas no lea la
+ *   tabla dos veces (la bodega): son 5 req/s por base y la tabla es paginada.
+ *   Un array vacío significa "no hay registros", no "leelos": es lo que se pasa
+ *   cuando la lectura del Core ya falló, y así el resultado cae a los baches.
  */
-export async function getBiocharStockCore(): Promise<number | null> {
+export async function getBiocharStockCore(
+  stockRecords?: StockInsumoRecord[]
+): Promise<number | null> {
   const { insumosCoreBaseId, insumosCoreToken, stockInsumosTableId, blendBiocharInsumoRecordId } =
     config.airtable;
 
@@ -198,34 +212,14 @@ export async function getBiocharStockCore(): Promise<number | null> {
     return null;
   }
 
-  const stocks: AirtableRecord[] = [];
-  let offset: string | undefined;
-  do {
-    const url = new URL(`${AT}/${insumosCoreBaseId}/${stockInsumosTableId}`);
-    url.searchParams.set('pageSize', '100');
-    if (offset) url.searchParams.set('offset', offset);
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${insumosCoreToken}`, 'Content-Type': 'application/json' },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(`Error al leer Stock Insumos: ${JSON.stringify(data)}`);
-    stocks.push(...((data.records ?? []) as AirtableRecord[]));
-    offset = data.offset;
-  } while (offset);
+  const registros = stockRecords ?? (await fetchAllStockInsumos());
 
-  // El match va en JS sobre los record IDs: en una fórmula de Airtable un campo
-  // link se evalúa como el texto del campo primario, no como el record ID.
-  const registro = stocks.find((stock) => {
-    const links = stock.fields['Insumo ID'];
-    if (!Array.isArray(links)) return false;
-    return links.some((link) =>
-      typeof link === 'string'
-        ? link === blendBiocharInsumoRecordId
-        : (link as { id?: string })?.id === blendBiocharInsumoRecordId
-    );
-  });
+  // `findStockInRecords` hace el match en JS sobre los record IDs (en una fórmula
+  // de Airtable un campo link se evalúa como el texto del campo primario) y
+  // `getStockActual` tolera el `{ specialValue: 'NaN' }` de las fórmulas.
+  const { record } = findStockInRecords(blendBiocharInsumoRecordId, registros);
 
-  return registro ? toNumber(registro.fields['stock_actual']) : null;
+  return record ? getStockActual(record) : null;
 }
 
 /** Saldo de biochar de un bache, reconstruido desde el libro mayor del Core. */
@@ -345,9 +339,10 @@ export interface BiocharDisponible {
   /** El número que deben mostrar todas las pantallas. */
   kg: number;
   origen: 'insumos-core' | 'baches';
-  kgBaches: number;
+  /** `null` si no se pudo leer la tabla de baches, así que no hay con qué contrastar. */
+  kgBaches: number | null;
   kgCore: number | null;
-  /** `kgCore − kgBaches`. `null` si el Core no está disponible. */
+  /** `kgCore − kgBaches`. `null` si falta cualquiera de las dos vistas. */
   divergencia: number | null;
 }
 
@@ -361,21 +356,35 @@ export interface BiocharDisponible {
  * `divergencia` se expone a propósito: si las dos vistas se separan, es que un
  * consumo se escribió en una y no en la otra, y ese aviso vale más que esconder
  * la diferencia detrás de un solo número.
+ *
+ * Ninguna de las dos lecturas es fatal: el fallo de una deja el número de la otra
+ * y anula el contraste. Antes, un fallo leyendo la tabla de baches —que aquí solo
+ * sirve de contraste— tumbaba la agenda completa aunque el Core, que es la fuente,
+ * hubiera respondido bien.
+ *
+ * @param stockRecords `Stock Insumos` ya leído por el llamador (ver
+ *   `getBiocharStockCore`).
  */
-export async function resolverBiocharDisponible(): Promise<BiocharDisponible> {
+export async function resolverBiocharDisponible(
+  stockRecords?: StockInsumoRecord[]
+): Promise<BiocharDisponible> {
   const [kgBaches, kgCore] = await Promise.all([
-    getBiocharDisponibleKg(),
-    getBiocharStockCore().catch((err) => {
+    getBiocharDisponibleKg().catch((err) => {
+      console.error('⚠️ No se pudo leer el biochar de la tabla de baches:', err);
+      return null;
+    }),
+    getBiocharStockCore(stockRecords).catch((err) => {
       console.error('⚠️ No se pudo leer el biochar de Sirius Insumos Core:', err);
       return null;
     }),
   ]);
 
   return {
-    kg: kgCore ?? kgBaches,
+    kg: kgCore ?? kgBaches ?? 0,
     origen: kgCore === null ? 'baches' : 'insumos-core',
     kgBaches,
     kgCore,
-    divergencia: kgCore === null ? null : Math.round((kgCore - kgBaches) * 100) / 100,
+    divergencia:
+      kgCore === null || kgBaches === null ? null : Math.round((kgCore - kgBaches) * 100) / 100,
   };
 }

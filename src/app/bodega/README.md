@@ -36,22 +36,30 @@ src/lib/useBodega.ts                # Hook de datos
 src/types/bodega.ts                 # Contrato API ↔ UI
 ```
 
-## Dos fuentes de verdad, una por materia prima
+## Una sola fuente: Sirius Insumos Core
 
 | Materia prima | Unidad | Fuente del stock | Entrada manual |
 |---|---|---|---|
 | Bioabono (Abono 4G) | kg | `Stock Insumos` de Sirius Insumos Core (`SIRIUS-INS-0064`) | Sí |
 | Biológicos (DataLab) | L | `Stock Insumos` de Sirius Insumos Core (`SIRIUS-INS-0065`) | Sí |
-| Biochar puro | kg | Suma de `Total Cantidad Actual Biochar Seco` de los baches | **No** |
+| Biochar puro | kg | `resolverBiocharDisponible()` → Core (`SIRIUS-INS-0067`), baches de respaldo | **No** |
 
-El biochar **no existe como insumo del Core**: se produce en la planta y su
-trazabilidad es el bache (es lo que sostiene la contabilidad del carbono). Por
-eso en la bodega es de solo lectura: entra al inventario al registrar producción
-en `/sistema-baches`, no digitando una cantidad.
+El biochar es de solo lectura en la bodega: entra al inventario al registrar
+producción en `/sistema-baches` y sale al producir Blend o por una salida de bache,
+no digitando una cantidad. Conserva el desglose **bache por bache**, reconstruido
+del libro mayor del Core (`ID Bache Origen` de cada movimiento).
 
-Si una de las dos fuentes falla, la otra se sigue mostrando: el endpoint las lee
-con `Promise.allSettled` y devuelve el problema en `advertencias`, que la página
-muestra como un aviso. Una bodega a medias es más útil que un error en pantalla.
+Su saldo pasa por `resolverBiocharDisponible()` (`src/lib/baches-biochar.ts`), que
+es donde vive —y solo ahí— la decisión "manda el Core, la tabla de baches es el
+respaldo", y que expone la `divergencia` entre las dos vistas. Esta ruta era el
+último consumidor que leía el saldo por su cuenta, y ese atajo hacía que un fallo
+del Core dejara la bodega en 0 kg mientras la agenda mostraba el total de los
+baches: una pantalla diciendo "no alcanza" y la otra "está cubierto" con el mismo
+inventario detrás.
+
+Si una lectura falla, las otras se siguen mostrando: el endpoint las hace con
+`Promise.allSettled` y devuelve el problema en `advertencias`, que la página muestra
+como un aviso. Una bodega a medias es más útil que un error en pantalla.
 
 ## Capacidad de producción
 
@@ -64,10 +72,23 @@ capacidad               = min(kgBlendPosibles) sobre las tres materias primas
 limitante               = la materia prima que produjo ese mínimo
 ```
 
+La cuenta vive en `calcularCapacidadBlend()` (`src/lib/bodega.constants.ts`), no en
+el endpoint, porque **/calendario-blend muestra la misma conclusión**. Cubierta por
+`src/lib/__tests__/lib/capacidadBlend.test.ts`.
+
 Las proporciones vienen de `config.blend` (env vars `BLEND_PCT_*`), las **mismas**
 que usan `verificar-stock-blend` y la auto-deducción de `src/lib/blend-deduction.ts`.
 No se duplican aquí para que no puedan divergir. El agua (`pctAgua`) no se
 inventaría: se registra en el turno.
+
+## Contra qué se lee la capacidad
+
+Capacidad sin compromiso no dice si alcanza. La tarjeta muestra también los kg
+comprometidos con clientes, tomados de `/api/pirolisis/blend/agenda` (`useAgendaBlend`)
+en vez de recalcular la cobertura aquí: es la misma regla acumulada de
+`src/lib/agenda-blend.ts`, y duplicarla es exactamente cómo las dos pantallas
+empezarían a decir cosas distintas. Se carga en su propio hook, así que la bodega se
+pinta completa aunque la agenda tarde o falle.
 
 > ⚠️ Los porcentajes se calculan **en el servidor** y viajan en la respuesta. Las
 > env vars `BLEND_PCT_*` no existen en el cliente: si la UI los recalculara,

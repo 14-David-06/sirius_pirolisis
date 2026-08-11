@@ -6,6 +6,7 @@ import {
   getStockActual,
 } from '../../../../../lib/stock-insumos';
 import { resolverBiocharDisponible } from '../../../../../lib/baches-biochar';
+import { calcularCapacidadBlend } from '../../../../../lib/bodega.constants';
 import { getProduccionBlend } from '../../../../../lib/blend-produccion-core';
 import {
   calcularAgenda,
@@ -78,11 +79,14 @@ export async function GET(request: Request) {
 
     // Stock disponible de las tres materias primas + producción registrada, en
     // paralelo. Ninguna depende de las otras y son 4 bases distintas.
-    const [biochar, stockRecords, produccion] = await Promise.all([
-      resolverBiocharDisponible(),
+    const [stockRecords, produccion] = await Promise.all([
       fetchAllStockInsumos(),
       getProduccionBlend().catch(() => null),
     ]);
+
+    // Con el `Stock Insumos` ya leído: el resolutor lo necesita para el saldo del
+    // biochar y paginar la misma tabla dos veces gasta el límite de 5 req/s.
+    const biochar = await resolverBiocharDisponible(stockRecords);
 
     const stockDe = (insumoRecordId: string | undefined) => {
       if (!insumoRecordId) return 0;
@@ -97,6 +101,14 @@ export async function GET(request: Request) {
     };
 
     const { pctBiochar, pctAbono, pctBiologicos, pctAgua } = config.blend;
+
+    // La misma cuenta que hace la bodega, con la misma función: "hasta dónde
+    // alcanza la materia prima" no puede dar dos respuestas según la pantalla.
+    const capacidad = calcularCapacidadBlend({
+      biochar: disponible.biochar,
+      bioabono: disponible.abono,
+      biologicos: disponible.biologicos,
+    });
 
     const { eventos, resumen } = calcularAgenda(pedidos, disponible, {
       pctBiochar,
@@ -115,7 +127,8 @@ export async function GET(request: Request) {
 
     console.log(
       `📅 Agenda Blend: ${resumen.pedidosTotales} pedidos (${resumen.pedidosAbiertos} abiertos), ` +
-      `${resumen.kgComprometidos} kg comprometidos, ${resumen.kgCubiertos} kg cubiertos`
+      `${resumen.kgComprometidos} kg comprometidos, ${resumen.kgCubiertos} kg cubiertos` +
+      ` · capacidad ${capacidad.kgBlend} kg de Blend (limita ${capacidad.limitante ?? 'nada'})`
     );
 
     return NextResponse.json(
@@ -123,6 +136,7 @@ export async function GET(request: Request) {
         eventos: visibles,
         disponible,
         formula: { pctBiochar, pctAbono, pctBiologicos, pctAgua },
+        capacidad,
         resumen,
         produccion,
         fuenteBiochar: {

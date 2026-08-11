@@ -73,6 +73,7 @@ export function useAgendaBlend(incluirCerrados = true) {
     sinFecha,
     disponible: data?.disponible ?? null,
     formula: data?.formula ?? null,
+    capacidad: data?.capacidad ?? null,
     resumen: data?.resumen ?? null,
     produccion: data?.produccion ?? null,
     fuenteBiochar: data?.fuenteBiochar ?? null,

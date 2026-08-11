@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 import {
   MATERIAS_PRIMAS_ORDENADAS,
+  calcularCapacidadBlend,
   minimoPorLoteReferencia,
-  LOTE_BLEND_REFERENCIA_KG,
   type MateriaPrimaDef,
 } from '../../../../lib/bodega.constants';
 import {
@@ -14,15 +14,15 @@ import {
 } from '../../../../lib/stock-insumos';
 import {
   fetchBachesBiocharCore,
-  fetchBachesConBiochar,
+  resolverBiocharDisponible,
   type BacheBiocharCore,
+  type BiocharDisponible,
 } from '../../../../lib/baches-biochar';
-import type {
-  BacheBiochar,
-  BodegaData,
-  CapacidadProduccion,
-  MateriaPrima,
-} from '../../../../types/bodega';
+import {
+  mensajeDivergenciaBiochar,
+  mensajeFuenteBiocharDegradada,
+} from '../../../../lib/biochar-divergencia';
+import type { BacheBiochar, BodegaData, MateriaPrima } from '../../../../types/bodega';
 import type { EstadoStock } from '../../../../lib/inventario.format';
 
 /**
@@ -41,6 +41,12 @@ import type { EstadoStock } from '../../../../lib/inventario.format';
  * del Core (`ID Bache Origen` de cada movimiento). La tabla de baches se sigue
  * leyendo SOLO para contrastar: si las dos vistas se separan, es que un consumo se
  * escribió en una y no en la otra, y eso se avisa en vez de esconderse.
+ *
+ * Su SALDO pasa por `resolverBiocharDisponible()`, como el de la agenda y el de la
+ * verificación previa a producir. Esta ruta era la única que lo leía por su cuenta,
+ * y ese atajo hacía que un fallo del Core dejara la bodega en 0 kg mientras la
+ * agenda mostraba el total de los baches: la bodega diría "no alcanza" y la agenda
+ * "está cubierto", con el mismo inventario detrás.
  *
  * Los fallos parciales NO tumban la respuesta: se devuelve lo que se pudo leer con
  * su advertencia. Una bodega a medias es más útil que un error en pantalla.
@@ -128,10 +134,9 @@ export async function GET() {
 
   // Todo en paralelo y con `allSettled`: el fallo de una lectura no invalida a las
   // otras. Los baches son solo el contraste del biochar, no su fuente.
-  const [coreResult, bachesCoreResult, bachesLocalResult] = await Promise.allSettled([
+  const [coreResult, bachesCoreResult] = await Promise.allSettled([
     fetchAllStockInsumos(),
     fetchBachesBiocharCore(),
-    fetchBachesConBiochar(),
   ]);
 
   const stockRecords: StockInsumoRecord[] =
@@ -163,21 +168,24 @@ export async function GET() {
       estado: b.kgConsumido > 0 ? 'Parcialmente consumido' : 'Completo en bodega',
     }));
 
-  // Contraste con la tabla de baches de PiroliApp. No alimenta ningun numero: si
-  // las dos vistas del mismo inventario se separan, hay un consumo escrito en una
-  // sola. 1 kg de tolerancia por el redondeo a 2 decimales en cientos de movimientos.
-  if (bachesLocalResult.status === 'fulfilled') {
-    const kgLocal = bachesLocalResult.value.reduce((total, b) => total + b.kg, 0);
-    const kgCore = bachesCore.reduce((total, b) => total + b.kg, 0);
-    if (bachesCore.length && Math.abs(kgCore - kgLocal) > 1) {
-      advertencias.push(
-        `El biochar de Sirius Insumos Core (${kgCore.toFixed(2)} kg) y el de la tabla de baches ` +
-          `(${kgLocal.toFixed(2)} kg) no coinciden. Algun consumo quedo registrado en una sola de ` +
-          `las dos vistas: revisa que cada Salida de biochar del Core tenga su fila de detalle por bache.`
-      );
-    }
-  } else {
-    console.warn('⚠️ Bodega: no se pudo contrastar contra la tabla de baches:', bachesLocalResult.reason);
+  // El saldo del biochar NO se lee aquí: lo resuelve `resolverBiocharDisponible()`,
+  // el único punto donde vive la decisión "manda el Core, los baches son el
+  // respaldo". La bodega era el último consumidor que elegía su propia fuente, y
+  // por eso un fallo leyendo el Core la dejaba en 0 kg mientras la agenda seguía
+  // mostrando el total de los baches.
+  //
+  // Se le pasa el `Stock Insumos` ya leído para no paginar la misma tabla dos veces
+  // (5 req/s por base). Si esa lectura falló, `[]` hace que el resolutor caiga a los
+  // baches, que es justo lo que se quiere en ese caso.
+  const biochar: BiocharDisponible = await resolverBiocharDisponible(stockRecords);
+
+  // El contraste entre las dos vistas se avisa con el MISMO umbral y el MISMO
+  // texto que la agenda.
+  for (const mensaje of [
+    mensajeFuenteBiocharDegradada(biochar),
+    mensajeDivergenciaBiochar(biochar),
+  ]) {
+    if (mensaje) advertencias.push(mensaje);
   }
 
   const materiales: MateriaPrima[] = [];
@@ -214,7 +222,11 @@ export async function GET() {
       );
     }
 
-    const stock = stockRecord ? getStockActual(stockRecord) : 0;
+    // El biochar es la excepción: su saldo lo dicta el resolutor compartido, que
+    // sabe caer a los baches si el Core no responde. Las otras dos salen de
+    // `Stock Insumos` directo, que es su única vista.
+    const stock =
+      def.key === 'biochar' ? biochar.kg : stockRecord ? getStockActual(stockRecord) : 0;
 
     // El umbral del Core manda si esta definido; si no, lo que consume un lote
     // de referencia de Blend.
@@ -244,29 +256,14 @@ export async function GET() {
   }
 
   // ── Capacidad de producción ────────────────────────────────────────────────
-  // Cada materia prima alcanza para `stock / pctBlend` kg de Blend; la más
-  // escasa es la que limita. Una proporción en 0 (materia prima desactivada en
-  // la fórmula) no limita nada.
-  let capacidad: CapacidadProduccion = {
-    kgBlend: 0,
-    limitante: null,
-    loteReferenciaKg: LOTE_BLEND_REFERENCIA_KG,
-  };
+  // La cuenta vive en `calcularCapacidadBlend`, compartida con la agenda: las dos
+  // pantallas muestran esta misma conclusión y no deben poder diferir.
+  const capacidad = calcularCapacidadBlend(
+    Object.fromEntries(materiales.map((m) => [m.key, m.stock]))
+  );
 
   for (const material of materiales) {
-    // Proporción en 0: la materia prima no participa en la fórmula, así que no
-    // limita la producción ni tiene un "alcanza para X kg" con sentido.
-    if (material.pctBlend <= 0) continue;
-
-    material.kgBlendPosibles = Math.floor(material.stock / material.pctBlend);
-
-    if (capacidad.limitante === null || material.kgBlendPosibles < capacidad.kgBlend) {
-      capacidad = {
-        kgBlend: material.kgBlendPosibles,
-        limitante: material.key,
-        loteReferenciaKg: LOTE_BLEND_REFERENCIA_KG,
-      };
-    }
+    material.kgBlendPosibles = capacidad.porMateria[material.key];
   }
 
   const payload: BodegaData = {
@@ -279,6 +276,12 @@ export async function GET() {
       pctAgua: config.blend.pctAgua,
     },
     baches,
+    fuenteBiochar: {
+      origen: biochar.origen,
+      kgBaches: biochar.kgBaches,
+      kgCore: biochar.kgCore,
+      divergencia: biochar.divergencia,
+    },
     advertencias,
   };
 

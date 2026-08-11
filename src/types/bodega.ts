@@ -4,7 +4,8 @@
  */
 
 import type { EstadoStock } from '@/lib/inventario.format';
-import type { FuenteMateriaPrima, MateriaPrimaKey } from '@/lib/bodega.constants';
+import type { CapacidadBlend, FuenteMateriaPrima, MateriaPrimaKey } from '@/lib/bodega.constants';
+import type { FuenteBiochar } from '@/types/agenda-blend';
 
 /**
  * Bache con biochar disponible en bodega.
@@ -47,13 +48,13 @@ export interface MateriaPrima {
   kgBlendPosibles: number;
 }
 
-/** Capacidad de producción de Blend limitada por la materia prima más escasa. */
-export interface CapacidadProduccion {
-  kgBlend: number;
-  /** Materia prima que limita la producción; null si no hay stock de ninguna. */
-  limitante: MateriaPrimaKey | null;
-  loteReferenciaKg: number;
-}
+/**
+ * Capacidad de producción de Blend limitada por la materia prima más escasa.
+ *
+ * Es el mismo tipo que devuelve la agenda (`calcularCapacidadBlend`): las dos
+ * pantallas muestran esta conclusión y no pueden diferir.
+ */
+export type CapacidadProduccion = CapacidadBlend;
 
 export interface BodegaData {
   materiales: MateriaPrima[];
@@ -65,6 +66,8 @@ export interface BodegaData {
     pctAgua: number;
   };
   baches: BacheBiochar[];
+  /** De dónde salió el número del biochar, igual que en la agenda. */
+  fuenteBiochar: FuenteBiochar;
   /** Avisos no fatales: config incompleta, stock sin registro en el Core, etc. */
   advertencias: string[];
 }

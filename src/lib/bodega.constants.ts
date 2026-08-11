@@ -124,6 +124,51 @@ export function minimoPorLoteReferencia(pctBlend: number): number {
   return Number((LOTE_BLEND_REFERENCIA_KG * pctBlend).toFixed(2));
 }
 
+/** Capacidad de producción de Blend limitada por la materia prima más escasa. */
+export interface CapacidadBlend {
+  kgBlend: number;
+  /** Materia prima que limita la producción; `null` si la fórmula no pide ninguna. */
+  limitante: MateriaPrimaKey | null;
+  loteReferenciaKg: number;
+  /** kg de Blend que alcanzan con el stock de cada materia prima por separado. */
+  porMateria: Record<MateriaPrimaKey, number>;
+}
+
+/**
+ * Cuántos kg de Blend se pueden producir con el stock que hay, y qué materia prima
+ * lo limita.
+ *
+ * Cada materia prima alcanza para `stock / pctBlend` kg de Blend; la más escasa
+ * manda. Una proporción en 0 (materia prima desactivada en la fórmula) no limita
+ * nada ni tiene un "alcanza para X kg" con sentido.
+ *
+ * Está aquí, y no en el endpoint de bodega, porque la agenda muestra la MISMA
+ * conclusión: si cada pantalla la calculara, la bodega podría decir "no alcanza
+ * para producir" al lado de una agenda que da los pedidos por cubiertos.
+ */
+export function calcularCapacidadBlend(
+  stock: Partial<Record<MateriaPrimaKey, number>>
+): CapacidadBlend {
+  const porMateria = { biochar: 0, bioabono: 0, biologicos: 0 } as Record<MateriaPrimaKey, number>;
+
+  let kgBlend = 0;
+  let limitante: MateriaPrimaKey | null = null;
+
+  for (const def of MATERIAS_PRIMAS_ORDENADAS) {
+    if (def.pctBlend <= 0) continue;
+
+    const posibles = Math.floor(Math.max(stock[def.key] ?? 0, 0) / def.pctBlend);
+    porMateria[def.key] = posibles;
+
+    if (limitante === null || posibles < kgBlend) {
+      kgBlend = posibles;
+      limitante = def.key;
+    }
+  }
+
+  return { kgBlend, limitante, loteReferenciaKg: LOTE_BLEND_REFERENCIA_KG, porMateria };
+}
+
 // ============================================================================
 // SALIDAS: NO SE REGISTRAN A MANO (2026-07-29)
 // ============================================================================

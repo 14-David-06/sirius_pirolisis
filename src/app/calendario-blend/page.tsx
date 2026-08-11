@@ -62,6 +62,7 @@ function CalendarioBlendContent() {
     porDia,
     sinFecha,
     disponible,
+    capacidad,
     resumen,
     produccion,
     fuenteBiochar,
@@ -131,9 +132,10 @@ function CalendarioBlendContent() {
       <header className="border-b border-white/10 pb-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
+            {/* La categoría del navbar, no otra: Agendamiento vive en Recursos. */}
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/50">
               <IconCalendar className="w-4 h-4" />
-              Ventas
+              Recursos
             </p>
             <h1 className="mt-1.5 text-2xl sm:text-3xl font-semibold tracking-tight text-white">
               Agendamiento de pedidos
@@ -178,6 +180,7 @@ function CalendarioBlendContent() {
           <ResumenAgendaCard
             resumen={resumen}
             disponible={disponible}
+            capacidad={capacidad}
             fuenteBiochar={fuenteBiochar}
           />
         )}
