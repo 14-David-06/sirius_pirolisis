@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
 import { findUltimaSalidaCodigo } from '../../../../lib/movimientos-insumos';
+import { resolveSelfFetchUrl } from '../../../../lib/url-resolver';
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || process.env.AIRTABLE_GLOBAL_TOKEN;
@@ -233,8 +234,8 @@ export async function POST(request: NextRequest) {
           const bigBagInsumoId = process.env.AIRTABLE_BIG_BAG_INSUMO_ID;
           if (bigBagInsumoId) {
             try {
-              const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-              const deductRes = await fetch(`${baseUrl}/api/inventario/remove-quantity`, {
+              const deductRes = await fetch(
+                resolveSelfFetchUrl('/api/inventario/remove-quantity', request.nextUrl.origin), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

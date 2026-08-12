@@ -117,6 +117,46 @@ export class UrlResolver {
   }
 }
 
+/**
+ * URL base para que una API se llame a sí misma (self-fetch entre endpoints).
+ *
+ * No se puede usar `resolveApiUrl()`: en serverless devuelve un path relativo, y
+ * `fetch('/api/...')` desde el servidor de Node no tiene contra qué resolverlo.
+ * Tiene que ser absoluta.
+ *
+ * El orden importa, y cuesta un incidente entenderlo:
+ *  1. `NEXT_PUBLIC_APP_URL` — el dominio que el equipo decidió. Va primero porque
+ *     es el único valor no derivado de la petición: un `Host` falsificado no puede
+ *     desviar el self-fetch a otro servidor. Los endpoints que hacen esto son
+ *     públicos y sin autenticar (el del tablero, por ejemplo).
+ *  2. `VERCEL_URL` — la URL del deployment, automática. Es la red de seguridad:
+ *     sin ella, olvidar la variable del punto 1 en producción mandaba el self-fetch
+ *     a `localhost:3000` dentro del contenedor de Vercel, donde no escucha nadie.
+ *  3. El origin de la petición entrante — para self-host o detrás de un proxy,
+ *     donde ninguna de las dos anteriores existe.
+ *  4. `localhost:3000` — desarrollo.
+ */
+export function resolveSelfFetchUrl(path: string, origin?: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  // La barra final es un error de digitación clásico en el panel de Vercel, y
+  // concatenarla produce `//api/...`, que en Next.js no matchea la ruta.
+  const sinBarraFinal = (url: string) => url.trim().replace(/\/+$/, '');
+
+  const explicito = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicito) {
+    const conProtocolo = /^https?:\/\//.test(explicito) ? explicito : `https://${explicito}`;
+    return `${sinBarraFinal(conProtocolo)}${cleanPath}`;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${sinBarraFinal(process.env.VERCEL_URL)}${cleanPath}`;
+  }
+
+  if (origin) return `${sinBarraFinal(origin)}${cleanPath}`;
+
+  return `http://localhost:3000${cleanPath}`;
+}
+
 // Export singleton instance
 export const urlResolver = UrlResolver.getInstance();
 

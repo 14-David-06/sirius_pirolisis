@@ -1,5 +1,6 @@
 import { escapeAirtableValue } from '@/lib/airtable-escape';
 import type { StepResult } from '@/lib/blend-deduction';
+import { resolveSelfFetchUrl } from '@/lib/url-resolver';
 
 /**
  * Creación automática de un Balance de Masa desde la telemetría del tablero.
@@ -206,6 +207,11 @@ export interface OpcionesBalance {
   realizaRegistro?: string;
   /** Devuelve el plan sin escribir nada. */
   dryRun?: boolean;
+  /**
+   * Origin de la petición entrante, para el self-fetch a `/api/balance-masa/create`.
+   * Último recurso: solo se usa si no hay `NEXT_PUBLIC_APP_URL` ni `VERCEL_URL`.
+   */
+  origin?: string;
 }
 
 export async function crearBalanceDesdeRegistro(
@@ -281,8 +287,7 @@ export async function crearBalanceDesdeRegistro(
   }
 
   // 3. Crear el balance por el camino normal de la app (crítico).
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const createRes = await fetch(`${appUrl}/api/balance-masa/create`, {
+  const createRes = await fetch(resolveSelfFetchUrl('/api/balance-masa/create', opciones.origin), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...datos, turnoPirolisis: turnoId ? [turnoId] : [] }),

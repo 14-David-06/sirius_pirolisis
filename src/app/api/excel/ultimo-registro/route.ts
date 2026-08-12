@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
     const resultado = await crearBalanceDesdeRegistro(lectura.ultimoRegistro.valores, {
       realizaRegistro: leerTexto(formData, 'realizaRegistro'),
       dryRun: leerTexto(formData, 'dryRun') === 'true',
+      origin: request.nextUrl.origin,
     });
 
     const cuerpo = {
