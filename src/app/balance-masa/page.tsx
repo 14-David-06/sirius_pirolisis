@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TurnoProtection } from '@/components';
 import Navbar from '@/components/Navbar';
@@ -26,10 +26,27 @@ export default function BalanceMasa() {
   );
 }
 
+interface ConteoTurno {
+  /** false = la planta está entre turnos; no es un error. */
+  hayTurno: boolean;
+  lonas: number;
+  kgBiochar: number;
+  operador: string | null;
+}
+
+/** Lonas que completan un bache. Debe coincidir con `/api/balance-masa/create`. */
+const LONAS_POR_BACHE = 20;
+
 function BalanceMasaContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  // El registro manual queda plegado: hoy los balances entran solos desde el tablero
+  // y lo que el operador necesita ver al abrir la página es cuánto lleva el turno.
+  // Desplegarlo es explícito para que no se registre una lona de más por inercia.
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [conteo, setConteo] = useState<ConteoTurno | null>(null);
+  const [cargandoConteo, setCargandoConteo] = useState(true);
   const router = useRouter();
 
   const [formData, setFormData] = useState<BalanceMasaFormData>({
@@ -58,6 +75,38 @@ function BalanceMasaContent() {
       router.push('/login');
     }
   }, [router]);
+
+  /**
+   * El turno lo resuelve el servidor. No se usa `turnoActivo` del localStorage
+   * porque `TurnoProtection` lo borra cuando no hay turno abierto y no lo escribe
+   * cuando el turno es de otro operador: la pantalla quedaba en blanco sin que
+   * nada estuviera realmente mal.
+   */
+  const cargarConteo = useCallback(async () => {
+    setCargandoConteo(true);
+    try {
+      const res = await fetch('/api/balance-masa/conteo-turno');
+      const data = await res.json();
+
+      if (!data.success) throw new Error(data.error || 'Respuesta sin éxito');
+
+      setConteo({
+        hayTurno: Boolean(data.hayTurno),
+        lonas: data.lonas ?? 0,
+        kgBiochar: data.kgBiochar ?? 0,
+        operador: data.operador ?? null,
+      });
+    } catch (error) {
+      console.error('Error cargando el conteo del turno:', error);
+      setConteo(null);
+    } finally {
+      setCargandoConteo(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) cargarConteo();
+  }, [isAuthenticated, cargarConteo]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -171,6 +220,10 @@ function BalanceMasaContent() {
           temperaturaH4: '',
           temperaturaG9: ''
         });
+
+        // El balance recién creado ya cuenta como lona del turno.
+        cargarConteo();
+        setMostrarFormulario(false);
       } else {
         setMensaje(`❌ Error: ${result.error}`);
       }
@@ -252,7 +305,89 @@ function BalanceMasaContent() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Indicador de producción del turno */}
+            <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20 mb-6">
+              {cargandoConteo ? (
+                <p className="text-center text-white/80 drop-shadow">Cargando producción del turno…</p>
+              ) : conteo && !conteo.hayTurno ? (
+                <div className="text-center">
+                  <p className="text-white font-semibold drop-shadow">🕒 No hay un turno abierto</p>
+                  <p className="text-white/70 text-sm mt-1 drop-shadow">
+                    Abre un turno para que las lonas se cuenten.
+                  </p>
+                </div>
+              ) : conteo ? (
+                <>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-10">
+                    <div className="text-center">
+                      <div className="text-6xl font-bold text-white drop-shadow-lg leading-none">{conteo.lonas}</div>
+                      <div className="text-sm text-white/80 mt-2 drop-shadow uppercase tracking-wide">
+                        {conteo.lonas === 1 ? 'lona en el turno' : 'lonas en el turno'}
+                      </div>
+                    </div>
+                    <div className="hidden sm:block w-px h-16 bg-white/30" aria-hidden="true" />
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-white drop-shadow-lg leading-none">
+                        {conteo.kgBiochar.toLocaleString('es-CO')}
+                      </div>
+                      <div className="text-sm text-white/80 mt-2 drop-shadow uppercase tracking-wide">KG de biochar</div>
+                    </div>
+                  </div>
+
+                  {/* El bache se cierra a las 20 lonas: saber cuántas faltan evita
+                      la sorpresa de un bache cerrado a mitad de turno. */}
+                  <div className="mt-6 max-w-md mx-auto">
+                    <div className="flex justify-between text-xs text-white/80 mb-1 drop-shadow">
+                      <span>Bache actual</span>
+                      <span>
+                        {conteo.lonas % LONAS_POR_BACHE} / {LONAS_POR_BACHE}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-white/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#5A7836] to-[#8fbf5a] transition-all duration-500"
+                        style={{ width: `${((conteo.lonas % LONAS_POR_BACHE) / LONAS_POR_BACHE) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {conteo.operador && (
+                    <p className="text-center text-white/70 text-sm mt-4 drop-shadow">
+                      Operador de turno: <span className="font-semibold text-white/90">{conteo.operador}</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="text-center">
+                  <p className="text-white/90 drop-shadow">No se pudo leer la producción del turno.</p>
+                  <button
+                    type="button"
+                    onClick={cargarConteo}
+                    className="mt-3 px-4 py-2 text-sm bg-white/20 hover:bg-white/30 text-white rounded-lg border border-white/30 transition-colors"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+
+              <div className="flex justify-center mt-6">
+                <button
+                  type="button"
+                  onClick={() => setMostrarFormulario((v) => !v)}
+                  aria-expanded={mostrarFormulario}
+                  aria-controls="formulario-balance"
+                  className="px-6 py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg border border-white/30 transition-colors duration-200 font-semibold drop-shadow"
+                >
+                  {mostrarFormulario ? '✕ Ocultar registro manual' : '⚖️ Registrar balance manualmente'}
+                </button>
+              </div>
+            </div>
+
+            <form
+              id="formulario-balance"
+              onSubmit={handleSubmit}
+              className={`space-y-6 ${mostrarFormulario ? '' : 'hidden'}`}
+            >
               {/* Peso del Biochar - Estático */}
               <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg border border-white/20">
                 <h2 className="text-xl font-semibold text-white mb-4 flex items-center drop-shadow">
