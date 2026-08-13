@@ -16,7 +16,8 @@ import { resolveSelfFetchUrl } from '@/lib/url-resolver';
  *
  * Por eso mismo la deduplicación es obligatoria: sin ella, un archivo reenviado 12
  * veces por hora inflaría el bache y dispararía cierres y deducciones de inventario
- * que nunca ocurrieron en planta.
+ * que nunca ocurrieron en planta. Por la misma razón se descartan las filas de hora
+ * cerrada (ver `esHoraCerrada()`): no son lonas.
  */
 
 /**
@@ -39,6 +40,8 @@ export interface ResultadoBalanceDesdeRegistro {
   balanceId: string | null;
   /** true si la fila ya se había ingresado antes: no se creó nada. */
   yaExistia: boolean;
+  /** Motivo por el que la fila se descartó sin error, o `null` si se procesó. */
+  ignorado: 'hora_cerrada' | null;
   fechaHora: string | null;
   turnoId: string | null;
   pesoBiochar: number;
@@ -108,6 +111,26 @@ function fechaHoraISO(valor: ValorCelda): string {
     throw new RegistroInvalidoError(`"Fecha Hora" no es una fecha válida: ${valor}`);
   }
   return fecha.toISOString();
+}
+
+/**
+ * ¿El registro cae en una hora cerrada (8:00, 9:00, 13:00…)?
+ *
+ * En el cambio de hora el tablero deja una fila que no corresponde a una lona: es
+ * la marca horaria del PLC. Ingerirla suma 25 kg de biochar que no se produjeron e
+ * infla el conteo del bache, así que se descarta antes de tocar Airtable.
+ *
+ * Se mira el MINUTO, no el segundo: la marca puede quedar en 8:00:00 o en 8:00:37
+ * según el ciclo de escritura del PLC, y las dos son la misma hora cerrada.
+ *
+ * Basta con leer el minuto en UTC porque el offset de Colombia (−05:00) es de horas
+ * enteras: 08:00 COT es 13:00Z, y el minuto se conserva. No hace falta convertir a
+ * la zona local —lo que además evitaría depender de la zona del servidor, que en
+ * Vercel es UTC y en la máquina del operador no.
+ */
+export function esHoraCerrada(fechaISO: string): boolean {
+  const fecha = new Date(fechaISO);
+  return !Number.isNaN(fecha.getTime()) && fecha.getUTCMinutes() === 0;
 }
 
 /**
@@ -208,6 +231,12 @@ export interface OpcionesBalance {
   /** Devuelve el plan sin escribir nada. */
   dryRun?: boolean;
   /**
+   * Ingiere la fila aunque caiga en una hora cerrada. Escotilla de escape para
+   * reprocesar a mano una marca horaria que sí correspondía a una lona real; el
+   * ingreso automático del tablero nunca la usa.
+   */
+  incluirHoraCerrada?: boolean;
+  /**
    * Origin de la petición entrante, para el self-fetch a `/api/balance-masa/create`.
    * Último recurso: solo se usa si no hay `NEXT_PUBLIC_APP_URL` ni `VERCEL_URL`.
    */
@@ -232,10 +261,22 @@ export async function crearBalanceDesdeRegistro(
     fechaHora,
     pesoBiochar: PESO_BIOCHAR_LONA_KG,
     turnoId: null as string | null,
+    ignorado: null as 'hora_cerrada' | null,
     warnings: undefined as Record<string, boolean> | undefined,
   };
 
-  // 1. Deduplicación — ANTES de cualquier escritura.
+  // 1. Hora cerrada — primero, porque no cuesta ni una llamada a Airtable.
+  if (!opciones.incluirHoraCerrada && esHoraCerrada(fechaHora)) {
+    steps.push({
+      step: 'hora_cerrada',
+      ok: true,
+      skipped: true,
+      detail: `${fechaHora} cae en una hora cerrada: es la marca horaria del PLC, no una lona. No se crea nada.`,
+    });
+    return { ok: true, balanceId: null, yaExistia: false, steps, ...base, ignorado: 'hora_cerrada' };
+  }
+
+  // 2. Deduplicación — ANTES de cualquier escritura.
   const existente = await buscarBalanceExistente(fechaHora);
   if (existente) {
     steps.push({
@@ -248,7 +289,7 @@ export async function crearBalanceDesdeRegistro(
   }
   steps.push({ step: 'deduplicacion', ok: true, detail: `Sin balance previo para ${fechaHora}` });
 
-  // 2. Turno abierto — best-effort: un balance sin turno es recuperable, perderlo no.
+  // 3. Turno abierto — best-effort: un balance sin turno es recuperable, perderlo no.
   let turno: { id: string; operador: string | null } | null = null;
   try {
     turno = await resolverTurnoAbierto();
@@ -286,7 +327,7 @@ export async function crearBalanceDesdeRegistro(
     return { ok: true, balanceId: null, yaExistia: false, steps, ...base };
   }
 
-  // 3. Crear el balance por el camino normal de la app (crítico).
+  // 4. Crear el balance por el camino normal de la app (crítico).
   const createRes = await fetch(resolveSelfFetchUrl('/api/balance-masa/create', opciones.origin), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -307,7 +348,7 @@ export async function crearBalanceDesdeRegistro(
   base.warnings = createBody.warnings;
   steps.push({ step: 'crear_balance', ok: true, detail: balanceId });
 
-  // 4. Escribir la telemetría y la llave de deduplicación.
+  // 5. Escribir la telemetría y la llave de deduplicación.
   //    Si esto falla, el balance queda creado pero SIN llave, así que el próximo
   //    envío del mismo archivo lo duplicaría. Por eso el paso es crítico para el
   //    resultado (207) aunque el balance ya exista: hay que reintentar o escribir

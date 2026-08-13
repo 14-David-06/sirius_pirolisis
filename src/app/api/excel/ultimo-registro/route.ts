@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { crearBalanceDesdeRegistro, RegistroInvalidoError } from '@/lib/balance-desde-registro';
 import { ExcelInvalidoError, leerUltimoRegistro } from '@/lib/excel-ultimo-registro';
+import { checkRateLimit, createRateLimitResponse } from '@/middleware/rate-limit';
 
 /**
  * POST /api/excel/ultimo-registro — sube el `Registro_Proceso.xlsx` del tablero,
@@ -10,12 +11,16 @@ import { ExcelInvalidoError, leerUltimoRegistro } from '@/lib/excel-ultimo-regis
  * pocos minutos, así que el ingreso es idempotente por `Fecha Hora`: reenviar el
  * mismo archivo devuelve el balance ya creado en vez de duplicarlo.
  *
+ * Las filas de hora cerrada (8:00, 9:00, 13:00…) se descartan: son la marca horaria
+ * del PLC, no una lona. Se responde 200 con `ignorado: 'hora_cerrada'`.
+ *
  * multipart/form-data:
- *   file            (requerido) archivo .xlsx / .xlsm
- *   hoja            (opcional)  nombre de la hoja o su índice 1-based; por defecto la primera
- *   filaEncabezado  (opcional)  fila de encabezados, 1-indexada; por defecto 1
- *   realizaRegistro (opcional)  queda en el balance; por defecto, el operador del turno abierto
- *   dryRun          (opcional)  "true" devuelve el plan sin escribir nada
+ *   file               (requerido) archivo .xlsx / .xlsm
+ *   hoja               (opcional)  nombre de la hoja o su índice 1-based; por defecto la primera
+ *   filaEncabezado     (opcional)  fila de encabezados, 1-indexada; por defecto 1
+ *   realizaRegistro    (opcional)  queda en el balance; por defecto, el operador del turno abierto
+ *   dryRun             (opcional)  "true" devuelve el plan sin escribir nada
+ *   incluirHoraCerrada (opcional)  "true" ingiere la fila aunque caiga en hora cerrada
  */
 
 function leerTexto(formData: FormData, campo: string): string | undefined {
@@ -26,12 +31,28 @@ function leerTexto(formData: FormData, campo: string): string | undefined {
 const CONFIG = {
   maxFileSize: 15 * 1024 * 1024,
   allowedExtensions: ['.xlsx', '.xlsm'],
+  /**
+   * El endpoint es público y cada POST aceptado cuesta ~10 llamadas a la base de
+   * PiroliApp (dedup, turno, balance, bache, Big Bag, lonas, telemetría) contra un
+   * límite de 5 req/s. El tablero manda una copia cada pocos minutos —12 por hora en
+   * el peor caso—, así que 20 en 5 minutos le deja margen de sobra para reintentos y
+   * a la vez acota lo que un envío en ráfaga puede mover del inventario.
+   */
+  rateLimit: { windowMs: 5 * 60 * 1000, maxRequests: 20 },
 } as const;
 
 // El parseo carga el libro completo en memoria: fuera del edge runtime.
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  const rateLimit = checkRateLimit(request, CONFIG.rateLimit);
+  if (!rateLimit.allowed) {
+    console.warn(
+      `🚨 [excel/ultimo-registro] Rate limit excedido para ${request.headers.get('x-forwarded-for') ?? 'IP desconocida'}`
+    );
+    return createRateLimitResponse(rateLimit.resetTime);
+  }
+
   try {
     let formData: FormData;
     try {
@@ -117,6 +138,7 @@ export async function POST(request: NextRequest) {
     const resultado = await crearBalanceDesdeRegistro(lectura.ultimoRegistro.valores, {
       realizaRegistro: leerTexto(formData, 'realizaRegistro'),
       dryRun: leerTexto(formData, 'dryRun') === 'true',
+      incluirHoraCerrada: leerTexto(formData, 'incluirHoraCerrada') === 'true',
       origin: request.nextUrl.origin,
     });
 
@@ -130,6 +152,7 @@ export async function POST(request: NextRequest) {
       balance: {
         balanceId: resultado.balanceId,
         yaExistia: resultado.yaExistia,
+        ignorado: resultado.ignorado,
         fechaHora: resultado.fechaHora,
         turnoId: resultado.turnoId,
         pesoBiochar: resultado.pesoBiochar,
@@ -138,11 +161,17 @@ export async function POST(request: NextRequest) {
       steps: resultado.steps,
     };
 
-    console.log(
-      resultado.yaExistia
-        ? `↩️  [excel/ultimo-registro] Fila ${resultado.fechaHora} ya ingresada como ${resultado.balanceId}: sin cambios.`
-        : `✅ [excel/ultimo-registro] Balance ${resultado.balanceId} creado desde ${resultado.fechaHora}`
-    );
+    if (resultado.ignorado === 'hora_cerrada') {
+      console.log(
+        `⏭️  [excel/ultimo-registro] Fila ${resultado.fechaHora} es hora cerrada (marca del PLC): ignorada.`
+      );
+    } else {
+      console.log(
+        resultado.yaExistia
+          ? `↩️  [excel/ultimo-registro] Fila ${resultado.fechaHora} ya ingresada como ${resultado.balanceId}: sin cambios.`
+          : `✅ [excel/ultimo-registro] Balance ${resultado.balanceId} creado desde ${resultado.fechaHora}`
+      );
+    }
 
     // 207: el balance existe pero algún paso quedó a medias (típicamente la llave de
     // deduplicación). Un 200 lo escondería y el próximo envío duplicaría el balance.
