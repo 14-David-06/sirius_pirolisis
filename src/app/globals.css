@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/**
+ * Primitivas visuales de @sirius/solicitudes (.glass, .campo-oscuro, .anim-*, y
+ * su vuelta a blanco sobre negro al imprimir). Las usan sus formularios: sin
+ * esto salen sin tarjeta y con los campos claros sobre el fondo oscuro.
+ *
+ * El @source es obligatorio: Tailwind no escanea node_modules, así que sin él
+ * las clases de utilidad que usan los componentes del paquete no se generan.
+ */
+@import "@sirius/solicitudes/styles.css";
+@source "../../node_modules/@sirius/solicitudes/src";
+
 @font-face {
   font-family: "Museo Slab";
   font-weight: 300;

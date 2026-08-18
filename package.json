@@ -27,6 +27,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.864.0",
     "@aws-sdk/s3-request-presigner": "^3.864.0",
+    "@sirius/solicitudes": "file:vendor/sirius-solicitudes-1.2.0.tgz",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.2",
     "dotenv": "^17.2.3",

@@ -210,13 +210,17 @@ export const config = {
     nominaCorePersonalTable: process.env.AIRTABLE_TABLE_NOMINA_PERSONAL,
     nominaCoreAreasTable: process.env.AIRTABLE_TABLE_NOMINA_AREAS,
     nominaCoreSistemasTable: process.env.AIRTABLE_TABLE_NOMINA_SISTEMAS_APLICACIONES,
-    // Novedades Nomina — OPCIONAL (módulo solicitudes ROTO)
+    // Novedades Nomina — permisos, vacaciones y novedades del colaborador.
+    // Se le pasan a @sirius/solicitudes desde src/lib/solicitudesAirtable.ts.
     novedadesNominaBaseId: process.env.AIRTABLE_BASE_ID_NOVEDADES_NOMINA,
     novedadesNominaToken: process.env.AIRTABLE_API_KEY_NOVEDADES_NOMINA || GLOBAL_TOKEN,
     novedadesNominaReportesTable: process.env.AIRTABLE_TABLE_NOVEDADES_REPORTES,
     novedadesNominaPermisosTable: process.env.AIRTABLE_TABLE_NOVEDADES_PERMISOS,
     novedadesNominaVacacionesTable: process.env.AIRTABLE_TABLE_NOVEDADES_VACACIONES,
     novedadesNominaSiriusTable: process.env.AIRTABLE_TABLE_NOVEDADES_NOMINA_SIRIUS,
+    // Saldo del beneficio de dia siriano, por colaborador y periodo. Si no se
+    // define, @sirius/solicitudes usa el nombre de la tabla (`Dias_Sirianos`).
+    novedadesNominaDiasSirianosTable: process.env.AIRTABLE_TABLE_DIAS_SIRIANOS,
     // Insumos Blend (MIGRADOS AL CORE 2026-07-27)
     blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,  // SIRIUS-INS-0064
     blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,  // SIRIUS-INS-0065

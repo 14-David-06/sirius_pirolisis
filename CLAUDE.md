@@ -20,6 +20,7 @@ mismas). PiroliApp es un consumidor, no el dueño.
 | `productsBaseId` | **Sirius Product Core** | Catálogo. Biochar Blend = `SIRIUS-PRODUCT-0016` |
 | `clientesBaseId` | **Sirius Clients Core** | Clientes y su personal |
 | `nominaCore*` | **Sirius Nomina Core** | Personal (solo login) |
+| `novedadesNomina*` | **Sirius Novedades Nomina** | Permisos, vacaciones y novedades — los escribe `@sirius/solicitudes` (§6) |
 
 ### Regla de oro: FK simbólicas, nunca linked records entre bases
 
@@ -201,7 +202,75 @@ y no se debe forzar. Centralizada en `config.blend`.
 
 ---
 
-## 6. Reglas del repositorio
+## 6. Solicitudes de nómina: el paquete `@sirius/solicitudes`
+
+`/solicitudes` y `/api/solicitudes/**` **no son código de PiroliApp**: los trae el
+paquete `@sirius/solicitudes`, el mismo módulo que usa Gestión del Ser. Se instala
+desde el tarball versionado en `vendor/` y se distribuye en TypeScript sin build,
+así que `next.config.ts` necesita `transpilePackages: ['@sirius/solicitudes']`.
+
+⚠️ **No lo aliases en `tsconfig.json` ni copies su `src/` al repo.** Antes había una
+copia en `packages/solicitudes/` con un alias, y se quedó doce archivos atrás:
+sin firma digital, sin calendario y con su propia lista de tipos de permiso. Se
+resuelve por el `exports` de su package.json, como cualquier dependencia.
+
+| Lo que PiroliApp le inyecta | Archivo |
+|---|---|
+| Sesión (`idCore`, nombre, cédula) | `src/lib/solicitudesAuth.ts` |
+| Almacenamiento de la firma | `src/lib/solicitudesInfra.ts` |
+| Base y tablas de Airtable | `src/lib/solicitudesAirtable.ts` |
+| Cromado (foto, Navbar, Footer) | `src/components/SolicitudesShell.tsx` |
+| Dónde archivar el PDF del día siriano | `src/lib/solicitudesInfra.ts` |
+| Servir el documento con control de acceso | `src/app/api/documentos/permiso/[id]/route.ts` |
+
+Tres cosas que no se pueden aflojar:
+
+**La firma va al bucket de nómina, no al de pirólisis.** La `Firma_S3_Key` que
+queda en Airtable la lee Gestión del Ser para servir el documento del permiso, y
+la resuelve contra `S3_BUCKET_FIRMAS`. Escribirla en `siriuspirolisis` dejaría el
+permiso radicado y su firma inaccesible, sin error visible en ninguna de las dos
+apps. La convención de la key es parte del contrato, no un detalle.
+
+**El día siriano está encendido, y eso arrastra tres piezas.** Ese permiso nace
+autorizado: su único respaldo es el PDF que se emite al radicarlo, así que si
+falta cualquiera de las tres, el handler responde 400 antes de registrar nada —
+mejor eso que un permiso concedido sin nada que lo acredite.
+
+1. El documento lo genera el paquete (`@sirius/solicitudes/dia-siriano`), no esta
+   app: maqueta institucional, logo, QR y firma de Gestión del Ser. Aquí solo se
+   dice dónde archivarlo (`solicitudesInfra.ts`), junto a las firmas y con la
+   misma estructura de carpetas que Gestión del Ser: es el mismo expediente.
+2. **`FIRMA_GESTION_SER_BASE64`** tiene que estar en el entorno del despliegue. Es
+   una firma manuscrita: no va al repositorio, y los tests usan el trazo sintético
+   que el paquete exporta (`FIRMA_FIXTURE_BASE64`). ⚠️ Next no carga `.env.local`
+   con `NODE_ENV=test`, así que en tests hay que inyectarla siempre.
+3. **`/api/documentos/permiso/[id]`** sirve el PDF, y ahí la regla es **solo el
+   dueño**. Es completa para esta app: PiroliApp no autoriza solicitudes ni tiene
+   jefaturas con potestad sobre ellas (eso vive en Gestión del Ser, que además abre
+   el documento a quien autorizó). Al denegar responde **404, no 403**: un 403
+   confirmaría que el registro existe, y eso ya es información sobre un tercero.
+   El cliente nunca nombra el archivo —pide `(tipo, recordId)`— y el PDF se
+   transmite por el route: una URL firmada sale del perímetro y funciona sin
+   sesión mientras viva.
+
+Si algún día se le quita esa infraestructura, hay que volver a pasarle
+`diaSirianoHabilitado={false}` a `PermisoForm`: sin la prop el formulario ofrece un
+camino que termina en error.
+
+**Las tablas se le pasan explícitas.** El paquete las leería de sus propias
+`AIRTABLE_TABLE_SOLICITUD_*`, que aquí no existen; `solicitudesAirtable.ts` le
+entrega los IDs de `config.ts`. Y van también a `SolicitudesOverview`, que lee las
+tres tablas por su cuenta: apuntarlo a otras dejaría el historial siempre vacío.
+
+Se eliminaron `/api/nomina/permisos` y `/api/nomina/vacaciones` (con sus `[id]`):
+no tenían autenticación —su GET devolvía los permisos de toda la empresa con el
+motivo y la cédula—, nadie los consumía, y el paquete ya cubre esas tablas
+exigiendo sesión. `/api/nomina/novedades` y `/api/nomina/empleados` siguen ahí
+porque los usa `panel-control`, **y siguen respondiendo sin autenticar.**
+
+---
+
+## 7. Reglas del repositorio
 
 **Ningún ID ni credencial de Airtable en el fuente**, tampoco en comentarios: van en
 variables de entorno y se leen por `src/lib/config.ts`.
@@ -219,7 +288,7 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
 
 ---
 
-## 7. Estado conocido / deuda
+## 8. Estado conocido / deuda
 
 - `scripts/diagnose-airtable.js` y `verify-env.js` usan `require()` y fallan el lint.
 - `src/lib/blend-core-sync.ts` quedó obsoleto al invertirse la propiedad de las
