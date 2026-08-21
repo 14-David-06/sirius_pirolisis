@@ -19,6 +19,8 @@ const MANEJO_RESIDUOS_TABLE = process.env.CARBON_EPIROLISIS_MANEJO_RESIDUOS_TABL
 const MOVIMIENTOS_INSUMOS_CORE_TABLE = process.env.AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID;
 const INSUMOS_CORE_BASE_ID = process.env.AIRTABLE_INSUMOS_CORE_BASE_ID;
 const LONA_INSUMO_ID = process.env.AIRTABLE_LONA_INSUMO_ID;  // Insumo del Core (SIRIUS-INS-0062)
+const CANTIDAD_FIELD_ID = process.env.AIRTABLE_MOVIMIENTO_CANTIDAD_FIELD_ID;
+const INSUMO_FIELD_ID = process.env.AIRTABLE_MOVIMIENTO_INSUMO_FIELD_ID;
 
 // Table ID (escritura)
 const CARBON_EPIROLISIS_TABLE = process.env.CARBON_EPIROLISIS_RESULTADOS_TABLE_ID!;
@@ -68,14 +70,18 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
    * Devuelve 0 si la tabla o el ID de lona no están configurados (no rompe el cálculo).
    */
   private async sumarLonasIngresadas(fechaInicio: string, fechaFin: string): Promise<number> {
-    if (!MOVIMIENTOS_INSUMOS_CORE_TABLE || !INSUMOS_CORE_BASE_ID || !LONA_INSUMO_ID) {
+    if (!MOVIMIENTOS_INSUMOS_CORE_TABLE || !INSUMOS_CORE_BASE_ID || !LONA_INSUMO_ID
+        || !CANTIDAD_FIELD_ID || !INSUMO_FIELD_ID) {
       console.warn('⚠️ Configuración de Core incompleta para sumar lonas; total_lonas = 0');
       return 0;
     }
 
-    // Filtro: movimiento de entrada del insumo Lona creado dentro del período
+    // Filtro: entradas creadas dentro del período. El insumo NO puede filtrarse
+    // por fórmula: en una fórmula un campo link se evalúa como el texto del campo
+    // primario del registro vinculado (aquí "Código SIRIUS-INS"), nunca como su
+    // record ID, así que FIND(recXXX, ARRAYJOIN({Insumo})) no matchea jamás y el
+    // total salía 0 en silencio. El match va en JS sobre los record IDs reales.
     const filter = `AND(`
-      + `FIND("${LONA_INSUMO_ID}", ARRAYJOIN({Insumo})),`
       + `{Tipo Movimiento} = "Entrada",`
       + `IS_AFTER(CREATED_TIME(), '${fechaInicio}'),`
       + `IS_BEFORE(CREATED_TIME(), DATEADD('${fechaFin}', 1, 'days'))`
@@ -91,9 +97,11 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
         filterByFormula: filter,
         pageSize: '100',
       });
-      params.append('fields[]', 'Cantidad');
-      params.append('fields[]', 'Insumo');
-      params.append('fields[]', 'Tipo Movimiento');
+      // Se piden por field ID (y se leen igual): el campo de cantidad se llama
+      // 'Cantidad ' con espacio al final en el Core, y pedirlo por nombre da 422.
+      params.set('returnFieldsByFieldId', 'true');
+      params.append('fields[]', CANTIDAD_FIELD_ID);
+      params.append('fields[]', INSUMO_FIELD_ID);
       if (offset) params.set('offset', offset);
 
       const url = `https://api.airtable.com/v0/${INSUMOS_CORE_BASE_ID}/${MOVIMIENTOS_INSUMOS_CORE_TABLE}?${params.toString()}`;
@@ -118,7 +126,13 @@ export class EPirolisisAirtableRepository implements IEPirolisisRepository {
 
     let total = 0;
     for (const rec of allRecords) {
-      const cantidad = parseFloat(rec.fields?.['Cantidad']) || 0;
+      const links = rec.fields?.[INSUMO_FIELD_ID];
+      const esLona = Array.isArray(links) && links.some((link: any) =>
+        typeof link === 'string' ? link === LONA_INSUMO_ID : link?.id === LONA_INSUMO_ID
+      );
+      if (!esLona) continue;
+
+      const cantidad = parseFloat(rec.fields?.[CANTIDAD_FIELD_ID]) || 0;
       if (cantidad > 0) total += cantidad;
     }
 

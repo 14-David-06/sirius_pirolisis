@@ -13,11 +13,11 @@ mismas). PiroliApp es un consumidor, no el dueño.
 | Config (`src/lib/config.ts`) | Base | Rol |
 |---|---|---|
 | `airtable.baseId` | **PiroliApp** | Dominio propio de pirólisis: turnos, baches, balances de masa, bitácora, residuos |
-| `insumosCore*` | **Sirius Insumos Core** | Insumos, movimientos y stock. Incluye `Biochar Puro` (SIRIUS-INS-0067) |
+| `insumosCore*` | **Sirius Insumos Core** | Insumos, movimientos y stock: abono 4G y biológicos |
 | `pedidosCore*` | **Sirius Pedidos Core** | Pedidos y detalles de cliente |
 | `remisionesCore*` | **Sirius Remisiones Core** | Remisiones, productos remitidos, personas |
-| `inventarioProdCore*` | **Sirius Inventario Production Core** | Libro mayor de producto terminado |
-| `productsBaseId` | **Sirius Product Core** | Catálogo. Biochar Blend = `SIRIUS-PRODUCT-0016` |
+| `inventarioProdCore*` | **Sirius Inventario Production Core** | Libro mayor de producto terminado: Biochar Blend **y Biochar Puro** |
+| `productsBaseId` | **Sirius Product Core** | Catálogo. Biochar Blend = `SIRIUS-PRODUCT-0016`, Biochar Puro = `SIRIUS-PRODUCT-0015` |
 | `clientesBaseId` | **Sirius Clients Core** | Clientes y su personal |
 | `nominaCore*` | **Sirius Nomina Core** | Personal (solo login) |
 | `novedadesNomina*` | **Sirius Novedades Nomina** | Permisos, vacaciones y novedades — los escribe `@sirius/solicitudes` (§6) |
@@ -29,7 +29,7 @@ legibles:
 
 ```
 SIRIUS-PED-0059     → pedido            SIRIUS-PRODUCT-0016 → producto
-SIRIUS-REM-0116     → remisión          SIRIUS-INS-0067     → insumo
+SIRIUS-REM-0116     → remisión          SIRIUS-PRODUCT-0015 → biochar puro
 CL-0003             → cliente           SIRIUS-AREA-0009    → área
 PER-REM-0001        → persona           S-00167             → bache (PiroliApp)
 BLEND-2026-06-24    → lote de producción de Blend
@@ -116,13 +116,12 @@ pasos **críticos** hacen fallar la operación (y revierten lo que puedan); los
 **best-effort** se reportan y elevan la respuesta a **207 Multi-Status** con el
 array de `steps`, para que el operador vea qué quedó a medias.
 
-Ver `runBlendDeduction()` en `src/lib/blend-deduction.ts` y `crearRemision()` en
-`src/lib/blend-remisiones-core.ts`.
+Ver `crearRemision()` en `src/lib/blend-remisiones-core.ts`. El tipo vive en
+`src/types/step-result.ts`.
 
 **Idempotencia:** toda escritura repetible necesita una llave de deduplicación.
-Se usa `documento_referencia` en los movimientos de inventario, el estado del pedido
-como lock en `iniciar-produccion`, y marcas en texto (`[lote:…]`,
-`RECONSTRUCCION-HISTORICA:…`) donde no hay campo dedicado.
+Se usa `documento_referencia` en los movimientos de inventario y marcas en texto
+(`[lote:…]`, `RECONSTRUCCION-HISTORICA:…`) donde no hay campo dedicado.
 
 ---
 
@@ -134,22 +133,56 @@ en los Core unidos por un **código de lote** `BLEND-…`.
 ```
 iniciar-produccion  →  lote BLEND-<fecha>-<pedido>
                        │
-   ┌───────────────────┼──────────────────────────────┐
-   │                   │                              │
-Insumos Core      Inventario Prod. Core          PiroliApp
-Salida por bache  Entrada de producto            Detalle Cantidades
-ID Bache Origen   documento_referencia = lote    ID Produccion Blend = lote
-ID Produccion                                    + Estado Bache → Agotado
-  Destino = lote
+   ┌───────────────────┴──────────────────┬────────────────────────┐
+   │                                      │                        │
+Inventario Prod. Core                Insumos Core             PiroliApp
+Salida de Biochar Puro por bache     Salida de abono 4G       Detalle Cantidades
+  bache_origen_id = S-00XXX          y de biológicos          ID Produccion Blend
+  produccion_destino_id = lote                                  = lote
+Entrada de Biochar Blend                                      + Estado Bache
+  documento_referencia = lote                                   → Agotado
 ```
 
 **Composición, CO₂ y baches NO se guardan: se derivan del lote.** Guardarlos sería
 duplicar un dato que puede divergir. Ver `composicionDeDespacho()` y
 `getBachesDeLote()`.
 
-**El biochar se escribe en DOS vistas a propósito.** Sirius Insumos Core es el libro
-mayor ("cuánto hay y a dónde fue"); la fórmula del bache responde "cuánto queda de
-ESTE bache", que es lo que necesita la UI de selección al producir. Cada consumo se
+**El biochar puro es un PRODUCTO, no un insumo (2026-08-21).** Del 2026-07-29 al
+2026-08-21 vivió en Sirius Insumos Core como `Biochar Puro` (SIRIUS-INS-0067), al
+lado del abono 4G y de los biológicos. Estaba en el sitio equivocado: un insumo es
+algo que el área COMPRA, y el biochar es lo que la planta PRODUCE. Como insumo, el
+inventario de producto terminado del ecosistema no sabía nada del biochar puro —solo
+veía el Blend— mientras el de insumos cargaba un renglón que ninguna otra app podía
+interpretar.
+
+Hoy es **`SIRIUS-PRODUCT-0015`** en Sirius Inventario Production Core, la misma base
+donde ya vivía el Blend que alimenta, así que producir es lo que siempre fue: una
+Salida de un producto y una Entrada de otro, en un solo libro mayor. Todo el acceso
+pasa por `src/lib/biochar-inventario-core.ts`. El insumo viejo quedó en `Inactivo`
+con un asiento de cierre y su histórico intacto; `blendBiocharInsumoRecordId` sigue
+en `config.ts` **solo** para el script de migración y un eventual rollback.
+
+Esa base **no traía trazabilidad por bache**, así que la migración le agregó a
+`Movimientos_Inventario` los dos campos que la sostienen: `bache_origen_id` (el
+`Codigo Bache`) y `produccion_destino_id` (el lote `BLEND-…`, o la referencia `SAL-…`
+de una salida que no es producción). Sin ellos se pierde "de qué bache salió cada kg"
+y "a qué lote fue", que es lo que sostiene la contabilidad de carbono. No se
+reciclaron los campos existentes: `ubicacion_origen_id` significa ubicación y
+`documento_referencia` ya es la llave de idempotencia.
+
+⚠️ **Esa base se accede por NOMBRE de campo, no por field ID**, a diferencia de
+Insumos Core, donde `config.ts` guarda field IDs. Mezclar las dos convenciones es
+como se llega a leer `fields[fieldId]` contra una respuesta indexada por nombre y
+obtener siempre `undefined`.
+
+⚠️ **Un movimiento sin vincular a `Stock_Actual` es invisible para el saldo.** Esa
+fila es una fórmula sobre los movimientos VINCULADOS por el campo link, así que se
+vincula en el POST del movimiento (un PATCH posterior reemplazaría el array). Así fue
+como la fila del Blend se quedó en 0 kg teniendo 15.528 kg de entradas.
+
+**El biochar se escribe en DOS vistas a propósito.** El Core es el libro mayor
+("cuánto hay y a dónde fue"); la fórmula del bache responde "cuánto queda de ESTE
+bache", que es lo que necesita la UI de selección al producir. Cada consumo se
 escribe una vez en cada vista con el mismo número.
 **Todo consumidor de "biochar en stock" debe pasar por `resolverBiocharDisponible()`**
 (`src/lib/baches-biochar.ts`), que decide la fuente y expone la `divergencia` entre
@@ -159,34 +192,21 @@ las dos. Si una pantalla elige su fuente, bodega y producción se contradicen.
 `Estado Bache` a `Bache Incompleto` o `Bache Agotado` al vaciarse
 (`estadoTrasConsumo()`).
 
-**Un bache también sale SIN producir.** Un bigbag al laboratorio, una muestra, un
-derrame: `runSalidaBache()` (`src/lib/salida-bache.ts`) escribe las mismas tres
-partes que la producción de Blend —el detalle que baja la fórmula del bache, la
-`Salida` de `Biochar Puro` en Insumos Core y el `Estado Bache`— con `StepResult` y
-207. Es el camino obligatorio: la UI de remisión de baches (`/api/remisiones-baches`)
-escribe SOLO el detalle, así que usarla para esto infla el stock del Core y deja el
-bache en "Completo Bodega" con 0 kg.
+**La salida de un bache SIN producir ya no tiene camino en la app (2026-08-21).**
+`runSalidaBache()` y `/api/baches/salida` se eliminaron con la depuración de §8. La
+regla de fondo sigue viva por si se reconstruye: una salida honesta escribe TRES
+partes —el detalle que baja la fórmula del bache, la `Salida` de `Biochar Puro` en
+Inventario Production Core y el `Estado Bache`—, con llave `SAL-<MOTIVO>-<fecha>-<bache>`
+verificada lado por lado para que un reintento COMPLETE la mitad que falte en vez de
+duplicarla. La UI de remisión de baches (`/api/remisiones-baches`) escribe SOLO el
+detalle: usarla para esto infla el stock del Core y deja el bache en "Completo Bodega"
+con 0 kg.
 
-Su llave es la referencia `SAL-<MOTIVO>-<fecha>-<bache>`, y se verifica lado por
-lado: **reintentar una salida COMPLETA la mitad que falte** en vez de duplicarla, así
-que es también la herramienta para cerrar una divergencia Core↔baches. Por eso la
-idempotencia se consulta ANTES de validar disponibilidad: con el detalle ya escrito
-el bache marca 0 y validar primero mataba el reintento con "no tiene biochar
-disponible". Acepta `dryRun` para ver el plan sin escribir.
-
-**Las entregas sin factura son un acta, no una remisión.** Biochar entregado para
-investigación, ensayo, piloto o donación se documenta con un `Acta de Entrega de
-Biochar` (`src/lib/actas-biochar.ts`): evidencia del uso previsto declarado que exige
-el numeral 5.4.2 de la Puro Biochar Methodology. Vive en PiroliApp —no en un Core—
-porque no es un documento comercial: meterla en Pedidos/Remisiones Core mezclaría
-donaciones con ventas. Sus receptores son tabla propia y **no** clientes de Clients
-Core por la misma razón.
-
-El tipo de biochar del acta decide de qué libro mayor se descuenta: **puro** → baches
-+ Insumos Core (vía `runSalidaBache` con el código del acta como `referenciaBase`);
-**blend** → Salida en Inventario Production Core con `documento_referencia =
-ACTA-<código>`. El inventario se mueve al GENERAR el acta, no al firmar: el biochar
-ya salió físicamente.
+**Las actas de entrega de biochar se eliminaron (2026-08-21).** Documentaban las
+entregas sin contraprestación (investigación, ensayo, piloto, donación) que exige el
+numeral 5.4.2 de la Puro Biochar Methodology, y vivían en PiroliApp —no en un Core—
+porque no son documentos comerciales. Si vuelven, esa separación es la decisión a
+respetar: receptores en tabla propia, no clientes de Clients Core.
 
 **Todo el biochar se maneja en MASA SECA** (decisión de David, 2026-08-05). El acta
 física deja abierta la casilla húmeda/seca, pero la app no: no hay selector ni
@@ -290,6 +310,18 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
 
 ## 8. Estado conocido / deuda
 
+- **Depuración del 2026-08-21.** Se eliminaron cuatro módulos completos: `/bodega`
+  (materias primas del Blend), `/actas-biochar`, `/calendario-blend` (agendamiento) y
+  `/pirolisis/blend/admin-pedidos` (pedidos y remisiones), con sus componentes, sus
+  APIs (`/api/bodega/**`, `/api/actas-biochar/**`, casi todo `/api/pirolisis/blend/**`,
+  las entradas de abono/biológicos, `/api/baches/salida` y `/api/baches/disponibles`) y
+  las libs que quedaron huérfanas. Sobreviven `pirolisis/blend/firmar/[remisionId]`
+  (firma pública de remisiones ya emitidas) y `/api/pirolisis/inventario/biochar-disponible`
+  (lo consume `dashboard-produccion`). Consecuencia práctica: **ya no hay UI para
+  producir Blend, agendar pedidos, dar salida a un bache ni registrar entradas de
+  materia prima**; el biochar sigue entrando a bodega al crear el bache
+  (`/api/baches/update` → `biochar-bodega.ts`). El árbol previo quedó en el tag
+  `pre-depuracion-blend`.
 - `scripts/diagnose-airtable.js` y `verify-env.js` usan `require()` y fallan el lint.
 - `src/lib/blend-core-sync.ts` quedó obsoleto al invertirse la propiedad de las
   remisiones hacia el Core; su rol lo cumple `blend-remisiones-core.ts`.
@@ -299,5 +331,10 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   no permite borrar campos: hay que hacerlo desde la UI.
 - 4 filas de `Detalle Cantidades` sin bache vinculado descontaron 8.070 kg de la nada
   ("biochar fantasma" de la auditoría del 2026-07-29).
+- La fila de `Stock_Actual` del **Biochar Blend** en Inventario Production Core marca
+  0 kg teniendo 15.528,45 de entradas y 13.050 de salidas: los movimientos históricos
+  que cargó `scripts/blend-core-produccion.mjs` el 2026-07-30 nunca se vincularon al
+  campo link `Stock_Actual`, y el saldo es una fórmula sobre los movimientos
+  VINCULADOS. El código que escribe hoy sí los vincula; falta reparar esos históricos.
 - Captura de pedidos por IA/voz (equivalente a `/api/pedidos-ia` del laboratorio) no
   existe para Blend.

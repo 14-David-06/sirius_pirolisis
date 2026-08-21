@@ -1,31 +1,22 @@
-import { marcaBache, registrarEntradaBiocharBodega, ESTADO_BACHE_BODEGA } from '@/lib/biochar-bodega';
+import { registrarEntradaBiocharBodega, ESTADO_BACHE_BODEGA } from '@/lib/biochar-bodega';
+import { referenciaEntradaBodega } from '@/lib/biochar-inventario-core';
 
-describe('marcaBache', () => {
-  it('encierra el código entre corchetes', () => {
-    expect(marcaBache('BACHE-0042')).toBe('[BACHE:BACHE-0042]');
+describe('referenciaEntradaBodega', () => {
+  it('prefija el código del bache', () => {
+    expect(referenciaEntradaBodega('S-00221')).toBe('BODEGA-S-00221');
   });
 
   it('no permite que un bache sea prefijo de otro', () => {
-    // Es la razón de los corchetes: la búsqueda de idempotencia usa FIND() sobre
-    // las notas, y sin el cierre el bache B-1 encontraría al B-10.
-    const b1 = marcaBache('B-1');
-    const b10 = marcaBache('B-10');
-
-    expect(b10.includes(b1)).toBe(false);
+    // La idempotencia compara `documento_referencia` por igualdad exacta, no con
+    // FIND() sobre las notas como antes: `BODEGA-S-1` nunca es `BODEGA-S-10`.
+    expect(referenciaEntradaBodega('S-1')).not.toBe(referenciaEntradaBodega('S-10'));
   });
 });
 
 describe('registrarEntradaBiocharBodega', () => {
-  const original = process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID;
-
-  afterEach(() => {
-    if (original === undefined) delete process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID;
-    else process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID = original;
-  });
-
-  it('se omite sin error cuando el insumo Biochar no está configurado', async () => {
-    delete process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID;
-
+  it('se omite sin error cuando el producto Biochar Puro no está configurado', async () => {
+    // Next no carga `.env.local` con NODE_ENV=test, así que la variable no existe
+    // y `credencialesBiocharPuro()` devuelve null.
     const resultado = await registrarEntradaBiocharBodega({
       codigoBache: 'BACHE-0001',
       kg: 500,
@@ -35,12 +26,11 @@ describe('registrarEntradaBiocharBodega', () => {
     // inventario todavía no esté montado.
     expect(resultado.ok).toBe(true);
     expect(resultado.omitido).toBe(true);
-    expect(resultado.motivo).toContain('AIRTABLE_BLEND_BIOCHAR_RECORD_ID');
+    expect(resultado.motivo).toContain('AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID');
     expect(resultado.movimientoId).toBeUndefined();
   });
 
   it('no hace ninguna petición de red cuando se omite', async () => {
-    delete process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID;
     // `fetch` no existe en el entorno jsdom de los tests: se instala un doble.
     const fetchMock = jest.fn();
     const previo = (globalThis as { fetch?: unknown }).fetch;

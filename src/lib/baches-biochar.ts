@@ -2,10 +2,11 @@
 //
 // Lectura del biochar seco disponible, y la decisión de QUÉ FUENTE manda.
 //
-// ⚠️ CAMBIO 2026-07-30: el biochar ya SÍ es un insumo de Sirius Insumos Core
-// (`Biochar Puro`), con un movimiento por bache: Entrada al llegar a bodega y
-// Salida al consumirse en una producción de Blend, con bache origen y lote
-// destino. El Core es desde entonces el libro mayor.
+// ⚠️ CAMBIO 2026-08-21: el libro mayor del biochar se mudó de Sirius Insumos Core
+// a Sirius Inventario Production Core. El biochar es el PRODUCTO de la planta
+// (`SIRIUS-PRODUCT-0015`), no un insumo que el área compra, y ahora vive en la
+// misma base que el Blend que alimenta. El por qué y los campos están en
+// `src/lib/biochar-inventario-core.ts`; aquí solo cambió de dónde se lee.
 //
 // La tabla de baches sigue existiendo y sigue siendo necesaria: su fórmula
 // `Total Cantidad Actual Biochar Seco` responde "cuánto queda de ESTE bache",
@@ -19,12 +20,15 @@
 // producción lo negaría.
 
 import { config } from './config';
-import {
-  fetchAllStockInsumos,
-  findStockInRecords,
-  getStockActual,
-  type StockInsumoRecord,
-} from './stock-insumos';
+import { getStockBiocharPuro } from './biochar-inventario-core';
+
+// El desglose por bache del libro mayor vive con el resto del acceso al Core, pero
+// se re-exporta aquí porque este módulo es la puerta de entrada al biochar
+// disponible y sus consumidores ya lo importaban desde acá.
+export {
+  fetchBachesBiocharCore,
+  type BacheBiocharCore,
+} from './biochar-inventario-core';
 
 const AT = 'https://api.airtable.com/v0';
 
@@ -190,155 +194,21 @@ export async function getBiocharDisponibleKg(): Promise<number> {
 }
 
 /**
- * Biochar seco disponible según Sirius Insumos Core (insumo `Biochar Puro`).
+ * Biochar seco disponible según el libro mayor (Inventario Production Core).
  *
- * Devuelve `null` si el insumo no está configurado o no tiene registro de stock.
+ * Devuelve `null` si el producto no está configurado o no tiene fila de stock.
  * NO devuelve 0 en ese caso: 0 sería indistinguible de "no hay biochar" y
  * bloquearía toda producción de Blend.
- *
- * @param stockRecords `Stock Insumos` ya leído por el llamador. Se acepta para
- *   que una pantalla que necesita el stock de las tres materias primas no lea la
- *   tabla dos veces (la bodega): son 5 req/s por base y la tabla es paginada.
- *   Un array vacío significa "no hay registros", no "leelos": es lo que se pasa
- *   cuando la lectura del Core ya falló, y así el resultado cae a los baches.
  */
-export async function getBiocharStockCore(
-  stockRecords?: StockInsumoRecord[]
-): Promise<number | null> {
-  const { insumosCoreBaseId, insumosCoreToken, stockInsumosTableId, blendBiocharInsumoRecordId } =
-    config.airtable;
-
-  if (!insumosCoreBaseId || !insumosCoreToken || !stockInsumosTableId || !blendBiocharInsumoRecordId) {
-    return null;
-  }
-
-  const registros = stockRecords ?? (await fetchAllStockInsumos());
-
-  // `findStockInRecords` hace el match en JS sobre los record IDs (en una fórmula
-  // de Airtable un campo link se evalúa como el texto del campo primario) y
-  // `getStockActual` tolera el `{ specialValue: 'NaN' }` de las fórmulas.
-  const { record } = findStockInRecords(blendBiocharInsumoRecordId, registros);
-
-  return record ? getStockActual(record) : null;
-}
-
-/** Saldo de biochar de un bache, reconstruido desde el libro mayor del Core. */
-export interface BacheBiocharCore {
-  /** `Codigo Bache` (S-00XXX). El Core no guarda el record ID del bache. */
-  codigo: string;
-  /** Saldo actual: entradas − salidas de ese bache. */
-  kg: number;
-  /** Lo que entró a bodega originalmente. */
-  kgIngresado: number;
-  /** Lo consumido en producciones. */
-  kgConsumido: number;
-  /** Lotes de Blend a los que fue el biochar de este bache. */
-  lotes: string[];
-}
-
-/**
- * Biochar por bache según Sirius Insumos Core, no según la tabla de baches.
- *
- * Reconstruye el saldo desde los movimientos de `Biochar Puro`: cada bache tiene
- * una Entrada al llegar a bodega y una Salida por cada producción que lo consumió,
- * ambas con `ID Bache Origen`.
- *
- * Por qué el Core y no los baches, aunque hoy den el mismo número: la tabla de
- * baches es el historial de PRODUCCIÓN de pirólisis y su `Total Cantidad Actual`
- * depende de `Estado Bache` y del monitoreo de masa seca — un bache sin monitoreo
- * aparece en 0 aunque tenga biochar físico. El Core es el libro mayor de BODEGA:
- * lo que dice es lo que se puede despachar, y trae de paso a qué lote fue cada kg.
- *
- * Devuelve `null` si el insumo no está configurado, para que el llamador pueda
- * caer a la tabla de baches sin quedarse sin datos.
- */
-export async function fetchBachesBiocharCore(): Promise<BacheBiocharCore[] | null> {
-  const {
-    insumosCoreBaseId,
-    insumosCoreToken,
-    movimientosInsumosTableId,
-    blendBiocharInsumoRecordId,
-    movimientoFields,
-  } = config.airtable;
-
-  if (
-    !insumosCoreBaseId ||
-    !insumosCoreToken ||
-    !movimientosInsumosTableId ||
-    !blendBiocharInsumoRecordId ||
-    !movimientoFields.idBacheOrigen
-  ) {
-    return null;
-  }
-
-  const movimientos: AirtableRecord[] = [];
-  let offset: string | undefined;
-  do {
-    const url = new URL(`${AT}/${insumosCoreBaseId}/${movimientosInsumosTableId}`);
-    url.searchParams.set('pageSize', '100');
-    url.searchParams.set('returnFieldsByFieldId', 'true');
-    if (offset) url.searchParams.set('offset', offset);
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${insumosCoreToken}` },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(`Error al leer Movimientos Insumos: ${JSON.stringify(data)}`);
-    movimientos.push(...((data.records ?? []) as AirtableRecord[]));
-    offset = data.offset;
-  } while (offset);
-
-  const porBache = new Map<string, BacheBiocharCore>();
-
-  for (const mov of movimientos) {
-    // El match del insumo va en JS sobre los record IDs: en una fórmula un campo
-    // link se evalúa como el texto del campo primario, no como el record ID.
-    const links = mov.fields[movimientoFields.insumo!];
-    const esBiochar =
-      Array.isArray(links) &&
-      links.some((link) =>
-        typeof link === 'string'
-          ? link === blendBiocharInsumoRecordId
-          : (link as { id?: string })?.id === blendBiocharInsumoRecordId
-      );
-    if (!esBiochar) continue;
-
-    const codigo = String(mov.fields[movimientoFields.idBacheOrigen!] ?? '');
-    if (!codigo) continue;
-
-    const kg = toNumber(mov.fields[movimientoFields.cantidad!]);
-    const tipo = String(mov.fields[movimientoFields.tipoMovimiento!] ?? '');
-    const lote = String(mov.fields[movimientoFields.idProduccionDestino ?? ''] ?? '');
-
-    const actual =
-      porBache.get(codigo) ?? { codigo, kg: 0, kgIngresado: 0, kgConsumido: 0, lotes: [] };
-
-    if (tipo === 'Entrada') {
-      actual.kgIngresado += kg;
-      actual.kg += kg;
-    } else if (tipo === 'Salida') {
-      actual.kgConsumido += kg;
-      actual.kg -= kg;
-      if (lote && !actual.lotes.includes(lote)) actual.lotes.push(lote);
-    }
-
-    porBache.set(codigo, actual);
-  }
-
-  return [...porBache.values()]
-    .map((b) => ({
-      ...b,
-      kg: Math.round(b.kg * 100) / 100,
-      kgIngresado: Math.round(b.kgIngresado * 100) / 100,
-      kgConsumido: Math.round(b.kgConsumido * 100) / 100,
-    }))
-    .sort((a, b) => b.kg - a.kg);
+export async function getBiocharStockCore(): Promise<number | null> {
+  return getStockBiocharPuro();
 }
 
 /** De dónde salió el número, y el contraste entre las dos vistas. */
 export interface BiocharDisponible {
   /** El número que deben mostrar todas las pantallas. */
   kg: number;
-  origen: 'insumos-core' | 'baches';
+  origen: 'inventario-prod-core' | 'baches';
   /** `null` si no se pudo leer la tabla de baches, así que no hay con qué contrastar. */
   kgBaches: number | null;
   kgCore: number | null;
@@ -361,27 +231,22 @@ export interface BiocharDisponible {
  * y anula el contraste. Antes, un fallo leyendo la tabla de baches —que aquí solo
  * sirve de contraste— tumbaba la agenda completa aunque el Core, que es la fuente,
  * hubiera respondido bien.
- *
- * @param stockRecords `Stock Insumos` ya leído por el llamador (ver
- *   `getBiocharStockCore`).
  */
-export async function resolverBiocharDisponible(
-  stockRecords?: StockInsumoRecord[]
-): Promise<BiocharDisponible> {
+export async function resolverBiocharDisponible(): Promise<BiocharDisponible> {
   const [kgBaches, kgCore] = await Promise.all([
     getBiocharDisponibleKg().catch((err) => {
       console.error('⚠️ No se pudo leer el biochar de la tabla de baches:', err);
       return null;
     }),
-    getBiocharStockCore(stockRecords).catch((err) => {
-      console.error('⚠️ No se pudo leer el biochar de Sirius Insumos Core:', err);
+    getBiocharStockCore().catch((err) => {
+      console.error('⚠️ No se pudo leer el biochar de Inventario Production Core:', err);
       return null;
     }),
   ]);
 
   return {
     kg: kgCore ?? kgBaches ?? 0,
-    origen: kgCore === null ? 'baches' : 'insumos-core',
+    origen: kgCore === null ? 'baches' : 'inventario-prod-core',
     kgBaches,
     kgCore,
     divergencia:

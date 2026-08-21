@@ -1,37 +1,31 @@
 // src/lib/biochar-bodega.ts
 //
-// Ingreso del biochar de un bache al inventario de bodega (Sirius Insumos Core).
+// Ingreso del biochar de un bache al inventario (Sirius Inventario Production Core).
 //
 // REGLA DE NEGOCIO (decisión de David, 2026-07-29): el biochar que está en
 // PLANTA no es inventario; solo cuenta el que está en bodega. El sistema de
 // baches ya modela ese momento con el estado `Bache Completo Bodega`, así que ese
-// cambio de estado es el que registra la Entrada del biochar en el Core.
+// cambio de estado es el que registra la Entrada del biochar.
 //
-// Con esto las tres materias primas del Blend viven en el mismo sitio (Insumos
-// Core → Stock Insumos) y la bodega deja de leer una fórmula de la base local.
+// ⚠️ CAMBIO 2026-08-21: la Entrada ya NO va a Sirius Insumos Core. El biochar es un
+// PRODUCTO de pirólisis (`SIRIUS-PRODUCT-0015`), no un insumo que el área compra,
+// así que su libro mayor es Sirius Inventario Production Core — la misma base donde
+// ya vivía el Blend que alimenta. Los detalles y el por qué están en
+// `src/lib/biochar-inventario-core.ts`.
 //
 // El bache NO deja de existir ni pierde su biochar: sigue siendo la unidad de
-// trazabilidad (es lo que sostiene la contabilidad de carbono). El insumo es la
-// vista de bodega del mismo material.
+// trazabilidad (es lo que sostiene la contabilidad de carbono). El movimiento del
+// Core es la vista de bodega del mismo material.
 
-import { config } from './config';
-import { appendMovimientoToStock, findStockByInsumo } from './stock-insumos';
-import { buildCamposIdCore, resolveIdResponsableCore } from './movimientos-insumos';
-
-const AT = 'https://api.airtable.com/v0';
+import {
+  crearMovimientoBiocharPuro,
+  credencialesBiocharPuro,
+  existeEntradaDeBache,
+  referenciaEntradaBodega,
+} from './biochar-inventario-core';
 
 /** Estado del bache que significa "el biochar ya está en bodega". */
 export const ESTADO_BACHE_BODEGA = 'Bache Completo Bodega';
-
-/**
- * Marca que se escribe en las notas del movimiento para poder reconocerlo.
- *
- * Va entre corchetes a propósito: `FIND('[BACHE:B-1]', ...)` no puede confundir
- * el bache `B-1` con el `B-10`, que sí pasaría buscando `BACHE:B-1` a secas.
- */
-export function marcaBache(codigoBache: string): string {
-  return `[BACHE:${codigoBache}]`;
-}
 
 export interface EntradaBiocharResult {
   ok: boolean;
@@ -41,71 +35,32 @@ export interface EntradaBiocharResult {
   omitido?: boolean;
   movimientoId?: string;
   cantidad?: number;
+  /** `documento_referencia` del movimiento: la llave de idempotencia. */
+  referencia?: string;
   motivo?: string;
   error?: string;
 }
 
-function coreCredentials() {
-  const token = config.airtable.insumosCoreToken;
-  const baseId = config.airtable.insumosCoreBaseId;
-  const movimientosTableId = config.airtable.movimientosInsumosTableId;
-  const insumoId = config.airtable.blendBiocharInsumoRecordId;
-
-  return { token, baseId, movimientosTableId, insumoId };
-}
-
-/**
- * ¿Ya se registró la entrada de este bache?
- *
- * La idempotencia importa mucho aquí: `PATCH /api/baches/update` puede llegar dos
- * veces (doble clic, reintento de red, o un bache que se re-guarda ya estando en
- * bodega) y cada entrada duplicada infla el stock de bodega en cientos de kg.
- */
-async function yaRegistrado(codigoBache: string): Promise<boolean> {
-  const { token, baseId, movimientosTableId } = coreCredentials();
-  if (!token || !baseId || !movimientosTableId) return false;
-
-  const marca = marcaBache(codigoBache).replace(/'/g, "\\'");
-  const url = new URL(`${AT}/${baseId}/${movimientosTableId}`);
-  // `Name` es el campo de notas de Movimientos Insumos (nombre real en Airtable).
-  url.searchParams.set('filterByFormula', `FIND('${marca}', {Name}) > 0`);
-  url.searchParams.set('maxRecords', '1');
-
-  const response = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    // Ante la duda NO se asume que ya existe: es peor perder una entrada real que
-    // arriesgar un duplicado detectable. El error se propaga al caller.
-    const detalle = await response.text();
-    throw new Error(`No se pudo verificar si el bache ${codigoBache} ya tiene entrada: ${detalle}`);
-  }
-
-  const data = await response.json();
-  return (data.records ?? []).length > 0;
-}
-
 export interface RegistrarEntradaBiocharInput {
-  /** Código legible del bache (`Codigo Bache`); es la marca de idempotencia. */
+  /** Código legible del bache (`Codigo Bache`); es la llave de idempotencia. */
   codigoBache: string;
   /** KG de biochar seco que entran a bodega (`Total Cantidad Actual Biochar Seco`). */
   kg: number;
-  /** Quién realiza el registro (nombre legible, para los logs y notas). */
+  /** Quién realiza el registro (nombre legible, para los logs y el movimiento). */
   realizaRegistro?: string;
-  /** SIRIUS-PER del responsable; si no viene se resuelve de la sesión. */
-  idResponsableCore?: string;
+  /** `YYYY-MM-DD` del ingreso. Por defecto hoy. */
+  fecha?: string;
 }
 
 /**
- * Registra la Entrada del biochar de un bache en Sirius Insumos Core.
+ * Registra la Entrada del biochar de un bache en el libro mayor.
  *
- * Es idempotente por `codigoBache`: si ya hay un movimiento con la marca de ese
- * bache, no crea otro.
+ * Es idempotente por `codigoBache`: la llave es
+ * `documento_referencia = BODEGA-<codigo>`, así que un doble clic o un bache que se
+ * re-guarda ya estando en bodega no infla el stock.
  *
  * Se omite (sin error) cuando:
- *   - `AIRTABLE_BLEND_BIOCHAR_RECORD_ID` no está configurado — el insumo biochar
- *     todavía no existe en el Core;
+ *   - falta la configuración del producto en Inventario Production Core;
  *   - el bache no tiene KG de biochar seco (nada que ingresar).
  *
  * Esa tolerancia es deliberada: el cambio de estado del bache NO debe fallar por
@@ -114,23 +69,13 @@ export interface RegistrarEntradaBiocharInput {
 export async function registrarEntradaBiocharBodega(
   input: RegistrarEntradaBiocharInput
 ): Promise<EntradaBiocharResult> {
-  const { token, baseId, movimientosTableId, insumoId } = coreCredentials();
-
-  if (!insumoId) {
+  if (!credencialesBiocharPuro()) {
     return {
       ok: true,
       omitido: true,
       motivo:
-        'AIRTABLE_BLEND_BIOCHAR_RECORD_ID no configurado: el insumo Biochar aún no existe en Sirius Insumos Core',
-    };
-  }
-
-  if (!token || !baseId || !movimientosTableId) {
-    return {
-      ok: false,
-      error:
-        'Configuración de Sirius Insumos Core incompleta: faltan AIRTABLE_GLOBAL_TOKEN, ' +
-        'AIRTABLE_INSUMOS_CORE_BASE_ID o AIRTABLE_MOVIMIENTOS_INSUMOS_TABLE_ID',
+        'AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID no configurado: el biochar puro aún no ' +
+        'existe como producto en Sirius Inventario Production Core',
     };
   }
 
@@ -143,67 +88,45 @@ export async function registrarEntradaBiocharBodega(
     };
   }
 
+  const referencia = referenciaEntradaBodega(input.codigoBache);
+
   try {
-    if (await yaRegistrado(input.codigoBache)) {
+    if (await existeEntradaDeBache(input.codigoBache)) {
       console.log(`↩️ El bache ${input.codigoBache} ya tenía su entrada de biochar en bodega`);
-      return { ok: true, yaExistia: true, cantidad: kg };
+      return { ok: true, yaExistia: true, cantidad: kg, referencia };
     }
 
-    const movFields = config.airtable.movimientoFields;
-    const fields: Record<string, unknown> = {
-      [movFields.insumo!]: [insumoId],
-      [movFields.cantidad!]: Number(kg.toFixed(2)),
-      [movFields.tipoMovimiento!]: 'Entrada',
-      ...buildCamposIdCore(
-        await resolveIdResponsableCore(input.idResponsableCore),
-        `ingreso de biochar a bodega (${input.codigoBache})`
-      ),
-    };
-
-    if (movFields.notas) {
-      fields[movFields.notas] =
-        `Ingreso de biochar a bodega ${marcaBache(input.codigoBache)}` +
-        (input.realizaRegistro ? ` — ${input.realizaRegistro}` : '');
-    }
-
-    const response = await fetch(`${AT}/${baseId}/${movimientosTableId}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: [{ fields }] }),
+    const { movimientoId, kg: cantidad, vinculadoAlStock } = await crearMovimientoBiocharPuro({
+      tipo: 'Entrada',
+      kg,
+      bacheOrigen: input.codigoBache,
+      documentoReferencia: referencia,
+      motivo: 'Ingreso de biochar a bodega',
+      fecha: input.fecha?.trim() || new Date().toISOString().split('T')[0],
+      responsable: input.realizaRegistro,
+      observaciones: `Biochar seco del bache ${input.codigoBache} ingresado a bodega.`,
     });
-    const data = await response.json();
 
-    if (!response.ok) {
-      return { ok: false, error: `Error creando el movimiento: ${JSON.stringify(data)}` };
-    }
-
-    const movimientoId = data.records?.[0]?.id as string;
-
-    // Vincular al Stock Insumos: es lo que hace que `stock_actual` lo cuente.
-    const { record: stockRecord } = await findStockByInsumo(insumoId);
-    if (!stockRecord) {
+    if (!vinculadoAlStock) {
       return {
         ok: false,
         movimientoId,
-        cantidad: kg,
+        cantidad,
+        referencia,
         error:
-          'Movimiento creado pero el insumo Biochar no tiene registro en Stock Insumos, ' +
-          'así que el stock no lo refleja. Crea el Stock del insumo en el Core.',
+          'Movimiento creado pero el biochar puro no tiene fila en Stock_Actual, así que el ' +
+          'saldo no lo refleja. Crea el registro de stock del producto en el Core.',
       };
     }
 
-    // Preserva los movimientos ya vinculados: el PATCH de un campo link
-    // reemplaza el array completo (ver src/lib/stock-insumos.ts).
-    await appendMovimientoToStock(stockRecord.id, movimientoId);
-
     console.log(
-      `✅ Biochar a bodega: ${kg.toFixed(2)} kg del bache ${input.codigoBache} (mov ${movimientoId})`
+      `✅ Biochar a bodega: ${cantidad.toFixed(2)} kg del bache ${input.codigoBache} (mov ${movimientoId})`
     );
 
-    return { ok: true, movimientoId, cantidad: Number(kg.toFixed(2)) };
+    return { ok: true, movimientoId, cantidad, referencia };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`❌ Error registrando biochar del bache ${input.codigoBache}:`, message);
-    return { ok: false, error: message };
+    return { ok: false, error: message, referencia };
   }
 }

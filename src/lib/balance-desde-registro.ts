@@ -1,5 +1,5 @@
 import { escapeAirtableValue } from '@/lib/airtable-escape';
-import type { StepResult } from '@/lib/blend-deduction';
+import type { StepResult } from '@/types/step-result';
 import { resolveSelfFetchUrl } from '@/lib/url-resolver';
 
 /**

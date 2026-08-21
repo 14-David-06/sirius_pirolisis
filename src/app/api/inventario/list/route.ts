@@ -147,11 +147,17 @@ export async function GET() {
     // Excluir las materias primas del Blend: viven en /bodega.
     // Se filtra por record ID (no por nombre) para que renombrar el insumo en el
     // Core no reviva la exclusión ni la rompa. Ver src/lib/bodega.constants.ts.
+    //
+    // `Biochar Puro` también, pero por otra razón: desde el 2026-08-21 dejó de ser
+    // un insumo (es un producto, y su libro mayor es Inventario Production Core). El
+    // registro sigue existiendo en Insumos Core con su histórico y en stock 0, y sin
+    // esta exclusión aparecería como un consumible agotado que nadie puede reponer.
     // ═══════════════════════════════════════════════════════════════════════════
     const insumosBodega = new Set(
       [
         config.airtable.blendAbono4gRecordId,
         config.airtable.blendBiologicosRecordId,
+        config.airtable.blendBiocharInsumoRecordId,
       ].filter((id): id is string => Boolean(id))
     );
 

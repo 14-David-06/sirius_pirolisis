@@ -19,7 +19,7 @@ function DashboardProduccionContent() {
   const [viajesBiomasa, setViajesBiomasa] = useState<any[]>([]);
   const [loadingPromedios, setLoadingPromedios] = useState(false);
 
-  // Biochar seco disponible según Sirius Insumos Core, que desde el 2026-07-30 es
+  // Biochar seco disponible según Sirius Inventario Production Core, que desde el 2026-08-21 es
   // el libro mayor del biochar. Antes esta cifra se sumaba en el cliente desde la
   // lista de baches: mostraba biochar que la producción de Blend ya había
   // consumido. `null` mientras carga o si el endpoint falla → se cae a la suma de

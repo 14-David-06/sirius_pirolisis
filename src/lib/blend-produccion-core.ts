@@ -4,13 +4,15 @@
 // bases Core. El stock de biochar se resuelve en `baches-biochar.ts`.
 //
 // El registro de producción ya no es una fila en una tabla de PiroliApp: es un
-// movimiento `Entrada` de SIRIUS-PRODUCT-0016 en Sirius Inventario Production
-// Core cuyo `documento_referencia` es el CÓDIGO DE LOTE (BLEND-AAAA-MM-DD). Ese
-// mismo código aparece en `ID Produccion Destino` de cada Salida de insumo en
-// Sirius Insumos Core, y en `ID Produccion Blend` de cada fila de detalle por
-// bache en PiroliApp. Airtable no permite links entre bases: el lote es la llave.
+// movimiento `Entrada` de Biochar Blend en Sirius Inventario Production Core cuyo
+// `documento_referencia` es el CÓDIGO DE LOTE (BLEND-AAAA-MM-DD). Ese mismo código
+// aparece en `produccion_destino_id` de cada Salida de Biochar Puro —desde el
+// 2026-08-21 en esa misma base, porque el biochar es un producto y no un insumo— y
+// en `ID Produccion Blend` de cada fila de detalle por bache en PiroliApp. Airtable
+// no permite links entre bases: el lote es la llave.
 
 import { config } from './config';
+import { getBachesPorDestino } from './biochar-inventario-core';
 
 const AT = 'https://api.airtable.com/v0';
 
@@ -155,78 +157,43 @@ export interface ProduccionDePedido {
 /**
  * Los baches que aportaron biochar a un lote, con los KG de cada uno.
  *
- * Se reconstruye desde las Salidas de `Biochar Puro` en Sirius Insumos Core que
- * llevan el lote en `ID Produccion Destino`. Los record IDs se resuelven contra la
- * tabla de baches de PiroliApp porque el Core solo guarda el código: no hay links
- * entre bases.
+ * Se reconstruye desde las Salidas de `Biochar Puro` que llevan el lote en
+ * `produccion_destino_id`. Los record IDs se resuelven contra la tabla de baches de
+ * PiroliApp porque el Core solo guarda el código: no hay links entre bases.
  */
 export async function getBachesDeLote(lote: string): Promise<BacheDeLote[]> {
-  const {
-    insumosCoreBaseId,
-    insumosCoreToken,
-    movimientosInsumosTableId,
-    blendBiocharInsumoRecordId,
-    movimientoFields,
-    token,
-    baseId,
-    bachesTableId,
-  } = config.airtable;
+  if (!lote) return [];
 
-  if (
-    !lote ||
-    !insumosCoreBaseId ||
-    !insumosCoreToken ||
-    !movimientosInsumosTableId ||
-    !blendBiocharInsumoRecordId ||
-    !movimientoFields.idProduccionDestino ||
-    !movimientoFields.idBacheOrigen
-  ) {
-    return [];
-  }
+  const aportes = await getBachesPorDestino(lote);
+  if (!aportes.length) return [];
 
-  const movimientos = await fetchAll(
-    insumosCoreBaseId,
-    movimientosInsumosTableId,
-    insumosCoreToken,
-    { returnFieldsByFieldId: 'true' }
-  );
+  const idPorCodigo = await recordIdsDeBaches();
 
-  const porCodigo = new Map<string, number>();
-  for (const mov of movimientos) {
-    const insumos = mov.fields[movimientoFields.insumo!];
-    const esBiochar =
-      Array.isArray(insumos) &&
-      insumos.some((link) =>
-        typeof link === 'string'
-          ? link === blendBiocharInsumoRecordId
-          : (link as { id?: string })?.id === blendBiocharInsumoRecordId
-      );
-    if (!esBiochar) continue;
-    if (String(mov.fields[movimientoFields.tipoMovimiento!] ?? '') !== 'Salida') continue;
-    if (String(mov.fields[movimientoFields.idProduccionDestino!] ?? '') !== lote) continue;
+  return aportes.map((aporte) => ({
+    ...aporte,
+    bacheId: idPorCodigo.get(aporte.codigo) ?? '',
+  }));
+}
 
-    const codigo = String(mov.fields[movimientoFields.idBacheOrigen!] ?? '');
-    if (!codigo) continue;
-    porCodigo.set(codigo, (porCodigo.get(codigo) ?? 0) + toNumber(mov.fields[movimientoFields.cantidad!]));
-  }
-
-  if (!porCodigo.size) return [];
-
+/**
+ * `Codigo Bache` → record ID de la tabla de baches de PiroliApp.
+ *
+ * Hace falta porque el Core solo guarda el código: no hay links entre bases, y los
+ * `recXXX` no son intercambiables entre ellas. Se lee la tabla completa una vez y
+ * se cruza en JS en lugar de consultar bache por bache — son 5 req/s por base.
+ */
+async function recordIdsDeBaches(): Promise<Map<string, string>> {
+  const { token, baseId, bachesTableId } = config.airtable;
   const idPorCodigo = new Map<string, string>();
-  if (token && baseId && bachesTableId) {
-    for (const bache of await fetchAll(baseId, bachesTableId, token)) {
-      const codigo = String(bache.fields['Codigo Bache'] ?? '');
-      if (codigo) idPorCodigo.set(codigo, bache.id);
-    }
+
+  if (!token || !baseId || !bachesTableId) return idPorCodigo;
+
+  for (const bache of await fetchAll(baseId, bachesTableId, token)) {
+    const codigo = String(bache.fields['Codigo Bache'] ?? '');
+    if (codigo) idPorCodigo.set(codigo, bache.id);
   }
 
-  return [...porCodigo.entries()]
-    .map(([codigo, kg]) => ({
-      codigo,
-      kg: Math.round(kg * 100) / 100,
-      bacheId: idPorCodigo.get(codigo) ?? '',
-    }))
-    .sort((a, b) => a.codigo.localeCompare(b.codigo));
+  return idPorCodigo;
 }
 
 /**
@@ -282,10 +249,9 @@ export async function getProduccionPorLote(lote: string): Promise<ProduccionDePe
  * La producción de Blend de un pedido, reconstruida desde los Core.
  *
  * El pedido se atribuye por `ubicacion_destino_id` del movimiento de Entrada, que
- * es donde `iniciar-produccion` graba el `SIRIUS-PED-XXXX`. Los baches se resuelven
- * desde las Salidas de biochar en Insumos Core que llevan el lote en
- * `ID Produccion Destino`, y sus record IDs desde la tabla de baches de PiroliApp
- * (el Core solo guarda el código, porque no hay links entre bases).
+ * es donde `iniciar-produccion` graba el `SIRIUS-PED-XXXX`. Los baches salen de
+ * `getBachesDeLote()`, que los reconstruye desde las Salidas de biochar del mismo
+ * lote.
  */
 export async function getProduccionPorPedido(
   idPedidoCore: string
@@ -295,14 +261,6 @@ export async function getProduccionPorPedido(
     inventarioProdCoreToken,
     inventarioProdCoreMovimientosTable,
     inventarioProdCoreBiocharBlendProductId,
-    insumosCoreBaseId,
-    insumosCoreToken,
-    movimientosInsumosTableId,
-    blendBiocharInsumoRecordId,
-    movimientoFields,
-    token,
-    baseId,
-    bachesTableId,
   } = config.airtable;
 
   if (
@@ -314,7 +272,7 @@ export async function getProduccionPorPedido(
     return null;
   }
 
-  const esc = (v: string) => v.replace(/'/g, "\\'");
+  const esc = (v: string) => v.replace(/'/g, "\'");
 
   // 1. La Entrada de producto terminado: es el registro de la producción.
   const entradas = await fetchAll(
@@ -338,74 +296,15 @@ export async function getProduccionPorPedido(
   );
   const ultima = ordenadas[ordenadas.length - 1];
   const lote = String(ultima.fields['documento_referencia'] ?? '');
-  const kgTotal = ordenadas.reduce((total, m) => total + toNumber(m.fields['cantidad']), 0);
 
-  const produccion: ProduccionDePedido = {
+  return {
     lote,
-    kgTotal,
+    kgTotal: ordenadas.reduce((total, m) => total + toNumber(m.fields['cantidad']), 0),
     fecha: String(ultima.fields['fecha_movimiento'] ?? ultima.fields['fecha_registro'] ?? '').slice(0, 10),
     // Inventario Production Core no maneja estado de producción: si el movimiento
     // de Entrada existe, el Blend ya se produjo.
     estado: 'Completado',
-    baches: [],
+    // 2. Los baches que aportaron el biochar: mismas Salidas, misma base.
+    baches: await getBachesDeLote(lote),
   };
-
-  // 2. Los baches que aportaron el biochar, desde las Salidas del Insumos Core.
-  if (
-    !lote ||
-    !insumosCoreBaseId ||
-    !insumosCoreToken ||
-    !movimientosInsumosTableId ||
-    !blendBiocharInsumoRecordId ||
-    !movimientoFields.idProduccionDestino
-  ) {
-    return produccion;
-  }
-
-  const salidas = await fetchAll(
-    insumosCoreBaseId,
-    movimientosInsumosTableId,
-    insumosCoreToken,
-    { returnFieldsByFieldId: 'true' }
-  );
-
-  const porCodigo = new Map<string, number>();
-  for (const mov of salidas) {
-    const insumos = mov.fields[movimientoFields.insumo!];
-    const esBiochar =
-      Array.isArray(insumos) &&
-      insumos.some((link) =>
-        typeof link === 'string'
-          ? link === blendBiocharInsumoRecordId
-          : (link as { id?: string })?.id === blendBiocharInsumoRecordId
-      );
-    if (!esBiochar) continue;
-    if (String(mov.fields[movimientoFields.tipoMovimiento!] ?? '') !== 'Salida') continue;
-    if (String(mov.fields[movimientoFields.idProduccionDestino!] ?? '') !== lote) continue;
-
-    const codigo = String(mov.fields[movimientoFields.idBacheOrigen ?? ''] ?? '');
-    if (!codigo) continue;
-    porCodigo.set(codigo, (porCodigo.get(codigo) ?? 0) + toNumber(mov.fields[movimientoFields.cantidad!]));
-  }
-
-  if (!porCodigo.size) return produccion;
-
-  // 3. Resolver los record IDs de los baches: el Core solo guarda el código.
-  const idPorCodigo = new Map<string, string>();
-  if (token && baseId && bachesTableId) {
-    for (const bache of await fetchAll(baseId, bachesTableId, token)) {
-      const codigo = String(bache.fields['Codigo Bache'] ?? '');
-      if (codigo) idPorCodigo.set(codigo, bache.id);
-    }
-  }
-
-  produccion.baches = [...porCodigo.entries()]
-    .map(([codigo, kg]) => ({
-      codigo,
-      kg: Math.round(kg * 100) / 100,
-      bacheId: idPorCodigo.get(codigo) ?? '',
-    }))
-    .sort((a, b) => a.codigo.localeCompare(b.codigo));
-
-  return produccion;
 }

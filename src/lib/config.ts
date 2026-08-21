@@ -170,7 +170,10 @@ export const config = {
     // Blend (Pedidos, Producción, Remisiones)
     blendPedidosTableId: process.env.AIRTABLE_BLEND_PEDIDOS_TABLE_ID,
     blendProduccionTableId: process.env.AIRTABLE_BLEND_PRODUCCION_TABLE_ID,
-    blendRemisionesTableId: process.env.AIRTABLE_BLEND_REMISIONES_TABLE_ID,
+    // ⚠️ `blend_remisiones` se borró de la base al pasar las remisiones a
+    // Remisiones Core; su ID ya no resuelve. No reintroducirlo: las remisiones
+    // de Blend se leen con blend-remisiones-core.ts y el biochar que sale de un
+    // bache, con `Remisiones Baches Pirolisis` + `Detalle Cantidades`.
     // ⚠️ `blend_detalle_insumos` se borró de la base el 2026-07-30; ya no hay
     // consumidores. El detalle por insumo vive en Movimientos del Insumos Core.
     // Sirius Product Core (catálogo de productos) — Blend
@@ -204,6 +207,10 @@ export const config = {
     inventarioProdCoreMovimientosTable: process.env.AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS,
     inventarioProdCoreStockTable: process.env.AIRTABLE_TABLE_SIRIUS_INVENTARIO_STOCK,
     inventarioProdCoreBiocharBlendProductId: process.env.AIRTABLE_INVENTARIO_BIOCHAR_BLEND_PRODUCT_ID,
+    // Biochar Puro (2026-08-21). El biochar es un PRODUCTO de pirólisis, no un
+    // insumo de bodega: vive en el mismo libro mayor que el Blend que alimenta, y
+    // no en Sirius Insumos Core. Ver `src/lib/biochar-inventario-core.ts`.
+    inventarioProdCoreBiocharPuroProductId: process.env.AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID,
     // Sirius Nomina Core (personal, áreas, sistemas) — OPCIONAL (solo login)
     nominaCoreBaseId: process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE,
     nominaCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE || GLOBAL_TOKEN,
@@ -224,13 +231,16 @@ export const config = {
     // Insumos Blend (MIGRADOS AL CORE 2026-07-27)
     blendAbono4gRecordId: process.env.AIRTABLE_BLEND_ABONO_4G_RECORD_ID,  // SIRIUS-INS-0064
     blendBiologicosRecordId: process.env.AIRTABLE_BLEND_BIOLOGICOS_RECORD_ID,  // SIRIUS-INS-0065
-    // Biochar como insumo de bodega (2026-07-29).
-    // El biochar en PLANTA no es inventario: solo cuenta el que está en bodega. Al
-    // pasar un bache a "Bache Completo Bodega" se registra su biochar seco como
-    // Entrada en Insumos Core, y desde ahí lo lee la bodega.
-    // ⚠️ NO configurar esta variable hasta haber cargado el histórico de los baches
-    // que ya están en bodega: sin ese respaldo, el stock arrancaría en 0 y la
-    // producción de Blend se bloquearía por falta de biochar.
+    // ⚠️ DEPRECATED (2026-08-21): el biochar puro dejó de ser un insumo.
+    // Fue `Biochar Puro` en Sirius Insumos Core desde el 2026-07-29, junto al abono
+    // 4G y los biológicos. Era el sitio equivocado: el biochar es el PRODUCTO de la
+    // planta de pirólisis, no una materia prima que se compra. Su libro mayor es hoy
+    // Sirius Inventario Production Core, la misma base donde ya vivía el Blend que
+    // alimenta (ver `inventarioProdCoreBiocharPuroProductId` y
+    // `src/lib/biochar-inventario-core.ts`).
+    //
+    // Se conserva SOLO para `scripts/migrar-biochar-inventario-core.mjs` y para un
+    // rollback: ningún camino de la app debe volver a escribirle.
     blendBiocharInsumoRecordId: process.env.AIRTABLE_BLEND_BIOCHAR_RECORD_ID,
     // Field IDs para Remisiones Baches Pirolisis
     remisionesBachesFields: {

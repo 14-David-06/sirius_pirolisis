@@ -12,8 +12,9 @@ const TABLE_ID = config.airtable.bachesTableId;
  * PATCH /api/baches/update
  *
  * Actualiza un bache. Además, cuando el bache PASA a `Bache Completo Bodega`,
- * registra su biochar seco como Entrada en Sirius Insumos Core: el biochar en
- * planta no es inventario, solo el que está en bodega (ver src/lib/biochar-bodega.ts).
+ * registra su biochar seco como Entrada en Sirius Inventario Production Core: el
+ * biochar en planta no es inventario, solo el que está en bodega (ver
+ * src/lib/biochar-bodega.ts).
  *
  * El enganche va aquí y no en la UI porque los dos caminos que mueven un bache a
  * bodega —el modal individual y el proceso de transporte por lotes de
