@@ -176,6 +176,45 @@ function SistemaBachesContent() {
     return groups;
   }, [filteredBaches, getBacheStatus]);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Biochar EN BODEGA, según el libro mayor (Sirius Inventario Production Core)
+  //
+  // No se suma en el cliente desde la lista de baches: esa fórmula responde
+  // "cuánto queda de ESTE bache" y no descuenta lo que la producción de Blend ya
+  // consumió, así que mostraría biochar que ya no está. El único punto que decide
+  // la fuente es `resolverBiocharDisponible()`, detrás de este endpoint.
+  //
+  // Se refresca después de cada paso a bodega porque `stock_actual` es una fórmula
+  // de Airtable sobre los movimientos vinculados: el número cambia en el mismo
+  // momento en que se crea la Entrada.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [biocharBodega, setBiocharBodega] = useState<{
+    kg: number;
+    origen: string;
+    kgBaches: number | null;
+    kgCore: number | null;
+    divergencia: number | null;
+  } | null>(null);
+  const [loadingBiocharBodega, setLoadingBiocharBodega] = useState(true);
+
+  const refrescarBiocharBodega = async () => {
+    setLoadingBiocharBodega(true);
+    try {
+      const res = await fetch('/api/pirolisis/inventario/biochar-disponible', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setBiocharBodega(await res.json());
+    } catch (err) {
+      console.error('⚠️ No se pudo leer el biochar en bodega:', err);
+      setBiocharBodega(null);
+    } finally {
+      setLoadingBiocharBodega(false);
+    }
+  };
+
+  useEffect(() => {
+    refrescarBiocharBodega();
+  }, []);
+
   // Handle monitoreo modal
   const openMonitoreoModal = (bache: any) => {
     setSelectedBache(bache);
@@ -729,6 +768,29 @@ function SistemaBachesContent() {
     }
   };
 
+  /**
+   * Traduce el `biochar_bodega` que devuelve /api/baches/update.
+   *
+   * Se distingue "ya existía" de "se creó": la Entrada es idempotente por
+   * `BODEGA-<bache>`, así que un reintento no duplica kg, y decirle al operador
+   * "se ingresaron X kg" en ese caso lo haría pensar que sumó dos veces.
+   */
+  const mensajeEntradaBiochar = (entrada: any): string => {
+    if (!entrada) return '';
+    if (entrada.yaExistia) return `
+
+ℹ️ Su biochar ya estaba registrado en bodega (${Number(entrada.cantidad ?? 0).toFixed(2)} kg).`;
+    if (entrada.omitido) return `
+
+⚠️ No se registró biochar en el inventario: ${entrada.motivo ?? 'sin motivo'}`;
+    if (!entrada.ok) return `
+
+❌ El biochar NO entró al inventario: ${entrada.error ?? 'error desconocido'}`;
+    return `
+
+📦 ${Number(entrada.cantidad ?? 0).toFixed(2)} kg de biochar ingresados al inventario.`;
+  };
+
   // Submit pasar a bodega - solo cambiar estado
   const submitPasarABodega = async () => {
     setIsSubmittingBodega(true);
@@ -759,10 +821,16 @@ function SistemaBachesContent() {
         throw new Error(`Error ${response.status}: ${responseData.error || 'Error desconocido'}`);
       }
 
-      alert('✅ Bache movido a bodega exitosamente');
+      // La Entrada del biochar en el libro mayor la crea el endpoint (ver
+      // src/lib/biochar-bodega.ts) y viene reportada en `biochar_bodega`. Se
+      // muestra al operador: el paso a bodega es lo que hace existir el biochar
+      // como inventario del ecosistema, y si esa parte falló hay que saberlo aquí
+      // y no en un log del servidor.
+      alert(`✅ Bache movido a bodega exitosamente${mensajeEntradaBiochar(responseData.biochar_bodega)}`);
       closePasarBodegaModal();
       // Recargar los datos
       refetch();
+      refrescarBiocharBodega();
     } catch (error) {
       console.error('❌ Error updating bache:', error);
       alert(`❌ Error al mover el bache a bodega: ${error instanceof Error ? error.message : 'Error desconocido'}`);
@@ -838,6 +906,10 @@ function SistemaBachesContent() {
       clearSelection();
       closeTransportModal();
       
+      // Cada PATCH creó (o confirmó) la Entrada de su bache en el libro mayor; el
+      // saldo total se relee de una vez en lugar de sumarlo por respuesta.
+      await refrescarBiocharBodega();
+
       alert(`✅ ${bacheIds.length} baches movidos a bodega con información de transporte`);
     } catch (error: any) {
       console.error('❌ Error al procesar transporte:', error);
@@ -1028,6 +1100,38 @@ function SistemaBachesContent() {
                 <div className="flex justify-between">
                   <span className="drop-shadow">Total Masa Seca (Histórico):</span>
                   <span className="font-semibold">{totalMasaSeca.toFixed(1)} kg</span>
+                </div>
+
+                {/* Biochar EN BODEGA: el saldo del libro mayor, no una suma de baches.
+                    Es el número que ve el resto del ecosistema Sirius. */}
+                <div className="border-t border-white/30 pt-3 mt-1">
+                  <div className="flex justify-between items-center">
+                    <span className="drop-shadow font-medium">📦 Biochar en Bodega (Inventario):</span>
+                    <span className="font-bold text-lg">
+                      {loadingBiocharBodega
+                        ? '...'
+                        : biocharBodega
+                        ? `${biocharBodega.kg.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg`
+                        : 'no disponible'}
+                    </span>
+                  </div>
+                  {biocharBodega && (
+                    <div className="text-xs text-white/70 mt-1 drop-shadow">
+                      {biocharBodega.origen === 'inventario-prod-core'
+                        ? 'Fuente: Sirius Inventario Production Core (entradas a bodega − salidas)'
+                        : '⚠️ Fuente: fórmula de los baches — no se pudo leer el inventario del Core'}
+                    </div>
+                  )}
+                  {/* La divergencia se muestra en vez de esconderse: si las dos vistas
+                      del mismo inventario se separan, es que un consumo se escribió en
+                      una y no en la otra. */}
+                  {biocharBodega?.divergencia !== null && biocharBodega?.divergencia !== undefined &&
+                    Math.abs(biocharBodega.divergencia) > 0.01 && (
+                      <div className="text-xs text-yellow-200 mt-1 drop-shadow">
+                        ⚠️ Difiere en {biocharBodega.divergencia.toFixed(2)} kg de la suma de los baches
+                        ({biocharBodega.kgBaches?.toFixed(2)} kg)
+                      </div>
+                    )}
                 </div>
               </div>
             </div>

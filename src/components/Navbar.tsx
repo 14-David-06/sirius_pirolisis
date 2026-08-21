@@ -136,6 +136,7 @@ export default function Navbar() {
         items: [
           { label: "Activos Fijos", href: "/activos-fijos", icon: "🔧", description: "Gestión de activos de la empresa" },
           { label: "Inventario Pirolisis", href: "/inventario-pirolisis", icon: "📦", description: "Gestión de insumos consumibles" },
+          { label: "Inventario Bodega Sirius", href: "/inventario-bodega-sirius", icon: "🏭", description: "Inventario de la bodega Sirius" },
           { label: "Manejo Residuos", href: "/manejo-residuos", icon: "", description: "Gestión de residuos" },
           { label: "Sistema de Baches", href: "/sistema-baches", icon: "", description: "Control por lotes" },
         ]
