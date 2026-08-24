@@ -99,7 +99,8 @@ select que no lo tiene es un 422. Verificar las opciones antes de escribir.
 siempre con un `toNumber()` que lo tolere.
 
 **Las fórmulas admiten negativos.** Un bache puede quedar con stock negativo si se
-le descontó más de lo que tenía (pasó con S-00177: −0,18 kg).
+le descontó más de lo que tenía (pasó con S-00177: −0,18 kg, cerrado el 2026-08-21 con
+`scripts/reparar-biochar-bodega.mjs`).
 
 **Rate limit: 5 req/s por base.** Evitar cascadas N+1; preferir una lectura completa
 y el cruce en JS sobre N lecturas por registro.
@@ -216,6 +217,23 @@ inventario que se lleva en seco, y eso deja el bache con biochar que no existe. 
 humedad del lote se guarda porque la sección 2 del acta la pide, pero no participa en
 ningún cálculo. No reintroducir una ruta de masa húmeda.
 
+**Producir se hace desde `/inventario-bodega-sirius` (2026-08-24).** El botón
+`Producción` de la tarjeta del Blend abre el formulario, y `runProduccionBlend()`
+(`src/lib/produccion-blend.ts`) escribe las cinco partes del lote: un detalle por
+bache en PiroliApp con `ID Produccion Blend` = lote, una Salida de Biochar Puro POR
+BACHE (`produccion_destino_id` = lote), una Salida de abono por el total, la Entrada
+de Blend y los `Estado Bache`. Es el único camino por el que el Blend entra al
+inventario: `registrarEntradaBlend()` exige el lote justamente para que no exista un
+"ingresar Blend" suelto, que sería producto sin receta.
+
+Dos decisiones que sostienen eso: los **KG de Blend se digitan** —son lo que se pesó,
+y derivarlos de una fórmula que suma 99,7% inventaría kilos—, y la **llave de
+deduplicación no es la traza**: `documento_referencia` lleva `<lote>-<bache>` (única
+por bache, o el chequeo de duplicados se saltaría todos menos el primero) mientras
+`produccion_destino_id` lleva el lote pelado, que es lo que `getBachesDeLote()` cruza.
+⚠️ Dos producciones distintas el mismo día SIN sufijo comparten lote y la segunda se
+lee como reintento de la primera; por eso el formulario ofrece el pedido como sufijo.
+
 **La fórmula del Blend suma 99,7%** (biochar 20% / abono 74% / agua 5% / biológicos
 0,7%). Es una decisión abierta con DataLab; los componentes NO cuadran con el total
 y no se debe forzar. Centralizada en `config.blend`.
@@ -318,10 +336,35 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   las libs que quedaron huérfanas. Sobreviven `pirolisis/blend/firmar/[remisionId]`
   (firma pública de remisiones ya emitidas) y `/api/pirolisis/inventario/biochar-disponible`
   (lo consume `dashboard-produccion`). Consecuencia práctica: **ya no hay UI para
-  producir Blend, agendar pedidos, dar salida a un bache ni registrar entradas de
-  materia prima**; el biochar sigue entrando a bodega al crear el bache
-  (`/api/baches/update` → `biochar-bodega.ts`). El árbol previo quedó en el tag
-  `pre-depuracion-blend`.
+  agendar pedidos ni emitir remisiones**; el biochar sigue entrando a bodega al crear
+  el bache (`/api/baches/update` → `biochar-bodega.ts`). El árbol previo quedó en el
+  tag `pre-depuracion-blend`. La salida de un bache, las entradas de abono y la
+  producción de Blend volvieron después por `/inventario-bodega-sirius` (ver abajo).
+- **Un bache SIN monitoreo que pasa a bodega no entra al inventario.** `Total Cantidad
+  Actual Biochar Seco` es 0 mientras no haya monitoreo de masa seca, y
+  `registrarEntradaBiocharBodega()` OMITE la Entrada cuando no hay kg — correcto: el
+  número no existe todavía y no se inventa. Lo que faltaba era verlo: el transporte por
+  lotes de `/sistema-baches` solo miraba el HTTP de cada PATCH, así que S-00251…S-00260
+  se movieron a bodega el 2026-08-21 con "✅ 10 baches movidos" y cero kg en el Core.
+  Hoy la UI nombra los baches omitidos, y **registrar el monitoreo es el segundo
+  disparador de la Entrada**: `/api/monitoreo-baches/create` la crea si el bache ya
+  está en `Bache Completo Bodega` (best-effort, idempotente por `BODEGA-<bache>`).
+  Para el rezago —un bache monitoreado antes de que existiera ese disparador— está
+  `scripts/reparar-biochar-bodega.mjs --pendientes`. Al 2026-08-21 quedan los 10
+  (S-00251…S-00260) esperando monitoreo; las dos vistas del biochar cuadran en
+  48.273,53 kg.
+- **El abono 4G quedó conciliado el 2026-08-21.** Su libro mayor tenía una sola
+  Entrada —los 33.614 kg del conteo del 2026-07-27— y cero salidas, contra 11.458 kg
+  reales en bodega (conteo de Santiago). `scripts/salidas-abono-historicas.mjs` asentó
+  las cuatro salidas que faltaban (11.100 kg → `BLEND-2026-04-30`, 8.880 kg →
+  `BLEND-2026-06-24`, 2.000 kg al laboratorio, 176 kg de consumo del 20 ago) y
+  `Stock_Actual` cuadra. Esto **revierte** la decisión del 2026-07-29 de no re-deducir
+  el histórico de abono: esa decisión era una inferencia desde la ausencia de salidas
+  en el Core, y el conteo físico la contradijo. Los **biológicos siguen sin conciliar**
+  y son el único caso donde la vieja inferencia todavía manda: pedir el conteo antes de
+  asentar salidas, no inferirlo. La trazabilidad de las dos salidas de producción es el
+  lote (`produccion_destino_id`), que es la junta con los 11 baches —6 + 5— que viven
+  en las Salidas de Biochar Puro del mismo lote. El abono no se traza por bache.
 - `scripts/diagnose-airtable.js` y `verify-env.js` usan `require()` y fallan el lint.
 - `src/lib/blend-core-sync.ts` quedó obsoleto al invertirse la propiedad de las
   remisiones hacia el Core; su rol lo cumple `blend-remisiones-core.ts`.

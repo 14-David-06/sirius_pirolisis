@@ -5,23 +5,33 @@ import {
   fetchMovimientosBiocharPuro,
   type BacheBiocharCore,
 } from '@/lib/biochar-inventario-core';
+import { resumenAbono } from '@/lib/abono-inventario-core';
+import { resumenBlend } from '@/lib/blend-inventario-core';
 
 /**
  * GET /api/pirolisis/inventario/bodega-sirius
  *
- * La vista de BODEGA del biochar puro: el saldo, el desglose por bache y el
- * movimiento a movimiento, todo desde Sirius Inventario Production Core.
+ * Lo que hay en la bodega de pirólisis según Sirius Inventario Production Core:
+ * el biochar puro (`SIRIUS-PRODUCT-0015`) y el abono 4G (`SIRIUS-PRODUCT-0020`),
+ * los dos componentes que la planta almacena para producir Biochar Blend, y el
+ * Biochar Blend mismo (`SIRIUS-PRODUCT-0016`), que es lo que sale de ellos.
+ *
+ * El Blend va en la misma respuesta porque las tres cifras solo significan algo
+ * juntas: es el mismo libro mayor leído en sus dos extremos —lo que entró como
+ * materia prima y lo que salió como producto—, y en pantallas separadas nadie
+ * puede contrastarlas.
  *
  * Es una vista distinta a la del Sistema de Baches, no una repetición: allá la
  * pregunta es "cómo va la producción de este bache" y la fuente es la fórmula de
  * la tabla de baches; acá es "qué hay en bodega y de dónde salió cada kg", y la
- * fuente es el libro mayor que comparte el ecosistema. El saldo sale del mismo
- * `resolverBiocharDisponible()` que el resto de la app para que ninguna pantalla
- * muestre un número propio.
+ * fuente es el libro mayor que comparte el ecosistema. El saldo del biochar sale
+ * del mismo `resolverBiocharDisponible()` que el resto de la app para que ninguna
+ * pantalla muestre un número propio.
  *
- * Las tres lecturas van en paralelo y ninguna es fatal por su cuenta: un fallo
- * leyendo el detalle no debe dejar la pantalla sin el total, que es el dato que
- * casi siempre se viene a buscar.
+ * Los tres productos se leen en paralelo y ninguna lectura es fatal por su cuenta:
+ * que falte el abono no debe dejar la pantalla sin el biochar, ni al revés. Un
+ * producto llega en `null` mientras no esté configurado en el Core, que es un
+ * estado normal —no un error— hasta que corra su migración.
  */
 
 /** Por debajo de esto un bache se considera vacío: son restos de redondeo. */
@@ -47,7 +57,7 @@ function estadoBodega(b: BacheBiocharCore): EstadoBodega {
 
 export async function GET() {
   try {
-    const [disponible, baches, movimientos] = await Promise.all([
+    const [disponible, baches, movimientos, abono, blend] = await Promise.all([
       resolverBiocharDisponible(),
       fetchBachesBiocharCore().catch((err) => {
         console.error('⚠️ No se pudo leer el desglose por bache:', err);
@@ -55,6 +65,14 @@ export async function GET() {
       }),
       fetchMovimientosBiocharPuro().catch((err) => {
         console.error('⚠️ No se pudieron leer los movimientos de biochar:', err);
+        return null;
+      }),
+      resumenAbono().catch((err) => {
+        console.error('⚠️ No se pudo leer el inventario de abono 4G:', err);
+        return null;
+      }),
+      resumenBlend().catch((err) => {
+        console.error('⚠️ No se pudo leer el inventario de Biochar Blend:', err);
         return null;
       }),
     ]);
@@ -85,7 +103,11 @@ export async function GET() {
       : null;
 
     return NextResponse.json(
-      { disponible, baches: clasificados, totales, movimientos: ordenados },
+      {
+        biochar: { disponible, baches: clasificados, totales, movimientos: ordenados },
+        abono,
+        blend,
+      },
       { status: 200 }
     );
   } catch (err: unknown) {

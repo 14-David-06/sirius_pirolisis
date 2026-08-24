@@ -2,6 +2,12 @@
 //
 // El libro mayor del BIOCHAR PURO: Sirius Inventario Production Core.
 //
+// La plomería de la base (campos, credenciales, crear un movimiento vinculado al
+// stock) vive en `inventario-prod-core.ts`, que es genérica por `product_id`: el
+// Core ya no tiene un solo inquilino de pirólisis —Blend, biochar puro y abono 4G—
+// y copiar esa plomería por producto copiaba también sus trampas. Acá queda solo lo
+// que es propio del biochar: la trazabilidad POR BACHE.
+//
 // ═══ POR QUÉ SE MOVIÓ (2026-08-21) ════════════════════════════════════════════
 // Del 2026-07-29 al 2026-08-21 el biochar puro vivió en Sirius Insumos Core como
 // `Biochar Puro`, al lado del abono 4G y de los biológicos. Estaba en el sitio
@@ -28,52 +34,31 @@
 // que sostiene la contabilidad de carbono. No se reciclaron los campos existentes:
 // `ubicacion_origen_id` significa ubicación y `documento_referencia` ya es la llave
 // de idempotencia.
-//
-// ═══ SE ACCEDE POR NOMBRE DE CAMPO, NO POR FIELD ID ═══════════════════════════
-// A diferencia de Insumos Core —donde `config.ts` guarda field IDs—, esta base se
-// lee y escribe por NOMBRE en todo el repositorio (`blend-produccion-core.ts`,
-// `blend-deduction.ts`, `actas-biochar.ts`). Se mantiene esa convención a
-// propósito: mezclarlas en la misma base es como se llega a leer
-// `fields[fieldId]` contra una respuesta indexada por nombre y obtener siempre
-// `undefined`. Aquí los nombres son el contrato.
 
 import { config } from './config';
 import { escapeAirtableValue } from './airtable-escape';
+import {
+  AIRTABLE_API as AT,
+  atFetch,
+  credencialesProducto,
+  crearMovimientoProducto,
+  fetchAll,
+  fetchMovimientosDeProducto,
+  findStockRecordId,
+  getStockDeProducto,
+  MOVIMIENTO_PROD_FIELDS,
+  r2,
+  STOCK_PROD_FIELDS,
+  toNumber,
+  type CredencialesProducto,
+  type MovimientoCreado,
+} from './inventario-prod-core';
 
-const AT = 'https://api.airtable.com/v0';
-
-/**
- * Nombres reales de los campos de `Movimientos_Inventario`.
- *
- * Centralizados aquí para que un cambio de nombre en el Core se arregle en un
- * solo sitio: son la interfaz con una base compartida con el laboratorio.
- */
-export const MOVIMIENTO_PROD_FIELDS = {
-  productoId: 'product_id',
-  tipoMovimiento: 'tipo_movimiento',
-  cantidad: 'cantidad',
-  unidadMedida: 'unidad_medida',
-  motivo: 'motivo',
-  documentoReferencia: 'documento_referencia',
-  responsable: 'responsable',
-  fechaMovimiento: 'fecha_movimiento',
-  fechaRegistro: 'fecha_registro',
-  observaciones: 'observaciones',
-  ubicacionOrigen: 'ubicacion_origen_id',
-  ubicacionDestino: 'ubicacion_destino_id',
-  /** Añadido por la migración del 2026-08-21. */
-  bacheOrigen: 'bache_origen_id',
-  /** Añadido por la migración del 2026-08-21. */
-  produccionDestino: 'produccion_destino_id',
-  /** Link al registro de `Stock_Actual`: sin él el saldo no cuenta el movimiento. */
-  stockActual: 'Stock_Actual',
-} as const;
-
-/** Campos de la tabla `Stock_Actual`. */
-export const STOCK_PROD_FIELDS = {
-  productoId: 'producto_id',
-  stockActual: 'stock_actual',
-} as const;
+// Los nombres de campo y el normalizador de fórmulas son de la BASE, no del
+// biochar: se re-exportan porque este módulo fue su primer dueño y varios
+// consumidores ya los importaban desde acá.
+export { MOVIMIENTO_PROD_FIELDS, STOCK_PROD_FIELDS, toNumber };
+export type CredencialesBiocharPuro = CredencialesProducto;
 
 /**
  * `documento_referencia` de la Entrada de un bache a bodega.
@@ -90,87 +75,18 @@ export function referenciaEntradaBodega(codigoBache: string): string {
   return `BODEGA-${codigoBache}`;
 }
 
-export interface CredencialesBiocharPuro {
-  base: string;
-  token: string;
-  movimientos: string;
-  stock?: string;
-  producto: string;
-}
-
 /**
  * Credenciales del libro mayor, o `null` si falta configuración.
  *
  * Devuelve `null` en vez de lanzar para que los lectores puedan degradarse a la
  * tabla de baches (ver `resolverBiocharDisponible`) en vez de romper la pantalla.
  */
-export function credencialesBiocharPuro(): CredencialesBiocharPuro | null {
-  const {
-    inventarioProdCoreBaseId: base,
-    inventarioProdCoreToken: token,
-    inventarioProdCoreMovimientosTable: movimientos,
-    inventarioProdCoreStockTable: stock,
-    inventarioProdCoreBiocharPuroProductId: producto,
-  } = config.airtable;
-
-  if (!base || !token || !movimientos || !producto) return null;
-
-  return { base, token, movimientos, stock, producto };
+export function credencialesBiocharPuro(): CredencialesProducto | null {
+  return credencialesProducto(config.airtable.inventarioProdCoreBiocharPuroProductId);
 }
 
 function headers(token: string) {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-}
-
-/** Las fórmulas de Airtable pueden devolver `{ specialValue: 'NaN' }`. */
-export function toNumber(value: unknown): number {
-  const n = typeof value === 'object' && value !== null ? NaN : Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function r2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-interface AirtableRecord {
-  id: string;
-  fields: Record<string, unknown>;
-}
-
-async function atFetch(url: string, init: RequestInit = {}) {
-  const res = await fetch(url, init);
-  let data: unknown = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-  return { ok: res.ok, status: res.status, data: (data ?? {}) as Record<string, any> };
-}
-
-async function fetchAll(
-  base: string,
-  table: string,
-  token: string,
-  params: Record<string, string> = {}
-): Promise<AirtableRecord[]> {
-  const records: AirtableRecord[] = [];
-  let offset: string | undefined;
-
-  do {
-    const url = new URL(`${AT}/${base}/${table}`);
-    url.searchParams.set('pageSize', '100');
-    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-    if (offset) url.searchParams.set('offset', offset);
-
-    const { ok, data } = await atFetch(url.toString(), { headers: headers(token) });
-    if (!ok) throw new Error(`Error al leer ${table}: ${JSON.stringify(data)}`);
-
-    records.push(...((data.records ?? []) as AirtableRecord[]));
-    offset = data.offset;
-  } while (offset);
-
-  return records;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,37 +100,12 @@ async function fetchAll(
  * indistinguible de "no hay biochar" y bloquearía toda producción de Blend.
  */
 export async function getStockBiocharPuro(): Promise<number | null> {
-  const cred = credencialesBiocharPuro();
-  if (!cred || !cred.stock) return null;
-
-  const url = new URL(`${AT}/${cred.base}/${cred.stock}`);
-  url.searchParams.set(
-    'filterByFormula',
-    `{${STOCK_PROD_FIELDS.productoId}} = '${escapeAirtableValue(cred.producto)}'`
-  );
-  url.searchParams.set('maxRecords', '1');
-
-  const { ok, data } = await atFetch(url.toString(), { headers: headers(cred.token) });
-  if (!ok) throw new Error(`Error al leer el stock de biochar puro: ${JSON.stringify(data)}`);
-
-  const record = data.records?.[0];
-  return record ? toNumber(record.fields?.[STOCK_PROD_FIELDS.stockActual]) : null;
+  return getStockDeProducto(credencialesBiocharPuro());
 }
 
 /** Record ID de la fila de `Stock_Actual` del biochar puro, o null. */
 export async function findStockRecordIdBiocharPuro(): Promise<string | null> {
-  const cred = credencialesBiocharPuro();
-  if (!cred || !cred.stock) return null;
-
-  const url = new URL(`${AT}/${cred.base}/${cred.stock}`);
-  url.searchParams.set(
-    'filterByFormula',
-    `{${STOCK_PROD_FIELDS.productoId}} = '${escapeAirtableValue(cred.producto)}'`
-  );
-  url.searchParams.set('maxRecords', '1');
-
-  const { ok, data } = await atFetch(url.toString(), { headers: headers(cred.token) });
-  return ok ? (data.records?.[0]?.id ?? null) : null;
+  return findStockRecordId(credencialesBiocharPuro());
 }
 
 export interface MovimientoBiocharPuro {
@@ -237,32 +128,14 @@ export interface MovimientoBiocharPuro {
 /**
  * Todos los movimientos de biochar puro.
  *
- * Aquí sí se puede filtrar en la fórmula —y esa es media razón para haber movido
- * el biochar—: `product_id` es TEXTO. En Insumos Core el insumo era un campo link,
- * y en una fórmula un link se evalúa como el texto de su campo primario, así que
- * había que leer la tabla completa y hacer el match en JS sobre los record IDs.
+ * Se expone con `kg` en vez de `cantidad` porque el biochar se lleva siempre en
+ * masa seca y sus consumidores ya leían ese nombre.
  */
 export async function fetchMovimientosBiocharPuro(): Promise<MovimientoBiocharPuro[] | null> {
-  const cred = credencialesBiocharPuro();
-  if (!cred) return null;
+  const movimientos = await fetchMovimientosDeProducto(credencialesBiocharPuro());
+  if (!movimientos) return null;
 
-  const f = MOVIMIENTO_PROD_FIELDS;
-  const registros = await fetchAll(cred.base, cred.movimientos, cred.token, {
-    filterByFormula: `{${f.productoId}} = '${escapeAirtableValue(cred.producto)}'`,
-  });
-
-  return registros.map((m) => ({
-    id: m.id,
-    codigo: String(m.fields['id_movimiento'] ?? m.id),
-    tipo: String(m.fields[f.tipoMovimiento] ?? ''),
-    kg: toNumber(m.fields[f.cantidad]),
-    bache: String(m.fields[f.bacheOrigen] ?? ''),
-    destino: String(m.fields[f.produccionDestino] ?? ''),
-    documento: String(m.fields[f.documentoReferencia] ?? ''),
-    fecha: String(m.fields[f.fechaMovimiento] ?? m.fields[f.fechaRegistro] ?? ''),
-    motivo: String(m.fields[f.motivo] ?? ''),
-    observaciones: String(m.fields[f.observaciones] ?? ''),
-  }));
+  return movimientos.map(({ cantidad, unidad: _unidad, ...resto }) => ({ ...resto, kg: cantidad }));
 }
 
 /** Saldo de biochar de un bache, reconstruido desde el libro mayor. */
@@ -434,29 +307,14 @@ export interface MovimientoBiocharPuroInput {
   ubicacionDestino?: string;
 }
 
-export interface MovimientoCreado {
-  movimientoId: string;
-  kg: number;
-  /** false si el movimiento quedó sin vincular al stock (el saldo no lo cuenta). */
-  vinculadoAlStock: boolean;
-}
-
 /**
- * Crea un movimiento de biochar puro y lo vincula al registro de `Stock_Actual`.
- *
- * El link al stock es lo que hace que `stock_actual` (= SUM(entradas) −
- * SUM(salidas) sobre los movimientos vinculados) cuente el movimiento. Un
- * movimiento sin vincular es invisible para el saldo: así fue como la fila de
- * stock del Blend se quedó en 0 kg teniendo 15.528 kg de entradas.
- *
- * Se vincula EN EL POST, no con un PATCH posterior: el PATCH de un campo link
- * reemplaza el array completo y habría que releer y concatenar.
+ * Crea un movimiento de biochar puro, vinculado a `Stock_Actual`.
  *
  * @throws Si falta configuración o si Airtable rechaza el movimiento.
  */
 export async function crearMovimientoBiocharPuro(
   input: MovimientoBiocharPuroInput
-): Promise<MovimientoCreado> {
+): Promise<{ movimientoId: string; kg: number; vinculadoAlStock: boolean }> {
   const cred = credencialesBiocharPuro();
   if (!cred) {
     throw new Error(
@@ -466,42 +324,23 @@ export async function crearMovimientoBiocharPuro(
     );
   }
 
-  const f = MOVIMIENTO_PROD_FIELDS;
-  const kg = r2(input.kg);
-
-  const fields: Record<string, unknown> = {
-    [f.productoId]: cred.producto,
-    [f.tipoMovimiento]: input.tipo,
-    [f.cantidad]: kg,
-    [f.unidadMedida]: 'kg',
-    [f.motivo]: input.motivo,
-    [f.documentoReferencia]: input.documentoReferencia,
-    [f.bacheOrigen]: input.bacheOrigen,
-    // Mediodía UTC y no la hora de la digitación: la fecha que importa es el día en
-    // que el biochar se movió físicamente, y un `T00:00` se corre de día al
-    // renderizarse en la zona de Colombia.
-    [f.fechaMovimiento]: `${input.fecha}T12:00:00.000Z`,
-  };
-
-  if (input.produccionDestino) fields[f.produccionDestino] = input.produccionDestino;
-  if (input.responsable) fields[f.responsable] = input.responsable;
-  if (input.observaciones) fields[f.observaciones] = input.observaciones;
-  if (input.ubicacionDestino) fields[f.ubicacionDestino] = input.ubicacionDestino;
-
-  const stockRecordId = await findStockRecordIdBiocharPuro();
-  if (stockRecordId) fields[f.stockActual] = [stockRecordId];
-
-  const { ok, data } = await atFetch(`${AT}/${cred.base}/${cred.movimientos}`, {
-    method: 'POST',
-    headers: headers(cred.token),
-    body: JSON.stringify({ records: [{ fields }] }),
+  const creado: MovimientoCreado = await crearMovimientoProducto(cred, {
+    tipo: input.tipo,
+    cantidad: input.kg,
+    unidad: 'kg',
+    bacheOrigen: input.bacheOrigen,
+    produccionDestino: input.produccionDestino,
+    documentoReferencia: input.documentoReferencia,
+    motivo: input.motivo,
+    fecha: input.fecha,
+    responsable: input.responsable,
+    observaciones: input.observaciones,
+    ubicacionDestino: input.ubicacionDestino,
   });
 
-  if (!ok) throw new Error(`Error creando el movimiento de biochar: ${JSON.stringify(data)}`);
-
   return {
-    movimientoId: data.records?.[0]?.id as string,
-    kg,
-    vinculadoAlStock: Boolean(stockRecordId),
+    movimientoId: creado.movimientoId,
+    kg: creado.cantidad,
+    vinculadoAlStock: creado.vinculadoAlStock,
   };
 }

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { TurnoProtection } from '@/components';
+import { TurnoProtection, Tarjeta3D } from '@/components';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { useBaches } from '@/lib/useBaches';
@@ -534,7 +534,14 @@ function SistemaBachesContent() {
         throw new Error('Error al registrar monitoreo');
       }
 
-      alert('✅ Monitoreo registrado exitosamente');
+      // Si el bache YA estaba en bodega, este monitoreo es lo que por fin permite
+      // ingresar su biochar al libro mayor y el endpoint lo hace de una vez (ver
+      // /api/monitoreo-baches/create). Se muestra aquí porque es el mismo dato que
+      // el operador acaba de digitar: si no entró, tiene que enterarse ahora.
+      const monitoreoResult = await response.json();
+      const ingreso = monitoreoResult?.biochar_bodega?.[0]?.entrada;
+
+      alert(`✅ Monitoreo registrado exitosamente${mensajeEntradaBiochar(ingreso)}`);
       closeMonitoreoModal();
       // Recargar los datos para actualizar el estado de los botones
       refetch();
@@ -769,6 +776,21 @@ function SistemaBachesContent() {
   };
 
   /**
+   * Lo que /api/baches/update reporta del libro mayor. `omitido` no es un error:
+   * es "no había nada que ingresar", y es justo el caso que hay que hacer visible.
+   */
+  type EntradaBiocharRespuesta =
+    | {
+        ok: boolean;
+        yaExistia?: boolean;
+        omitido?: boolean;
+        cantidad?: number;
+        motivo?: string;
+        error?: string;
+      }
+    | undefined;
+
+  /**
    * Traduce el `biochar_bodega` que devuelve /api/baches/update.
    *
    * Se distingue "ya existía" de "se creó": la Entrada es idempotente por
@@ -789,6 +811,36 @@ function SistemaBachesContent() {
     return `
 
 📦 ${Number(entrada.cantidad ?? 0).toFixed(2)} kg de biochar ingresados al inventario.`;
+  };
+
+  /**
+   * Resumen del libro mayor para un transporte de VARIOS baches.
+   *
+   * Los baches omitidos se nombran uno por uno: sin el código el operador no sabe
+   * cuál volver a mirar, y un bache en bodega con 0 kg en el Core es invisible
+   * hasta que alguien va a despacharlo y no encuentra el biochar.
+   */
+  const resumenEntradasBiochar = (
+    entradas: Array<{ codigo: string; entrada: EntradaBiocharRespuesta }>
+  ): string => {
+    const ingresados = entradas.filter((e) => e.entrada?.ok && !e.entrada.omitido);
+    const pendientes = entradas.filter((e) => e.entrada && (e.entrada.omitido || !e.entrada.ok));
+
+    const kg = ingresados.reduce((total, e) => total + Number(e.entrada?.cantidad ?? 0), 0);
+    let mensaje = ingresados.length
+      ? `\n\n📦 ${kg.toFixed(2)} kg de biochar en el inventario (${ingresados.length} bache(s)).`
+      : '';
+
+    if (pendientes.length) {
+      mensaje +=
+        `\n\n⚠️ ${pendientes.length} bache(s) quedaron en bodega SIN registrar su biochar en el ` +
+        'inventario:\n' +
+        pendientes
+          .map((e) => `   · ${e.codigo}: ${e.entrada?.motivo ?? e.entrada?.error ?? 'sin detalle'}`)
+          .join('\n');
+    }
+
+    return mensaje;
   };
 
   // Submit pasar a bodega - solo cambiar estado
@@ -890,13 +942,23 @@ function SistemaBachesContent() {
       );
 
       const results = await Promise.all(promises);
-      
-      // Verificar que todas las operaciones fueron exitosas
+
+      // Cada PATCH devuelve `biochar_bodega` con lo que pasó en el libro mayor, y
+      // hay que MIRARLO: la Entrada se OMITE (sin error) cuando el bache no tiene
+      // biochar seco cuantificado, que es lo normal en un bache sin monitoreo. Antes
+      // aquí solo se revisaba `results[i].ok`, así que el operador veía "✅ N baches
+      // movidos" mientras el Core no recibía un solo kg. Así se movieron a bodega
+      // S-00251…S-00260 sin quedar en el inventario.
+      const entradas: Array<{ codigo: string; entrada: EntradaBiocharRespuesta }> = [];
       for (let i = 0; i < results.length; i++) {
+        const data = await results[i].json();
         if (!results[i].ok) {
-          const errorData = await results[i].json();
-          throw new Error(`Error al procesar bache ${bacheIds[i]}: ${errorData.error}`);
+          throw new Error(`Error al procesar bache ${bacheIds[i]}: ${data.error}`);
         }
+        entradas.push({
+          codigo: String(data?.fields?.['Codigo Bache'] ?? bacheIds[i]),
+          entrada: data?.biochar_bodega,
+        });
       }
 
       // Refetch data to update the UI
@@ -910,7 +972,10 @@ function SistemaBachesContent() {
       // saldo total se relee de una vez en lugar de sumarlo por respuesta.
       await refrescarBiocharBodega();
 
-      alert(`✅ ${bacheIds.length} baches movidos a bodega con información de transporte`);
+      alert(
+        `✅ ${bacheIds.length} baches movidos a bodega con información de transporte` +
+          resumenEntradasBiochar(entradas)
+      );
     } catch (error: any) {
       console.error('❌ Error al procesar transporte:', error);
       alert(`❌ Error al procesar el transporte: ${error.message || 'Error desconocido'}`);
@@ -1409,20 +1474,28 @@ function SistemaBachesContent() {
                             </p>
                           </div>
                         )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 [perspective:1200px]">
                           {baches.map((bache) => {
                             const isSelected = selectedBachesPlanta.has(bache.id);
                             const isSelectableCategory = categoria === 'Completos Planta';
                             
                             return (
-                              <div 
-                                key={bache.id} 
+                              /* La escala la maneja Tarjeta3D, no una clase `scale-*`:
+                                 el giro se escribe como `style.transform` inline y un
+                                 transform inline PISA la clase de Tailwind, así que la
+                                 tarjeta seleccionada perdería su realce al pasarle el
+                                 mouse. Por eso el bache seleccionado va con más escala. */
+                              <Tarjeta3D
+                                key={bache.id}
+                                escala={isSelected ? 1.06 : 1.03}
                                 onClick={() => isSelectableCategory ? toggleBacheSelection(bache.id) : undefined}
-                                className={`backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 relative cursor-pointer transform ${
+                                className={`backdrop-blur-sm border rounded-xl p-4 relative ${
+                                  isSelected ? 'scale-105' : ''
+                                } ${
                                   isSelectableCategory 
                                     ? isSelected 
-                                      ? 'bg-blue-500/30 border-blue-400 shadow-lg scale-105 ring-2 ring-blue-400/50' 
-                                      : 'bg-white/10 border-white/20 hover:bg-blue-500/20 hover:border-blue-400/50 hover:scale-102'
+                                      ? 'bg-blue-500/30 border-blue-400 shadow-lg ring-2 ring-blue-400/50 cursor-pointer' 
+                                      : 'bg-white/10 border-white/20 hover:bg-blue-500/20 hover:border-blue-400/50 cursor-pointer'
                                     : 'bg-white/10 border-white/20 hover:bg-white/20 cursor-default'
                                 }`}
                               >
@@ -1612,7 +1685,7 @@ function SistemaBachesContent() {
                                 </button>
                               </div>
                             )}
-                              </div>
+                              </Tarjeta3D>
                             );
                           })}
                         </div>

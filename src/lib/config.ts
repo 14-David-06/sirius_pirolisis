@@ -211,6 +211,12 @@ export const config = {
     // insumo de bodega: vive en el mismo libro mayor que el Blend que alimenta, y
     // no en Sirius Insumos Core. Ver `src/lib/biochar-inventario-core.ts`.
     inventarioProdCoreBiocharPuroProductId: process.env.AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID,
+    // Abono 4G (2026-08-21). No lo produce pirólisis —lo recibe—, pero es la materia
+    // prima del Blend, y desde que el biochar puro vive en el Core la producción es
+    // una Salida y una Entrada en un mismo libro mayor. Dejar el abono en Insumos
+    // Core obligaba a descontar una misma producción en dos bases distintas. Ver
+    // `src/lib/abono-inventario-core.ts`.
+    inventarioProdCoreAbono4gProductId: process.env.AIRTABLE_INVENTARIO_ABONO_4G_PRODUCT_ID,
     // Sirius Nomina Core (personal, áreas, sistemas) — OPCIONAL (solo login)
     nominaCoreBaseId: process.env.AIRTABLE_BASE_ID_SIRIUS_NOMINA_CORE,
     nominaCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_NOMINA_CORE || GLOBAL_TOKEN,
