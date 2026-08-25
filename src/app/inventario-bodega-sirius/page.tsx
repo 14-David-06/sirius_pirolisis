@@ -993,7 +993,6 @@ function BodegaContent() {
 interface PlanSalida {
   referencia: string;
   destino: string;
-  motivo: MotivoSalida;
   yaExistia: boolean;
   bache: {
     codigo: string;
@@ -1033,16 +1032,7 @@ function FormSalidaBiochar({
   onCancelar: () => void;
 }) {
   const [codigo, setCodigo] = useState(baches[0]?.codigo ?? '');
-  // El motivo arranca VACÍO a propósito. Tener `'laboratorio'` preseleccionado era
-  // una respuesta válida puesta de fábrica en el único campo que decide la
-  // clasificación metodológica de la salida: el operador llenaba bache, destino, KG
-  // y fecha —los que se ven vacíos— y el motivo se quedaba como estaba. Así se
-  // registraron como "Laboratorio" entregas que no lo eran (los 154 kg del Colegio
-  // Francisco Walter, 2026-08-25, que eran una entrega sin contraprestación).
-  // Y el error no se corrige re-enviando: el motivo entra en la referencia
-  // (`SAL-LAB-…`), que es la llave de idempotencia, así que reintentar con el motivo
-  // correcto genera `SAL-ENT-…` y DESCUENTA LOS KG OTRA VEZ.
-  const [motivo, setMotivo] = useState<MotivoSalida | ''>('');
+  const [motivo, setMotivo] = useState<MotivoSalida>('laboratorio');
   const [completo, setCompleto] = useState(true);
   const [kgTexto, setKgTexto] = useState('');
   const [destino, setDestino] = useState('');
@@ -1058,10 +1048,6 @@ function FormSalidaBiochar({
 
   const enviar = async (dryRun: boolean) => {
     setError(null);
-    if (!motivo) {
-      setError('Falta el motivo de la salida: decide cómo se clasifica antes de escribir.');
-      return;
-    }
     setEnviando(true);
     try {
       const res = await fetch('/api/baches/salida', {
@@ -1130,21 +1116,9 @@ function FormSalidaBiochar({
             Queda en {kg(b.disponibleAntes - b.kg)} · estado {b.estadoNuevo ?? b.estadoAnterior}
           </p>
           <p className="text-white/70">
-            Motivo: <span className="text-white">{MOTIVOS_SALIDA[plan.motivo].etiqueta}</span>
-          </p>
-          <p className="text-white/70">
             Destino: {plan.destino} · Referencia:{' '}
             <span className="font-mono text-xs">{plan.referencia}</span>
           </p>
-          {plan.motivo === 'laboratorio' && !/laborator|datalab/i.test(plan.destino) && (
-            <p className="text-amber-200">
-              ⚠️ El destino no parece un laboratorio. Si esto es una entrega para
-              investigación, ensayo, piloto o donación, el motivo es «
-              {MOTIVOS_SALIDA.entrega.etiqueta}»: corregirlo después obliga a editar
-              Airtable a mano, porque re-enviar la salida con otro motivo descuenta los
-              kg de nuevo.
-            </p>
-          )}
           {plan.yaExistia && (
             <p className="text-amber-200">
               ⚠️ Esta salida ya está registrada: confirmar no descontará de nuevo.
@@ -1190,10 +1164,8 @@ function FormSalidaBiochar({
         <select
           value={motivo}
           onChange={(e) => setMotivo(e.target.value as MotivoSalida)}
-          required
           className={CAMPO}
         >
-          <option value="">Selecciona el motivo…</option>
           {Object.entries(MOTIVOS_SALIDA).map(([clave, info]) => (
             <option key={clave} value={clave}>
               {info.etiqueta}
@@ -1201,9 +1173,7 @@ function FormSalidaBiochar({
           ))}
         </select>
         <span className="mt-1 block text-xs text-white/50">
-          {motivo
-            ? MOTIVOS_SALIDA[motivo].descripcion
-            : 'Decide cómo se clasifica esta salida en la contabilidad de carbono. No hay opción por defecto.'}
+          {MOTIVOS_SALIDA[motivo].descripcion}
         </span>
       </label>
 
@@ -1271,29 +1241,12 @@ function FormSalidaBiochar({
         />
       </label>
 
-      {motivo === 'entrega' && (
-        <div className="rounded-xl bg-sky-500/10 p-4 text-sm text-sky-100 ring-1 ring-sky-400/25">
-          <p className="font-medium">Esto se registra con un acta de entrega.</p>
-          <p className="mt-1 text-sky-100/80">
-            Una entrega sin contraprestación —investigación, ensayo, piloto, donación— exige receptor,
-            uso previsto declarado y la firma de las dos partes (numeral 5.4.2 de la metodología). El
-            acta descuenta el mismo inventario que esta pantalla, y además deja el documento.
-          </p>
-          <a
-            href="/actas-biochar"
-            className="mt-3 inline-block rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429]"
-          >
-            Ir a las actas de entrega
-          </a>
-        </div>
-      )}
-
       {error && <p className="text-red-300">{error}</p>}
 
       <div className="flex flex-wrap gap-3 pt-1">
         <button
           type="submit"
-          disabled={enviando || !bache || !motivo || motivo === 'entrega'}
+          disabled={enviando || !bache}
           className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
         >
           {enviando ? 'Calculando…' : 'Ver qué se va a escribir'}

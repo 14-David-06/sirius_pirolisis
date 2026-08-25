@@ -15,7 +15,6 @@ import { esMotivoSalida, MOTIVOS_SALIDA, runSalidaBache } from '@/lib/salida-bac
  *   {
  *     bache: "recXXX" | "S-00171",   // requerido
  *     motivo: "laboratorio" | "muestra" | "merma" | "traslado",
- *                                    // "entrega" NO: eso va por /actas-biochar (422)
  *     kg?: number,                   // omitido = el bache completo
  *     destino?: string,              // laboratorio / área / quien recibe
  *     observaciones?: string,
@@ -29,7 +28,6 @@ import { esMotivoSalida, MOTIVOS_SALIDA, runSalidaBache } from '@/lib/salida-bac
  *   207 — el bache quedó descontado pero un paso de trazabilidad falló (ver `steps`)
  *   400 — body inválido
  *   409 — el bache no tiene ese biochar disponible
- *   422 — es una entrega sin contraprestación: se registra con un acta, no aquí
  *   500 — configuración incompleta o fallo del paso crítico
  *
  * Es idempotente por la referencia `SAL-<MOTIVO>-<fecha>-<bache>`: reintentar no
@@ -52,25 +50,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { success: false, error: 'Falta el bache', details: 'Envía `bache` con el record ID o el Codigo Bache (S-00XXX).' },
       { status: 400 }
-    );
-  }
-  // `entrega` NO se registra por aquí (decisión de David, 2026-08-25). Una entrega
-  // sin contraprestación es la que el numeral 5.4.2 de la metodología obliga a
-  // documentar con receptor, uso previsto declarado y firma de las dos partes; por
-  // esta ruta quedaría como una observación de texto libre, sin nada que la acredite.
-  // El acta llama a `runSalidaBache` directamente con su propio código como
-  // referencia, así que el camino existe: es el otro.
-  if (motivo === 'entrega') {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Una entrega sin contraprestación se registra con un acta de entrega, no como salida simple.',
-        details:
-          'Ve a /actas-biochar y crea el acta: descuenta el mismo inventario, y además deja el receptor, ' +
-          'el uso previsto y las firmas que exige el numeral 5.4.2 de la metodología.',
-        ruta: '/actas-biochar',
-      },
-      { status: 422 }
     );
   }
   if (!esMotivoSalida(motivo)) {
