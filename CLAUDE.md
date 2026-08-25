@@ -102,6 +102,16 @@ siempre con un `toNumber()` que lo tolere.
 le descontó más de lo que tenía (pasó con S-00177: −0,18 kg, cerrado el 2026-08-21 con
 `scripts/reparar-biochar-bodega.mjs`).
 
+**Un `select` con opción preseleccionada es una respuesta que nadie dio.** El
+formulario de salida de baches arrancaba en `laboratorio`, y el operador llenaba
+bache, destino, KG y fecha —los campos que se ven vacíos— dejando el motivo como
+estaba: así quedaron clasificadas como análisis de laboratorio entregas que no lo
+eran (154 kg al Colegio Francisco Walter, corregidos el 2026-08-25 con
+`scripts/reclasificar-salida-bache.mjs`). Un campo que decide clasificación no puede
+traer default. Peor aún: el motivo entra en la referencia, que es la llave de
+idempotencia, así que **corregirlo NO es re-enviar el formulario** —eso genera
+`SAL-ENT-…` y descuenta los kg otra vez—; hay que reescribir en sitio.
+
 **Rate limit: 5 req/s por base.** Evitar cascadas N+1; preferir una lectura completa
 y el cruce en JS sobre N lecturas por registro.
 
@@ -193,21 +203,58 @@ las dos. Si una pantalla elige su fuente, bodega y producción se contradicen.
 `Estado Bache` a `Bache Incompleto` o `Bache Agotado` al vaciarse
 (`estadoTrasConsumo()`).
 
-**La salida de un bache SIN producir ya no tiene camino en la app (2026-08-21).**
-`runSalidaBache()` y `/api/baches/salida` se eliminaron con la depuración de §8. La
-regla de fondo sigue viva por si se reconstruye: una salida honesta escribe TRES
-partes —el detalle que baja la fórmula del bache, la `Salida` de `Biochar Puro` en
+**La salida de un bache SIN producir se registra en `/inventario-bodega-sirius`.**
+`runSalidaBache()` y `/api/baches/salida` se eliminaron el 2026-08-21 y volvieron con
+esa pantalla. Su regla: una salida honesta escribe TRES partes —el detalle que baja la fórmula del bache, la `Salida` de `Biochar Puro` en
 Inventario Production Core y el `Estado Bache`—, con llave `SAL-<MOTIVO>-<fecha>-<bache>`
 verificada lado por lado para que un reintento COMPLETE la mitad que falte en vez de
 duplicarla. La UI de remisión de baches (`/api/remisiones-baches`) escribe SOLO el
 detalle: usarla para esto infla el stock del Core y deja el bache en "Completo Bodega"
 con 0 kg.
 
-**Las actas de entrega de biochar se eliminaron (2026-08-21).** Documentaban las
-entregas sin contraprestación (investigación, ensayo, piloto, donación) que exige el
-numeral 5.4.2 de la Puro Biochar Methodology, y vivían en PiroliApp —no en un Core—
-porque no son documentos comerciales. Si vuelven, esa separación es la decisión a
-respetar: receptores en tabla propia, no clientes de Clients Core.
+⚠️ **El motivo `entrega` NO se registra por esa ruta** (decisión de David,
+2026-08-25): `/api/baches/salida` responde **422** y manda a `/actas-biochar`. Una
+entrega sin contraprestación es justo la que hay que documentar con receptor, uso
+previsto y firmas; por la salida simple quedaría como una observación de texto libre.
+El acta llama a `runSalidaBache()` con su propio código como `referenciaBase`, así que
+el descuento es el mismo: lo que cambia es que queda acreditado.
+
+**Las actas de entrega de biochar volvieron, con doble firma (2026-08-25).** Se
+habían eliminado el 2026-08-21; se restauraron del tag `pre-depuracion-blend` porque
+son lo que exige el numeral 5.4.2 de la Puro Biochar Methodology para las entregas
+sin contraprestación (investigación, ensayo, piloto, donación). Siguen viviendo en
+PiroliApp —no en un Core— porque no son documentos comerciales, y los receptores
+tienen tabla propia, no son clientes de Clients Core. Sus dos tablas
+(`Actas Entrega Biochar`, `Receptores Biochar`) nunca se borraron de Airtable.
+
+Lo que **nunca existió** y se construyó ahora es la firma: los campos
+`Firma Sirius` / `Firma Receptor` estaban en la tabla desde el principio, sin
+pantalla que los llenara. Hoy `src/lib/acta-entrega-firma.ts` registra **una firma
+por llamada** (`parte: 'sirius' | 'receptor'`) y el acta pasa a `Firmada` solo cuando
+entra la segunda: un acta con una sola firma no está firmada.
+
+Tres decisiones que sostienen eso:
+
+**Las dos firmas son EN VIVO** (decisión de David, 2026-08-25). Se descartó estampar
+una firma institucional guardada al generar el acta: eso acredita que la persona
+existe, no que estuvo en la entrega, y el valor probatorio del acta ante una
+auditoría es justamente la presencia de las dos partes. Cada firma lleva su
+timestamp y su IP. Por eso las dos se dan en el MISMO dispositivo —el del operador—
+y `/api/actas-biochar/[actaId]/firmar` **exige sesión**, a diferencia de la firma de
+remisiones de Blend, que es pública porque ahí el cliente firma desde su celular.
+
+**Una firma no se sobrescribe**: si la parte ya firmó, el servicio responde 409. Es
+el único dato del sistema que no se puede volver a pedir igual; corregirlo es anular
+el acta, no reintentar. Y un acta en `Borrador` NO se puede firmar: ese estado
+significa que su descuento de inventario falló, así que firmarla certificaría una
+entrega que el inventario no refleja.
+
+**El PDF es el acta, y se regenera completo en cada firma** (`acta-entrega-pdf.ts`,
+sobre los primitivos compartidos de `pdf-sirius.ts`). La fila de Airtable guarda el
+estado; lo que se le muestra a un auditor o al receptor es el documento, con las dos
+firmas embebidas. La firma que falta se imprime como «Pendiente»: ocultarla haría que
+un acta a medias se leyera como completa. La generación es best-effort (207 si falla):
+la firma que la persona ya hizo no se puede repetir; el PDF sí.
 
 **Todo el biochar se maneja en MASA SECA** (decisión de David, 2026-08-05). El acta
 física deja abierta la casilla húmeda/seca, pero la app no: no hay selector ni
@@ -339,7 +386,8 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   agendar pedidos ni emitir remisiones**; el biochar sigue entrando a bodega al crear
   el bache (`/api/baches/update` → `biochar-bodega.ts`). El árbol previo quedó en el
   tag `pre-depuracion-blend`. La salida de un bache, las entradas de abono y la
-  producción de Blend volvieron después por `/inventario-bodega-sirius` (ver abajo).
+  producción de Blend volvieron después por `/inventario-bodega-sirius` (ver abajo), y
+  `/actas-biochar` volvió el 2026-08-25 con la doble firma que le faltaba (§5).
 - **Un bache SIN monitoreo que pasa a bodega no entra al inventario.** `Total Cantidad
   Actual Biochar Seco` es 0 mientras no haya monitoreo de masa seca, y
   `registrarEntradaBiocharBodega()` OMITE la Entrada cuando no hay kg — correcto: el

@@ -139,6 +139,7 @@ export default function Navbar() {
           { label: "Inventario Bodega Sirius", href: "/inventario-bodega-sirius", icon: "🏭", description: "Inventario de la bodega Sirius" },
           { label: "Manejo Residuos", href: "/manejo-residuos", icon: "", description: "Gestión de residuos" },
           { label: "Sistema de Baches", href: "/sistema-baches", icon: "", description: "Control por lotes" },
+          { label: "Actas de Entrega", href: "/actas-biochar", icon: "📄", description: "Entregas de biochar sin contraprestación comercial" },
         ]
       },
       {
