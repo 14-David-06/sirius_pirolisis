@@ -32,6 +32,24 @@ export {
 
 const AT = 'https://api.airtable.com/v0';
 
+/**
+ * Campo que marca los baches traídos de `PiroliApp V 1.0` por
+ * `scripts/migrar-baches-v2.mjs`: los 61 de la era V2 (S-00083…S-00143).
+ *
+ * Viven en la MISMA tabla que los baches vivos porque comparten el consecutivo,
+ * pero no son inventario: su biochar se consumió en 2025 y no está en los kg
+ * conciliados de hoy. Entran sin filas de `Monitoreo Baches`, así que la fórmula
+ * `Total Cantidad Actual Biochar Seco` les da 0 y el filtro `kg > 0` de aquí abajo
+ * ya los deja fuera. Aun así todo lector de la tabla COMPLETA los excluye por este
+ * campo: depender de que un histórico dé 0 es depender de que nadie le vincule
+ * nunca un monitoreo, y el día que alguien lo haga aparecerían como biochar
+ * disponible para producir Blend.
+ */
+export const CAMPO_ORIGEN_REGISTRO = 'Origen Registro';
+
+/** `filterByFormula` que deja fuera lo migrado. Ver {@link CAMPO_ORIGEN_REGISTRO}. */
+export const FILTRO_SIN_MIGRADOS = `{${CAMPO_ORIGEN_REGISTRO}} = ''`;
+
 export interface BacheBiocharRecord {
   id: string;
   /** `Codigo Bache`; el record ID si el bache no tiene código. */
@@ -62,8 +80,24 @@ function toNumber(value: unknown): number {
  * @throws Si falta configuración de la base local o de la tabla de baches.
  */
 export async function fetchBachesConBiochar(): Promise<BacheBiocharRecord[]> {
-  const { token, baseId, bachesTableId } = config.airtable;
+  return (await leerBachesVivos())
+    .map((bache) => ({
+      id: bache.id,
+      codigo: String(bache.fields?.['Codigo Bache'] ?? bache.id),
+      kg: toNumber(bache.fields?.['Total Cantidad Actual Biochar Seco']),
+      estado: String(bache.fields?.['Estado Bache'] ?? ''),
+    }))
+    .filter((bache) => bache.kg > 0)
+    .sort((a, b) => b.kg - a.kg);
+}
 
+/** Todos los baches nacidos en esta app, crudos. Ver {@link CAMPO_ORIGEN_REGISTRO}. */
+async function leerBachesVivos(): Promise<AirtableRecord[]> {
+  return leerBaches(true);
+}
+
+async function leerBaches(soloVivos: boolean): Promise<AirtableRecord[]> {
+  const { token, baseId, bachesTableId } = config.airtable;
 
   if (!token || !baseId || !bachesTableId) {
     throw new Error(
@@ -77,6 +111,7 @@ export async function fetchBachesConBiochar(): Promise<BacheBiocharRecord[]> {
   do {
     const url = new URL(`${AT}/${baseId}/${bachesTableId}`);
     url.searchParams.set('pageSize', '100');
+    if (soloVivos) url.searchParams.set('filterByFormula', FILTRO_SIN_MIGRADOS);
     if (offset) url.searchParams.set('offset', offset);
 
     const response = await fetch(url.toString(), {
@@ -92,15 +127,56 @@ export async function fetchBachesConBiochar(): Promise<BacheBiocharRecord[]> {
     offset = data.offset;
   } while (offset);
 
-  return baches
-    .map((bache) => ({
-      id: bache.id,
-      codigo: String(bache.fields?.['Codigo Bache'] ?? bache.id),
-      kg: toNumber(bache.fields?.['Total Cantidad Actual Biochar Seco']),
-      estado: String(bache.fields?.['Estado Bache'] ?? ''),
+  return baches;
+}
+
+/** Un bache que existe pero del que no se puede sacar biochar, y por qué. */
+export interface BacheNoDisponible {
+  codigo: string;
+  /** Por qué no se puede operar con él, en las palabras del operador. */
+  motivo: string;
+}
+
+/** Por qué un bache no tiene biochar que sacar. Es el texto que ve el operador. */
+function motivoNoDisponible(fields: Record<string, unknown>): string {
+  if (fields[CAMPO_ORIGEN_REGISTRO]) return 'histórico de PiroliApp V 1.0, ya consumido';
+
+  const estado = String(fields['Estado Bache'] ?? '');
+  if (estado === ESTADO_BACHE.completoPlanta) return 'todavía en planta, no ha pasado a bodega';
+  if (estado === ESTADO_BACHE.enProceso) return 'en proceso, sin cerrar';
+  if (estado === ESTADO_BACHE.completoBodega) {
+    return String(fields['Monitoreado'] ?? '') === 'Monitoreado'
+      ? 'sin masa seca registrada'
+      : 'falta el monitoreo de laboratorio';
+  }
+  return 'agotado';
+}
+
+/**
+ * Todos los baches SIN biochar disponible, con el motivo.
+ *
+ * Existe para que la pantalla pueda explicar una ausencia en vez de negarla. Un
+ * bache desaparece de las listas por razones muy distintas —se consumió, sigue en
+ * planta, es histórico de la app anterior, o le falta el monitoreo y su masa seca
+ * vale 0—, y desde afuera las cuatro se ven igual: el operador escribe el código y
+ * no aparece nada. "Ningún bache coincide" es además falso en tres de los cuatro
+ * casos: el bache existe, lo que no tiene es biochar.
+ *
+ * Esta lista es para MOSTRARLOS, no para operarlos: se pintan inhabilitados junto a
+ * los disponibles. Incluye los migrados a propósito —son los únicos que el resto de
+ * la app filtra por {@link CAMPO_ORIGEN_REGISTRO}—, porque un código de 2025 que el
+ * operador todavía ve en una lona merece la misma respuesta que los demás.
+ */
+export async function fetchBachesNoDisponibles(): Promise<BacheNoDisponible[]> {
+  return (await leerBaches(false))
+    .filter((b) => toNumber(b.fields?.['Total Cantidad Actual Biochar Seco']) <= 0)
+    .map((b) => ({
+      codigo: String(
+        b.fields?.['Codigo Bache'] ?? b.fields?.['Codigo Bache Historico'] ?? b.id
+      ),
+      motivo: motivoNoDisponible(b.fields ?? {}),
     }))
-    .filter((bache) => bache.kg > 0)
-    .sort((a, b) => b.kg - a.kg);
+    .sort((a, b) => a.codigo.localeCompare(b.codigo));
 }
 
 /**

@@ -20,17 +20,23 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { TurnoProtection, Tarjeta3D } from '@/components';
 import { MOTIVOS_SALIDA } from '@/lib/salida-bache.constants';
+import { SelectorBache } from './SelectorBache';
+import {
+  CAMPO,
+  kg,
+  type BacheBodega,
+  type BacheNoDisponible,
+  type EstadoBodega,
+} from './comunes';
 import type { MotivoSalida } from '@/lib/salida-bache.constants';
 
 const FONDO =
   "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')";
-
-type EstadoBodega = 'completo' | 'parcial' | 'agotado' | 'sobregirado';
 
 interface Disponible {
   kg: number;
@@ -38,15 +44,6 @@ interface Disponible {
   kgBaches: number | null;
   kgCore: number | null;
   divergencia: number | null;
-}
-
-interface BacheBodega {
-  codigo: string;
-  kg: number;
-  kgIngresado: number;
-  kgConsumido: number;
-  lotes: string[];
-  estado: EstadoBodega;
 }
 
 interface Movimiento {
@@ -93,6 +90,8 @@ interface BodegaData {
   biochar: {
     disponible: Disponible;
     baches: BacheBodega[] | null;
+    /** Existen pero sin biochar que sacar: se muestran, no se pueden operar. */
+    noDisponibles: BacheNoDisponible[];
     totales: Totales | null;
     movimientos: Movimiento[] | null;
   };
@@ -226,9 +225,6 @@ type FiltroEstado = EstadoBodega | 'todos';
 type FiltroTipo = 'todos' | 'Entrada' | 'Salida';
 type Orden = 'kg-desc' | 'kg-asc' | 'codigo-desc' | 'codigo-asc';
 
-const kg = (n: number) =>
-  `${n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg`;
-
 const fecha = (iso: string) =>
   iso
     ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -333,9 +329,6 @@ function usuarioActual(): string {
     return 'Sistema';
   }
 }
-
-const CAMPO =
-  'mt-1.5 w-full rounded-lg bg-white/10 ring-1 ring-white/20 px-3 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5A7836] [&>option]:bg-slate-800';
 
 function Modal({
   titulo,
@@ -946,6 +939,7 @@ function BodegaContent() {
         >
           <FormSalidaBiochar
             baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
+            noDisponibles={biochar.noDisponibles ?? []}
             onListo={tras}
             onCancelar={() => setModal(null)}
           />
@@ -1024,10 +1018,12 @@ interface StepResultUI {
  */
 function FormSalidaBiochar({
   baches,
+  noDisponibles,
   onListo,
   onCancelar,
 }: {
   baches: BacheBodega[];
+  noDisponibles: BacheNoDisponible[];
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
 }) {
@@ -1148,16 +1144,12 @@ function FormSalidaBiochar({
       }}
       className="space-y-4 text-sm"
     >
-      <label className="block">
-        <span className="text-white/70">Bache</span>
-        <select value={codigo} onChange={(e) => setCodigo(e.target.value)} className={CAMPO}>
-          {baches.map((b) => (
-            <option key={b.codigo} value={b.codigo}>
-              {b.codigo} — {kg(b.kg)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SelectorBache
+        baches={baches}
+        valor={codigo}
+        onCambio={setCodigo}
+        noDisponibles={noDisponibles}
+      />
 
       <label className="block">
         <span className="text-white/70">Motivo</span>

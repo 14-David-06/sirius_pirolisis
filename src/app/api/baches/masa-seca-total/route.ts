@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { config } from '../../../../lib/config';
+import { FILTRO_SIN_MIGRADOS } from '../../../../lib/baches-biochar';
 
 const TABLE_ID = config.airtable.bachesTableId;
 const MASA_SECA_FIELD = 'Masa Seca (DM kg) (from Monitoreo Baches)';
@@ -17,8 +18,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Configuración de Airtable incompleta' }, { status: 500 });
     }
 
-    // Incluye fecha_inicio y fecha_fin (ambos inclusive)
-    const formula = `AND(NOT(IS_BEFORE({${FECHA_FIELD}}, '${fecha_inicio}')), NOT(IS_AFTER({${FECHA_FIELD}}, '${fecha_fin}')))`;
+    // Incluye fecha_inicio y fecha_fin (ambos inclusive).
+    //
+    // Los baches migrados de PiroliApp V 1.0 quedan fuera. El rango se evalúa
+    // sobre `Fecha Creacion` (createdTime), que en ellos es el día de la
+    // migración, no el de producción: un rango que cubra ese día sumaría 61
+    // baches de más al conteo —con 0 kg, así que el descuadre sería silencioso.
+    const formula = `AND(NOT(IS_BEFORE({${FECHA_FIELD}}, '${fecha_inicio}')), NOT(IS_AFTER({${FECHA_FIELD}}, '${fecha_fin}')), ${FILTRO_SIN_MIGRADOS})`;
 
     let masaSecaKg = 0;
     let bachesCount = 0;

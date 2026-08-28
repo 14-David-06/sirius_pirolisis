@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { resolverBiocharDisponible } from '@/lib/baches-biochar';
+import { fetchBachesNoDisponibles, resolverBiocharDisponible } from '@/lib/baches-biochar';
 import {
   fetchBachesBiocharCore,
   fetchMovimientosBiocharPuro,
@@ -57,11 +57,19 @@ function estadoBodega(b: BacheBiocharCore): EstadoBodega {
 
 export async function GET() {
   try {
-    const [disponible, baches, movimientos, abono, blend] = await Promise.all([
+    const [disponible, baches, noDisponibles, movimientos, abono, blend] = await Promise.all([
       resolverBiocharDisponible(),
       fetchBachesBiocharCore().catch((err) => {
         console.error('⚠️ No se pudo leer el desglose por bache:', err);
         return null;
+      }),
+      // Los baches que NO tienen biochar que sacar, con el motivo de cada uno. Van
+      // en la misma respuesta a propósito: son parte de "qué hay en bodega", y
+      // separarlos en otra llamada es como la pantalla terminó ofreciendo una lista
+      // con huecos que no sabía explicar.
+      fetchBachesNoDisponibles().catch((err) => {
+        console.error('⚠️ No se pudieron leer los baches no disponibles:', err);
+        return [];
       }),
       fetchMovimientosBiocharPuro().catch((err) => {
         console.error('⚠️ No se pudieron leer los movimientos de biochar:', err);
@@ -104,7 +112,13 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        biochar: { disponible, baches: clasificados, totales, movimientos: ordenados },
+        biochar: {
+          disponible,
+          baches: clasificados,
+          noDisponibles,
+          totales,
+          movimientos: ordenados,
+        },
         abono,
         blend,
       },

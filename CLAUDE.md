@@ -193,6 +193,69 @@ las dos. Si una pantalla elige su fuente, bodega y producción se contradicen.
 `Estado Bache` a `Bache Incompleto` o `Bache Agotado` al vaciarse
 (`estadoTrasConsumo()`).
 
+**Y desde el 2026-08-28 ese historial arranca en S-00083.** Los 61 baches de la era
+V2 (S-00083…S-00143, del 2025-04-26 al 2025-10-10) vivían en la base **PiroliApp
+V 1.0**, la que usó la planta antes de esta app. Los trajo
+`scripts/migrar-baches-v2.mjs`, y el consecutivo S-00083…S-00279 quedó continuo.
+
+Traerlos no fue copiar filas, porque **`Codigo Bache` es una fórmula anclada al
+autonumber**, y el autonumber no se puede fijar ni reciclar. La fórmula que quedó
+es la del offset original de la era V2, sin excepciones:
+
+```
+CONCATENATE("S-", RIGHT("00000" & (83 + {Auto Number} - 1), 5))
+```
+
+Cuadra porque al **recrear el campo autonumber, Airtable lo reasigna por el orden
+de las filas**, y los migrados quedaron de 1 a 61 (→ S-00083…S-00143) y los que ya
+existían de 62 a 197 (→ S-00144…S-00279). El próximo bache toma el 198 y sale
+S-00280. La Meta API no edita campos calculados: ese paso fue a mano en la UI.
+
+⚠️ **La fórmula ya no mira `Codigo Bache Historico`.** Ese campo sobrevive como
+respaldo del código original y como rastro de la migración, pero el código lo manda
+el autonumber. Consecuencia: **una segunda importación de histórico saldría con
+códigos corridos** (la era V1, S-00063…S-00082, tomaría 198+ → S-00280+). Si se
+trae, hay que reasignar el autonumber otra vez —recrear el campo con las filas en
+orden de código— y bajar el offset de 83 a 63, no parchear la fórmula con
+excepciones.
+
+Cambiar en vez de eso el offset de 144 a 83 habría renumerado los 136 baches vivos
+(S-00144 → S-00083) y roto **en silencio** todas las FK simbólicas del ecosistema:
+`bache_origen_id` en Inventario Production Core, remisiones, `Detalle Cantidades`,
+certificados. Nada habría fallado con error; todo habría apuntado a otro bache.
+
+Tres decisiones más que sostienen la convivencia en una sola tabla:
+
+**Los migrados entran con 0 kg disponibles, a propósito.** El saldo es
+`SUM(Masa Seca from Monitoreo Baches) − SUM(salidas)`, una fórmula sobre filas
+VINCULADAS de monitoreo, y no se les crea ninguna. Ese biochar se consumió en 2025
+y no está en los kg conciliados de hoy. La masa seca real (29.855 kg) vive en
+`Masa Seca Historica (KG)`, que no alimenta ninguna fórmula de inventario.
+
+**Todo lector que OPERE con la tabla completa los excluye por `Origen Registro`**
+(`FILTRO_SIN_MIGRADOS` en `src/lib/baches-biochar.ts`): `fetchBachesConBiochar()`,
+`/api/baches/list` y `/api/baches/masa-seca-total`. Depender de que un histórico dé
+0 kg es depender de que nadie le vincule nunca un monitoreo — y el día que alguien
+lo haga, aparecerían como biochar disponible para producir Blend. En
+`masa-seca-total` además el rango se evalúa sobre `Fecha Creacion`, que en ellos es
+el día de la migración: sin el filtro sumarían 61 baches al conteo con 0 kg, un
+descuadre invisible. La fecha real está en `Fecha Historica`.
+
+La excepción deliberada es **`fetchBachesNoDisponibles()`, que sí los incluye**,
+porque su trabajo es EXPLICAR una ausencia, no operar. El selector de bache pinta
+en gris —con el motivo— todo lo que existe pero no tiene biochar que sacar:
+consumido, todavía en planta, sin monitoreo, o histórico de la app anterior. Las
+cuatro razones se veían igual desde afuera (el código no aparecía) y la pantalla
+respondía «ningún bache coincide», que además es falso: el bache existe, lo que no
+tiene es biochar. Un operador con una lona de 2025 en la mano merece esa respuesta.
+
+**`Estado Bache` va en `Bache Agotado` para los 61** y el original queda en
+`Estado Bache V2`: `Bache Pesado` —que traen 18— no es opción del singleSelect de
+hoy, y un 422 tumba el PATCH completo. La trazabilidad de salida de la era (11
+ventas, 2 lotes de Blend) se aplanó a texto en `Salidas Historicas` en vez de
+resucitar las tablas `Venta Biochar` y `Biochar Blend Pirolisis`, que ya se
+reemplazaron por el modelo por lote de los Core.
+
 **La salida de un bache SIN producir ya no tiene camino en la app (2026-08-21).**
 `runSalidaBache()` y `/api/baches/salida` se eliminaron con la depuración de §8. La
 regla de fondo sigue viva por si se reconstruye: una salida honesta escribe TRES
@@ -350,9 +413,28 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   disparador de la Entrada**: `/api/monitoreo-baches/create` la crea si el bache ya
   está en `Bache Completo Bodega` (best-effort, idempotente por `BODEGA-<bache>`).
   Para el rezago —un bache monitoreado antes de que existiera ese disparador— está
-  `scripts/reparar-biochar-bodega.mjs --pendientes`. Al 2026-08-21 quedan los 10
-  (S-00251…S-00260) esperando monitoreo; las dos vistas del biochar cuadran en
-  48.273,53 kg.
+  `scripts/reparar-biochar-bodega.mjs --pendientes`. Para el rezago de monitoreo
+  está `scripts/registrar-monitoreo-baches.mjs`, que carga en lote desde un CSV
+  pasando por `/api/monitoreo-baches/create` —no escribe Airtable directo, para no
+  tener dos versiones de la Entrada al Core: la del script sería la que nadie
+  prueba—. Hoy **no queda ninguno pendiente** y las dos vistas del biochar cuadran
+  en **52.368,65 kg** sobre 103 baches.
+- **⚠️ S-00251…S-00260 tienen masa seca ESTIMADA, no medida (2026-08-28).** Decisión
+  explícita de David tras advertirle dos veces. Esos diez pasaron a bodega sin
+  monitoreo el 2026-08-21 y ocho no tenían ni el peso húmedo, así que la medición no
+  existe y no se iba a hacer; sin masa seca eran invisibles —no se podían sacar ni
+  producir con ellos— teniendo el biochar físicamente en la bodega. Se cargaron con
+  `registrar-monitoreo-baches.mjs --estimar`: humedad **22,02%** y masa seca
+  **508,40 kg**, el promedio de los 20 monitoreados INMEDIATAMENTE anteriores
+  (S-00231…S-00250), que salieron de la misma corrida. S-00251 y S-00252 sí tenían
+  peso húmedo propio, así que su masa seca es `húmedo × (1 − 22,02%)` = 389,90 y
+  467,88 kg: un dato del bache, aunque sea uno solo, vence a un promedio ajeno.
+  **Entraron 4.924,98 kg no medidos.** Cada registro lleva `ESTIMADO (no medido)` en
+  `Realiza Registro`, y el endpoint copia esa marca al `responsable` del movimiento
+  del Core, así que la estimación es visible en las dos vistas — que es lo que
+  permite separarlos de lo medido al auditar la contabilidad de carbono. `--estimar`
+  no es la vía normal: un bache monitoreado cuesta una muestra, uno estimado cuesta
+  la credibilidad de los demás.
 - **El abono 4G quedó conciliado el 2026-08-21.** Su libro mayor tenía una sola
   Entrada —los 33.614 kg del conteo del 2026-07-27— y cero salidas, contra 11.458 kg
   reales en bodega (conteo de Santiago). `scripts/salidas-abono-historicas.mjs` asentó
@@ -365,6 +447,18 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   asentar salidas, no inferirlo. La trazabilidad de las dos salidas de producción es el
   lote (`produccion_destino_id`), que es la junta con los 11 baches —6 + 5— que viven
   en las Salidas de Biochar Puro del mismo lote. El abono no se traza por bache.
+- **La era anterior a S-00083 sigue solo en PiroliApp V 1.0.** Los 19 baches de
+  `Baches V1` (S-00063…S-00082, kg NOMINALES de lonas × 25, sin humedad, pero con
+  los CORCs calculados por bache) y los ~62 de 2024 (S-00001…S-00062, que solo
+  existen como agregado mensual en `historico_produccion`, con los rangos de código
+  asignados a posteriori para reportar a Puro.earth). Falta **S-00077**: el
+  autonumber 15 de `Baches V1` se borró, y como el código deriva del autonumber el
+  hueco es irreparable. ⚠️ En `calculos_historico_produccion`, **noviembre y
+  diciembre de 2024 son copias** de octubre y septiembre (sin `id_puro_earth` y sin
+  registros diarios detrás): sumar esa tabla mensual infla el histórico en 59.800 kg
+  de biomasa y 13.539 kg de biochar. Los registros diarios dan lo correcto: 132.062
+  kg de biomasa → 30.770 kg de biochar. Y `Cantidad de Baches` no cuenta baches, es
+  biochar/500.
 - `scripts/diagnose-airtable.js` y `verify-env.js` usan `require()` y fallan el lint.
 - `src/lib/blend-core-sync.ts` quedó obsoleto al invertirse la propiedad de las
   remisiones hacia el Core; su rol lo cumple `blend-remisiones-core.ts`.
