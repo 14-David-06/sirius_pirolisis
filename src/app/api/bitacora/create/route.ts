@@ -1,31 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config } from '@/lib/config';
 
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TABLE_NAME = process.env.AIRTABLE_BITACORA_TABLE || 'Bitacora Pirolisis';
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const TABLA_BITACORA_POR_DEFECTO = 'Bitacora Pirolisis';
 
 export async function POST(request: NextRequest) {
   try {
     console.log('📋 Iniciando creación de registro de bitácora...');
 
-    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !AIRTABLE_TABLE_NAME) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Variables de entorno de Airtable no configuradas correctamente' 
-      });
-    }
+    // ⚠️ Esta ruta leía `process.env.AIRTABLE_API_KEY`, una variable que el
+    // proyecto dejó de definir al consolidar los tokens en AIRTABLE_GLOBAL_TOKEN:
+    // el handler cortaba aquí y respondía "no configuradas" sin llamar a Airtable.
+    // Todo acceso a Airtable pasa por config.ts, que ya resuelve el fallback.
+    const token = config.airtable.token;
+    const baseId = config.airtable.baseId;
+    const tabla = config.airtable.bitacoraTableId || TABLA_BITACORA_POR_DEFECTO;
 
-    // Validar field IDs
-    const nombreEventoField = process.env.AIRTABLE_FIELD_NOMBRE_EVENTO;
-    const detallesEventoField = process.env.AIRTABLE_FIELD_DETALLES_EVENTO;
-    const statusField = process.env.AIRTABLE_FIELD_STATUS;
-    const realizaRegistroField = process.env.AIRTABLE_FIELD_REALIZA_REGISTRO;
-    const turnoPirolisisField = process.env.AIRTABLE_FIELD_TURNO_PIROLISIS;
+    const faltantes: string[] = [];
+    if (!token) faltantes.push('AIRTABLE_GLOBAL_TOKEN (o AIRTABLE_TOKEN)');
+    if (!baseId) faltantes.push('AIRTABLE_BASE_ID');
 
-    if (!nombreEventoField || !detallesEventoField || !statusField || !realizaRegistroField) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Field IDs de Airtable no configurados correctamente' 
+    const {
+      nombreEvento: nombreEventoField,
+      detallesEvento: detallesEventoField,
+      status: statusField,
+      realizaRegistro: realizaRegistroField,
+      turnoPirolisis: turnoPirolisisField,
+    } = config.airtable.bitacoraFields;
+
+    if (!nombreEventoField) faltantes.push('AIRTABLE_FIELD_NOMBRE_EVENTO');
+    if (!detallesEventoField) faltantes.push('AIRTABLE_FIELD_DETALLES_EVENTO');
+    if (!statusField) faltantes.push('AIRTABLE_FIELD_STATUS');
+    if (!realizaRegistroField) faltantes.push('AIRTABLE_FIELD_REALIZA_REGISTRO');
+
+    // Nombrar lo que falta: el mensaje genérico anterior obligaba a leer el
+    // código para saber cuál de las siete variables era la que no estaba.
+    if (faltantes.length > 0) {
+      console.error('❌ Variables de entorno faltantes:', faltantes);
+      return NextResponse.json({
+        success: false,
+        error: `Variables de entorno de Airtable no configuradas: ${faltantes.join(', ')}`
       });
     }
 
@@ -42,15 +55,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Preparar datos para Airtable usando variables de entorno
     const airtableData = {
       records: [
         {
           fields: {
-            [nombreEventoField]: evento,
-            [detallesEventoField]: descripcion,
-            [statusField]: severidad,
-            [realizaRegistroField]: registradoPor,
+            [nombreEventoField!]: evento,
+            [detallesEventoField!]: descripcion,
+            [statusField!]: severidad,
+            [realizaRegistroField!]: registradoPor,
             // Si hay turnoId, agregarlo como link
             ...(turnoId && turnoPirolisisField && {
               [turnoPirolisisField]: [turnoId]
@@ -62,11 +74,10 @@ export async function POST(request: NextRequest) {
 
     console.log('📤 Enviando a Airtable:', JSON.stringify(airtableData, null, 2));
 
-    // Hacer la petición a Airtable
-    const airtableResponse = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE_NAME)}`, {
+    const airtableResponse = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tabla)}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(airtableData),

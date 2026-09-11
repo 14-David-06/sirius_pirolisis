@@ -55,6 +55,18 @@ export const config = {
     monitoreoViajesBiomasaTableId: process.env.AIRTABLE_MONITOREO_VIAJES_BIOMASA_TABLE_ID,
     viajesBiomasaTableId: process.env.AIRTABLE_VIAJES_BIOMASA_TABLE_ID,
     usuariosTableId: process.env.AIRTABLE_USUARIOS_TABLE_ID,
+    bitacoraTableId: process.env.AIRTABLE_BITACORA_TABLE,
+    // Field IDs — Bitácora Pirólisis.
+    // Los nombres de estas variables no llevan prefijo de módulo por historia:
+    // son las originales del proyecto y renombrarlas obligaría a tocar el entorno
+    // de producción. El mapeo vive aquí para que la ruta no lea process.env directo.
+    bitacoraFields: {
+      nombreEvento: process.env.AIRTABLE_FIELD_NOMBRE_EVENTO,
+      detallesEvento: process.env.AIRTABLE_FIELD_DETALLES_EVENTO,
+      status: process.env.AIRTABLE_FIELD_STATUS,
+      realizaRegistro: process.env.AIRTABLE_FIELD_REALIZA_REGISTRO,
+      turnoPirolisis: process.env.AIRTABLE_FIELD_TURNO_PIROLISIS,
+    },
     // Field IDs para Laboratorios según documentación de Airtable
     // ⚠️ NO HARDCODEAR - Solo usar variables de entorno por seguridad
     laboratoriosFields: {

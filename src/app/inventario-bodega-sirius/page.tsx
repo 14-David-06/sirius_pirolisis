@@ -86,6 +86,42 @@ interface ResumenProd {
   movimientos: MovimientoProd[];
 }
 
+/**
+ * Un pedido de Biochar Blend, pendiente o cerrado. Lo arma `listarPedidosBlend()`
+ * cruzando Pedidos Core con las Salidas del libro mayor: acá solo se pinta y se
+ * filtra. `pendiente` viene resuelto del servidor —la pantalla no reinterpreta el
+ * estado— para que el chip y la fila no puedan contar cosas distintas.
+ */
+interface PedidoBlend {
+  recordId: string;
+  codigo: string;
+  estado: string;
+  pendiente: boolean;
+  idCliente: string;
+  clienteNombre: string;
+  fecha: string;
+  kgSolicitados: number;
+  kgDespachados: number;
+  kgPendientes: number;
+  fuenteKg: 'detalle' | 'notas' | 'sin-dato';
+  empaque: string;
+  observaciones: string;
+  remisiones: string[];
+}
+
+/**
+ * Un lote de Blend producido con lo que queda sin despachar. Lo deriva
+ * `lotesDisponiblesBlend()`: producido menos remitido, porque la Salida de un
+ * despacho no lleva el lote y lo remitido hay que contarlo por el otro lado.
+ */
+interface LoteBlend {
+  lote: string;
+  kgProducidos: number;
+  kgDespachados: number;
+  kgDisponibles: number;
+  fecha: string;
+}
+
 interface BodegaData {
   biochar: {
     disponible: Disponible;
@@ -225,10 +261,43 @@ type FiltroEstado = EstadoBodega | 'todos';
 type FiltroTipo = 'todos' | 'Entrada' | 'Salida';
 type Orden = 'kg-desc' | 'kg-asc' | 'codigo-desc' | 'codigo-asc';
 
-const fecha = (iso: string) =>
-  iso
-    ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '—';
+const FORMATO_FECHA: Intl.DateTimeFormatOptions = {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+};
+
+/**
+ * Fecha legible.
+ *
+ * ⚠️ `new Date('2026-09-11')` NO es el 11 de septiembre: es medianoche UTC, y en
+ * Bogotá (UTC−5) se imprime como el 10. Así es como los pedidos y los movimientos
+ * aparecían un día corridos. Una fecha sin hora es un DÍA DEL CALENDARIO, no un
+ * instante, y se arma con sus partes en hora local para que no se convierta nada.
+ *
+ * Airtable devuelve las dos formas: un campo `date` da `2026-09-11` y un
+ * `dateTime` al que se le escribió solo una fecha da `2026-09-11T00:00:00.000Z`
+ * —que sigue siendo un día del calendario, no un instante—, así que las dos caen
+ * en el mismo camino. Un instante de verdad sí se convierte, y se lee en la zona
+ * de la planta y no en la del navegador.
+ */
+const fecha = (iso: string) => {
+  if (!iso) return '—';
+
+  const diaCalendario = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00(?::00(?:\.000)?)?Z?)?$/.exec(iso);
+  if (diaCalendario) {
+    const [, anio, mes, dia] = diaCalendario;
+    return new Date(Number(anio), Number(mes) - 1, Number(dia)).toLocaleDateString(
+      'es-CO',
+      FORMATO_FECHA
+    );
+  }
+
+  return new Date(iso).toLocaleDateString('es-CO', {
+    ...FORMATO_FECHA,
+    timeZone: 'America/Bogota',
+  });
+};
 
 export default function InventarioBodegaSirius() {
   return (
@@ -412,9 +481,33 @@ function BodegaContent() {
   >(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  // Los pedidos pendientes viven en su propio estado, no dentro de `data`: se leen
+  // de otro endpoint y contra otras bases, así que su carga —y su fallo— no deben
+  // arrastrar al inventario, que es lo que la pantalla existe para mostrar.
+  const [pedidos, setPedidos] = useState<PedidoBlend[] | null>(null);
+  const [lotesBlend, setLotesBlend] = useState<LoteBlend[]>([]);
+  const [pedidosCargando, setPedidosCargando] = useState(true);
+  /** El pedido que se está despachando, o `null` si no hay ninguno. */
+  const [despachando, setDespachando] = useState<PedidoBlend | null>(null);
+
   const cargar = async () => {
     setCargando(true);
+    setPedidosCargando(true);
     setError(null);
+
+    // En paralelo: el inventario no tiene por qué esperar a cuatro Cores de pedidos.
+    const pedidosPromesa = fetch('/api/pirolisis/pedidos', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        setPedidos(Array.isArray(json?.pedidos) ? json.pedidos : null);
+        setLotesBlend(Array.isArray(json?.lotes) ? json.lotes : []);
+      })
+      .catch(() => {
+        setPedidos(null);
+        setLotesBlend([]);
+      })
+      .finally(() => setPedidosCargando(false));
+
     try {
       const res = await fetch('/api/pirolisis/inventario/bodega-sirius', { cache: 'no-store' });
       const json = await res.json();
@@ -425,6 +518,8 @@ function BodegaContent() {
     } finally {
       setCargando(false);
     }
+
+    await pedidosPromesa;
   };
 
   useEffect(() => {
@@ -715,6 +810,17 @@ function BodegaContent() {
             Blend, el descuento lo hace la producción.
           </p>
 
+          {/* Qué hay (arriba) contra para qué hace falta (acá). El saldo por sí solo
+              no dice si sobra o falta: el pedido pendiente es el que convierte el
+              inventario en una decisión de producir. */}
+          <SeccionPedidos
+            pedidos={pedidos}
+            cargando={pedidosCargando}
+            kgBlendDisponible={blend?.kg ?? null}
+            hayLotes={lotesBlend.some((l) => l.kgDisponibles > 0.01)}
+            onDespachar={setDespachando}
+          />
+
           {/* La divergencia entre las dos vistas del mismo inventario se muestra, no
               se esconde: significa que un consumo se escribió en una y no en la otra. */}
           {disponible.divergencia !== null && Math.abs(disponible.divergencia) > 0.01 && (
@@ -942,6 +1048,24 @@ function BodegaContent() {
             noDisponibles={biochar.noDisponibles ?? []}
             onListo={tras}
             onCancelar={() => setModal(null)}
+          />
+        </Modal>
+      )}
+
+      {despachando && (
+        <Modal
+          titulo={`Despachar ${despachando.codigo}`}
+          descripcion="Emite la remisión en Remisiones Core y descuenta el Blend del libro mayor. Solo sale lo que el lote tenga."
+          onCerrar={() => setDespachando(null)}
+        >
+          <FormDespacho
+            pedido={despachando}
+            lotes={lotesBlend}
+            onListo={async (mensaje) => {
+              setDespachando(null);
+              await tras(mensaje);
+            }}
+            onCancelar={() => setDespachando(null)}
           />
         </Modal>
       )}
@@ -1905,6 +2029,605 @@ function FormProduccionBlend({
                 : blendInvalido
                   ? 'Revisa los KG de Blend producido.'
                   : 'Revisa las cantidades.'}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/** Orden de los chips: el del Core, de recién recibido a cerrado. */
+const ESTADOS_PEDIDO = [
+  'Recibido',
+  'Procesando',
+  'Enviado Parcial',
+  'Enviado',
+  'Completado',
+  'Cancelado',
+] as const;
+
+type FiltroPedido = 'todos' | 'pendientes' | (typeof ESTADOS_PEDIDO)[number];
+
+/**
+ * Los pedidos de Biochar Blend de pirólisis: los que están pendientes y los ya
+ * cerrados —enviados, completados y cancelados—, filtrables por estado.
+ *
+ * Es una vista de SOLO LECTURA sobre Sirius Pedidos Core: el pedido lo crea el
+ * CRM y aquí no hay forma de agendarlo ni de remisionarlo (§8 de CLAUDE.md).
+ * Lo que aporta a esta pantalla es la otra mitad de la decisión: el saldo de
+ * Blend dice cuánto hay, y esto dice cuánto se debe y a quién ya se le cumplió.
+ *
+ * Los KG pendientes se derivan —solicitado menos despachado, y el despachado sale
+ * de las Salidas del libro mayor—, así que un pedido despachado en dos remisiones
+ * muestra el saldo real y no el total original.
+ *
+ * El total que se anuncia arriba y la comparación contra el saldo de bodega suman
+ * SOLO los pendientes, esté el filtro donde esté: un cancelado con 1.500 kg sin
+ * despachar no es demanda, y sumarlo diría que falta producir algo que nadie pidió.
+ */
+function SeccionPedidos({
+  pedidos,
+  cargando,
+  kgBlendDisponible,
+  hayLotes,
+  onDespachar,
+}: {
+  pedidos: PedidoBlend[] | null;
+  cargando: boolean;
+  kgBlendDisponible: number | null;
+  /** ¿Hay algún lote de Blend con producto? Sin eso no hay nada que despachar. */
+  hayLotes: boolean;
+  onDespachar: (pedido: PedidoBlend) => void;
+}) {
+  const [filtro, setFiltro] = useState<FiltroPedido>('todos');
+
+  const lista = pedidos ?? [];
+  const pendientes = lista.filter((p) => p.pendiente);
+  const totalPendiente = pendientes.reduce((s, p) => s + p.kgPendientes, 0);
+
+  const visibles =
+    filtro === 'todos'
+      ? lista
+      : filtro === 'pendientes'
+        ? pendientes
+        : lista.filter((p) => p.estado === filtro);
+
+  const kgVisibles = visibles.reduce((s, p) => s + p.kgSolicitados, 0);
+
+  // Solo se compara contra el saldo si se pudo leer: un `null` tratado como 0 diría
+  // "falta todo" cuando lo que pasa es que no se sabe.
+  const faltante =
+    kgBlendDisponible === null ? null : Math.max(0, totalPendiente - kgBlendDisponible);
+
+  return (
+    <section className="mt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-white/50">
+          Pedidos de Biochar Blend
+          {lista.length ? ` (${lista.length})` : ''}
+        </h2>
+        {!!lista.length && (
+          <span className="text-xs text-white/50">
+            {pendientes.length
+              ? `${pendientes.length} pendiente(s) · faltan por despachar ${kg(totalPendiente)}`
+              : 'Ninguno pendiente'}
+          </span>
+        )}
+      </div>
+
+      {cargando ? (
+        <div
+          aria-busy="true"
+          aria-label="Cargando pedidos"
+          className="mt-3 h-24 rounded-xl bg-white/5 ring-1 ring-white/10 animate-pulse motion-reduce:animate-none"
+        />
+      ) : pedidos === null ? (
+        /* `null` no es "no hay pedidos": es "no se pudo preguntar". Decir lo
+           contrario haría creer que no hay nada que producir. */
+        <Aviso>
+          ⚠️ No se pudo leer Sirius Pedidos Core, así que no se sabe qué pedidos hay. El
+          inventario de arriba sí es válido.
+        </Aviso>
+      ) : !lista.length ? (
+        <p className="mt-3 rounded-xl bg-white/5 ring-1 ring-white/10 px-4 py-6 text-center text-sm text-white/50">
+          Sirius Pedidos Core no tiene ningún pedido de Biochar Blend.
+        </p>
+      ) : (
+        <>
+          {/* Un chip por estado que EXISTA, con su conteo: un filtro que ofrece
+              estados vacíos hace buscar en una lista que ya se sabe que no tiene
+              nada. “Pendientes” va aparte porque agrupa tres estados y es la
+              pregunta que trae a alguien a esta pantalla. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Chip activo={filtro === 'todos'} onClick={() => setFiltro('todos')}>
+              Todos ({lista.length})
+            </Chip>
+            {!!pendientes.length && (
+              <Chip
+                activo={filtro === 'pendientes'}
+                onClick={() => setFiltro('pendientes')}
+                clase="bg-sky-500/15 text-sky-200 ring-sky-400/30"
+              >
+                Pendientes ({pendientes.length})
+              </Chip>
+            )}
+            {ESTADOS_PEDIDO.map((e) => {
+              const n = lista.filter((p) => p.estado === e).length;
+              if (!n) return null;
+              return (
+                <Chip key={e} activo={filtro === e} onClick={() => setFiltro(e)}>
+                  {e} ({n})
+                </Chip>
+              );
+            })}
+          </div>
+
+          <p className="mt-2 text-xs text-white/50">
+            {visibles.length} pedido(s) · suman {kg(kgVisibles)} solicitados
+          </p>
+
+          <div className="mt-3 overflow-x-auto rounded-xl ring-1 ring-white/10">
+            <table className="w-full min-w-[760px] text-sm text-white">
+              <thead className="bg-white/10 text-xs uppercase tracking-wider text-white/60">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">Pedido</th>
+                  <th className="px-4 py-3 text-left font-medium">Cliente</th>
+                  <th className="px-4 py-3 text-left font-medium">Fecha</th>
+                  <th className="px-4 py-3 text-left font-medium">Estado</th>
+                  <th className="px-4 py-3 text-right font-medium">Solicitado</th>
+                  <th className="px-4 py-3 text-right font-medium">Despachado</th>
+                  <th className="px-4 py-3 text-right font-medium">Pendiente</th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    <span className="sr-only">Acciones</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {visibles.map((p) => (
+                  <tr
+                    key={p.recordId}
+                    /* Lo cerrado se atenúa: sigue consultable, pero no compite por
+                       la atención con lo que todavía hay que despachar. */
+                    className={
+                      p.pendiente
+                        ? 'bg-white/[0.02] hover:bg-white/[0.06]'
+                        : 'bg-white/[0.01] text-white/60 hover:bg-white/[0.05]'
+                    }
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap font-medium">
+                      {p.codigo || '—'}
+                      {p.empaque && (
+                        <span className="ml-2 text-xs font-normal text-white/40">{p.empaque}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{p.clienteNombre}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-white/60">{fecha(p.fecha)}</td>
+                    <td className="px-4 py-3">
+                      <EstadoPedidoBadge estado={p.estado} />
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {p.fuenteKg === 'sin-dato' ? (
+                        /* El pedido existe pero nadie escribió cuántos kg: mostrar 0
+                           lo haría parecer atendido. */
+                        <span
+                          className="text-amber-300"
+                          title="El pedido no tiene cantidad registrada en el Core"
+                        >
+                          sin dato
+                        </span>
+                      ) : (
+                        kg(p.kgSolicitados)
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                      {kg(p.kgDespachados)}
+                      {!!p.remisiones.length && (
+                        <span className="ml-2 text-xs text-white/40">
+                          {p.remisiones.join(', ')}
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums ${
+                        p.pendiente ? 'font-medium text-sky-200' : 'text-white/40'
+                      }`}
+                    >
+                      {/* En un pedido cerrado el saldo no es deuda: va en gris para
+                          no leerlo como algo por despachar. */}
+                      {kg(p.kgPendientes)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {/* Solo lo pendiente se despacha, y solo si hay producto: un
+                          botón que siempre lleva al mismo error no es un botón. */}
+                      {p.pendiente && p.kgPendientes > 0.01 && (
+                        <button
+                          onClick={() => onDespachar(p)}
+                          disabled={!hayLotes}
+                          title={
+                            hayLotes
+                              ? undefined
+                              : 'No hay ningún lote de Blend con producto sin despachar'
+                          }
+                          className="rounded-lg bg-[#5A7836] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#4a6429] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Despachar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!visibles.length && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-white/50">
+                      Ningún pedido coincide con el filtro.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Lo que la pantalla existe para responder: con lo que hay en bodega,
+              ¿alcanza? Se dice el número que falta, no un "insuficiente" a secas. */}
+          {faltante !== null && !!pendientes.length && (
+            <p className="mt-2 text-xs text-white/50">
+              {faltante > 0.01 ? (
+                <>
+                  Con {kg(kgBlendDisponible ?? 0)} de Blend en bodega faltan {kg(faltante)} por
+                  producir para cubrir lo pendiente.
+                </>
+              ) : (
+                <>
+                  Los {kg(kgBlendDisponible ?? 0)} de Blend en bodega alcanzan para cubrir lo
+                  pendiente.
+                </>
+              )}
+            </p>
+          )}
+
+          {visibles.some((p) => p.fuenteKg === 'notas') && (
+            <p className="mt-1 text-xs text-white/40">
+              Algún pedido no tiene su detalle vinculado en el Core: sus KG salen de las notas.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Cada estado del Core con su tono. Cualquier otro valor se pinta neutro. */
+function EstadoPedidoBadge({ estado }: { estado: string }) {
+  const tono =
+    estado === 'Enviado Parcial'
+      ? 'bg-orange-500/15 text-orange-200'
+      : estado === 'Procesando'
+        ? 'bg-sky-500/15 text-sky-200'
+        : estado === 'Recibido'
+          ? 'bg-white/10 text-white/80'
+          : estado === 'Enviado'
+            ? 'bg-teal-500/15 text-teal-200'
+            : estado === 'Completado'
+              ? 'bg-emerald-500/15 text-emerald-200'
+              : estado === 'Cancelado'
+                ? 'bg-red-500/15 text-red-200'
+                : 'bg-white/10 text-white/60';
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tono}`}>
+      {estado || '—'}
+    </span>
+  );
+}
+
+/** Lo que devuelve el ensayo del despacho: qué se va a escribir, sin escribirlo. */
+interface PlanDespacho {
+  pedido: {
+    codigo: string;
+    cliente: string;
+    idCliente: string;
+    kgSolicitados: number;
+    kgDespachados: number;
+    kgPendientes: number;
+  };
+  kg: number;
+  lote: string;
+  loteDisponibleAntes: number;
+  loteDisponibleDespues: number;
+  blendDisponibleAntes: number;
+  blendDisponibleDespues: number;
+  estadoPedidoResultante: 'Enviado' | 'Enviado Parcial';
+}
+
+/**
+ * Despachar un pedido: emite la remisión y descuenta el Blend del libro mayor.
+ *
+ * El inventario manda sobre el pedido, no al revés. Lo que se puede sacar es el
+ * mínimo entre lo que el pedido debe y lo que el LOTE tiene sin despachar, y el
+ * formulario lo impone antes de enviar nada — pero el veredicto real lo da el
+ * servidor, que relee los dos Cores: entre que la pantalla cargó y alguien pulsa
+ * "Despachar" pudo haber salido producto por otra vía.
+ *
+ * Se ensaya primero (`dryRun`) y se confirma después. Una remisión no se puede
+ * deshacer: apenas se emite, el cliente puede firmarla desde el celular en la
+ * finca. Ese ensayo es la única forma de "cancelar" que existe.
+ */
+function FormDespacho({
+  pedido,
+  lotes,
+  onListo,
+  onCancelar,
+}: {
+  pedido: PedidoBlend;
+  lotes: LoteBlend[];
+  onListo: (mensaje: string) => void | Promise<void>;
+  onCancelar: () => void;
+}) {
+  // Los lotes vacíos no se ofrecen: elegir uno sin producto solo lleva a un error
+  // del servidor que ya se sabía de antemano.
+  const conProducto = lotes.filter((l) => l.kgDisponibles > 0.01);
+
+  // Se propone el lote MÁS VIEJO que alcance a cubrir lo que falta; si ninguno
+  // alcanza, el más viejo con producto: un despacho parcial sale primero del
+  // fondo de la bodega, que es lo que lleva más tiempo almacenado.
+  const sugerido =
+    conProducto.find((l) => l.kgDisponibles + 0.01 >= pedido.kgPendientes) ?? conProducto[0];
+
+  const [lote, setLote] = useState(sugerido?.lote ?? '');
+  const elegido = conProducto.find((l) => l.lote === lote) ?? null;
+
+  const tope = Math.min(pedido.kgPendientes, elegido?.kgDisponibles ?? 0);
+  const [kgTexto, setKgTexto] = useState(() => (tope > 0 ? String(tope) : ''));
+  const [responsable, setResponsable] = useState(() => usuarioActual());
+  const [transportista, setTransportista] = useState('');
+  const [cedula, setCedula] = useState('');
+  const [fechaDespacho, setFechaDespacho] = useState(() => new Date().toISOString().split('T')[0]);
+  const [observaciones, setObservaciones] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<PlanDespacho | null>(null);
+
+  const kgPedidos = Number(kgTexto.replace(',', '.'));
+  const kgValidos = Number.isFinite(kgPedidos) && kgPedidos > 0;
+  const excedePedido = kgValidos && kgPedidos > pedido.kgPendientes + 0.01;
+  const excedeLote = kgValidos && !!elegido && kgPedidos > elegido.kgDisponibles + 0.01;
+  const listo = kgValidos && !excedePedido && !excedeLote && !!elegido && !!responsable.trim();
+
+  const enviar = async (dryRun: boolean) => {
+    setError(null);
+    setEnviando(true);
+    try {
+      const res = await fetch('/api/pirolisis/pedidos/despachar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idPedido: pedido.codigo,
+          lote,
+          kg: kgPedidos,
+          responsableEntrega: responsable.trim(),
+          transportista: cedula.trim()
+            ? { nombre: transportista.trim() || responsable.trim(), cedula: cedula.trim() }
+            : undefined,
+          observaciones: observaciones.trim() || undefined,
+          fechaDespacho,
+          dryRun,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok && res.status !== 207) {
+        throw new Error(json.error ?? `Error ${res.status}`);
+      }
+
+      if (dryRun) {
+        setPlan(json.plan as PlanDespacho);
+        return;
+      }
+
+      // 207: la remisión quedó emitida pero un paso de trazabilidad falló —el
+      // descuento del inventario, el estado del pedido—. Se dice con su detalle
+      // en vez de celebrar un éxito a medias.
+      const fallidos = ((json.steps ?? []) as StepResultUI[]).filter((s) => !s.ok);
+      await onListo(
+        fallidos.length
+          ? `${json.message} Pasos con problema: ${fallidos
+              .map((s) => `${s.step} (${s.error})`)
+              .join(' · ')}`
+          : json.message
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  if (!conProducto.length) {
+    return (
+      <div className="text-sm text-white/70">
+        No hay ningún lote de Biochar Blend con producto sin despachar. Produce un lote desde la
+        tarjeta del Blend antes de despachar este pedido.
+        <div className="mt-4">
+          <BotonAccion onClick={onCancelar}>Cerrar</BotonAccion>
+        </div>
+      </div>
+    );
+  }
+
+  if (plan) {
+    return (
+      <div className="space-y-4 text-sm text-white">
+        <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-1.5">
+          <p className="font-medium">Esto es lo que se va a escribir:</p>
+          <p className="text-white/70">
+            Pedido <span className="text-white">{plan.pedido.codigo}</span> ·{' '}
+            {plan.pedido.cliente}
+          </p>
+          <p className="text-white/70">
+            Salen <span className="text-white">{kg(plan.kg)}</span> del lote{' '}
+            <span className="font-mono text-xs text-white">{plan.lote}</span>, que queda en{' '}
+            {kg(plan.loteDisponibleDespues)} de {kg(plan.loteDisponibleAntes)}
+          </p>
+          <p className="text-white/70">
+            La bodega queda en {kg(plan.blendDisponibleDespues)} de Blend
+          </p>
+          <p className="text-white/70">
+            El pedido queda en <span className="text-white">{plan.estadoPedidoResultante}</span> ·
+            le faltarían {kg(Math.max(0, plan.pedido.kgPendientes - plan.kg))}
+          </p>
+        </div>
+
+        <p className="text-xs text-white/50">
+          Al confirmar se emite la remisión en Sirius Remisiones Core, se descuenta el Blend del
+          libro mayor y el pedido cambia de estado. La remisión no se puede deshacer desde acá.
+        </p>
+
+        {error && <p className="text-red-300">{error}</p>}
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => enviar(false)}
+            disabled={enviando}
+            className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
+          >
+            {enviando ? 'Despachando…' : 'Confirmar despacho'}
+          </button>
+          <BotonAccion onClick={() => setPlan(null)}>Volver</BotonAccion>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        enviar(true);
+      }}
+      className="space-y-4 text-sm"
+    >
+      <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-3 text-xs text-white/60 space-y-0.5">
+        <p>
+          <span className="text-white/80">{pedido.codigo}</span> · {pedido.clienteNombre}
+        </p>
+        <p>
+          Pidió {kg(pedido.kgSolicitados)} · ya despachados {kg(pedido.kgDespachados)} · faltan{' '}
+          <span className="text-sky-200">{kg(pedido.kgPendientes)}</span>
+        </p>
+      </div>
+
+      <label className="block">
+        <span className="text-white/70">Lote del que sale</span>
+        <select value={lote} onChange={(e) => setLote(e.target.value)} className={CAMPO}>
+          {conProducto.map((l) => (
+            <option key={l.lote} value={l.lote}>
+              {l.lote} — {kg(l.kgDisponibles)} sin despachar
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs text-white/50">
+          Un lote sin producto no aparece. El propuesto es el más viejo que alcanza a cubrir lo que
+          falta.
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="text-white/70">KG a despachar</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={kgTexto}
+          onChange={(e) => setKgTexto(e.target.value)}
+          className={`${CAMPO} ${excedePedido || excedeLote ? 'ring-red-400/60' : ''}`}
+        />
+        <span className="mt-1 block text-xs text-white/50">
+          Máximo {kg(tope)}: lo menor entre lo que falta del pedido y lo que tiene el lote.
+        </span>
+        {excedePedido && (
+          <span className="mt-1 block text-xs text-red-300">
+            Al pedido solo le faltan {kg(pedido.kgPendientes)}.
+          </span>
+        )}
+        {excedeLote && !!elegido && (
+          <span className="mt-1 block text-xs text-red-300">
+            El lote {elegido.lote} solo tiene {kg(elegido.kgDisponibles)} sin despachar.
+          </span>
+        )}
+      </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-white/70">Entrega</span>
+          <input
+            value={responsable}
+            onChange={(e) => setResponsable(e.target.value)}
+            className={CAMPO}
+          />
+        </label>
+        <label className="block">
+          <span className="text-white/70">Fecha de despacho</span>
+          <input
+            type="date"
+            value={fechaDespacho}
+            onChange={(e) => setFechaDespacho(e.target.value)}
+            className={CAMPO}
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-white/70">Transportista (opcional)</span>
+          <input
+            value={transportista}
+            onChange={(e) => setTransportista(e.target.value)}
+            className={CAMPO}
+          />
+        </label>
+        <label className="block">
+          <span className="text-white/70">Cédula del transportista</span>
+          <input value={cedula} onChange={(e) => setCedula(e.target.value)} className={CAMPO} />
+          {/* La cédula es la que decide: sin ella no hay a quién registrar como
+              persona, y la remisión sale "Pendiente" en vez de "En Tránsito". */}
+          <span className="mt-1 block text-xs text-white/50">
+            Con cédula la remisión sale En Tránsito; sin ella, Pendiente.
+          </span>
+        </label>
+      </div>
+
+      <label className="block">
+        <span className="text-white/70">Observaciones</span>
+        <textarea
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+          rows={2}
+          className={CAMPO}
+        />
+      </label>
+
+      {error && <p className="text-red-300">{error}</p>}
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="submit"
+          disabled={enviando || !listo}
+          className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
+        >
+          {enviando ? 'Calculando…' : 'Ver qué se va a escribir'}
+        </button>
+        <BotonAccion onClick={onCancelar}>Cancelar</BotonAccion>
+      </div>
+
+      {/* Un botón apagado sin explicación se lee como que la app se rompió. */}
+      {!listo && (
+        <p className="text-xs text-white/50">
+          {!kgValidos
+            ? 'Escribe cuántos KG se despachan.'
+            : excedePedido
+              ? 'Son más KG de los que el pedido debe.'
+              : excedeLote
+                ? 'El lote no tiene esos KG.'
+                : !responsable.trim()
+                  ? 'Falta quién entrega.'
+                  : 'Revisa los datos.'}
         </p>
       )}
     </form>
