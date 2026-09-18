@@ -1474,20 +1474,14 @@ function SistemaBachesContent() {
                             </p>
                           </div>
                         )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 [perspective:1200px]">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {baches.map((bache) => {
                             const isSelected = selectedBachesPlanta.has(bache.id);
                             const isSelectableCategory = categoria === 'Completos Planta';
                             
                             return (
-                              /* La escala la maneja Tarjeta3D, no una clase `scale-*`:
-                                 el giro se escribe como `style.transform` inline y un
-                                 transform inline PISA la clase de Tailwind, así que la
-                                 tarjeta seleccionada perdería su realce al pasarle el
-                                 mouse. Por eso el bache seleccionado va con más escala. */
                               <Tarjeta3D
                                 key={bache.id}
-                                escala={isSelected ? 1.06 : 1.03}
                                 onClick={() => isSelectableCategory ? toggleBacheSelection(bache.id) : undefined}
                                 className={`backdrop-blur-sm border rounded-xl p-4 relative ${
                                   isSelected ? 'scale-105' : ''

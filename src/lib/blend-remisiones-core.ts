@@ -59,6 +59,20 @@ const AREA_ORIGEN = 'Producción';
 /** Marca que identifica una remisión de Blend y su lote dentro de las notas. */
 const MARCA_LOTE = /\[lote:([A-Za-z0-9\-_]+)\]/;
 
+/**
+ * Dónde quedó el trazo de la firma de quien ENTREGA (el conductor), dentro de las
+ * notas y como llave de S3.
+ *
+ * Va en las notas y no en un campo porque Remisiones Core es una base compartida
+ * con el laboratorio y no se le agregan campos propios del Blend (§1) — la misma
+ * razón por la que el lote vive ahí. Es la convención de marcas en texto que el
+ * repo ya usa donde no hay campo dedicado (§4 de CLAUDE.md).
+ *
+ * Se guarda la KEY, no una URL: las URLs firmadas de S3 caducan a los 7 días y el
+ * PDF se regenera cuando el receptor firma, que puede ser después.
+ */
+const MARCA_FIRMA_ENTREGA = /\[firma-entrega:([^\]]+)\]/;
+
 export interface ComposicionBlend {
   biochar: number;
   abono: number;
@@ -89,6 +103,8 @@ export interface RemisionBlend {
   clienteNombre: string;
   /** `BLEND-…`: la llave al lote producido. */
   lote: string;
+  /** Key de S3 del trazo de quien entrega, si firmó al despachar. */
+  firmaEntregaKey: string;
   kgTotal: number;
   fechaRemision: string;
   fechaDespacho: string;
@@ -299,6 +315,7 @@ async function mapRemision(rec: AirtableRecord): Promise<RemisionBlend> {
     codigo: String(rec.fields['ID'] ?? ''),
     estado: String(rec.fields['Estado'] ?? ''),
     idPedido: String(rec.fields['ID Pedido'] ?? ''),
+    firmaEntregaKey: MARCA_FIRMA_ENTREGA.exec(notas)?.[1] ?? '',
     idCliente,
     clienteNombre,
     lote,
@@ -478,6 +495,8 @@ export interface CrearRemisionInput {
   transportista?: { nombre: string; cedula: string; telefono?: string; email?: string };
   observaciones?: string;
   fechaDespacho?: string;
+  /** Key de S3 del trazo de quien entrega. Queda marcada en las notas. */
+  firmaEntregaKey?: string;
 }
 
 export interface CrearRemisionResult {
@@ -512,6 +531,7 @@ export async function crearRemision(input: CrearRemisionInput): Promise<CrearRem
   //    identifica esta remisión como de Blend dentro de una tabla compartida.
   const notas =
     `[lote:${input.lote}] Biochar Blend` +
+    (input.firmaEntregaKey ? ` [firma-entrega:${input.firmaEntregaKey}]` : '') +
     (input.observaciones ? ` — ${input.observaciones}` : '');
 
   const remisionFields: Record<string, unknown> = {

@@ -26,6 +26,7 @@ import Footer from '@/components/Footer';
 import { TurnoProtection, Tarjeta3D } from '@/components';
 import { MOTIVOS_SALIDA } from '@/lib/salida-bache.constants';
 import { SelectorBache } from './SelectorBache';
+import { PadFirma, type PadFirmaHandle } from '@/components/PadFirma';
 import {
   CAMPO,
   kg,
@@ -336,12 +337,9 @@ function Kpi({
 }) {
   return (
     <Tarjeta3D
-      escala={1.04}
       className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 sm:p-5 hover:shadow-2xl hover:shadow-black/40"
     >
-      {/* El contenido flota por delante de la tarjeta: sin el translateZ el giro
-          se ve como una lámina plana y no como profundidad. */}
-      <div className="[transform:translateZ(28px)]">
+      <div>
         <span className="text-xs font-medium uppercase tracking-wider text-white/60">{label}</span>
         <p className={`mt-2 text-2xl sm:text-3xl font-semibold tabular-nums ${acento}`}>{valor}</p>
         {nota && <p className="mt-0.5 text-xs text-white/50">{nota}</p>}
@@ -686,7 +684,7 @@ function BodegaContent() {
           Los dos saldos van en el propio botón: el dato que casi siempre se
           viene a buscar es "cuánto hay", y esconderlo detrás de un clic
           obligaría a alternar entre pestañas para compararlos. */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-start [perspective:1200px]">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-start">
         {(
           [
             {
@@ -727,7 +725,7 @@ function BodegaContent() {
             <button
               onClick={() => setProducto(p.clave)}
               aria-pressed={producto === p.clave}
-              className="block w-full p-4 sm:p-5 pb-0 sm:pb-0 text-left [transform:translateZ(30px)]"
+              className="block w-full p-4 sm:p-5 pb-0 sm:pb-0 text-left"
             >
               <span className="text-xs font-medium uppercase tracking-wider text-white/60">
                 {p.titulo}
@@ -744,7 +742,7 @@ function BodegaContent() {
                 pasa a bodega en el Sistema de Baches, y una entrada suelta aquí
                 sería inventario sin bache — biochar sin la trazabilidad que
                 sostiene la contabilidad de carbono. */}
-            <div className="flex flex-wrap items-center gap-2 px-4 sm:px-5 pt-4 pb-4 sm:pb-5 [transform:translateZ(18px)]">
+            <div className="flex flex-wrap items-center gap-2 px-4 sm:px-5 pt-4 pb-4 sm:pb-5">
               {p.clave === 'biochar' && (
                 <BotonAccion tono="salida" onClick={() => setModal('salida-biochar')}>
                   Sacar biochar
@@ -779,7 +777,7 @@ function BodegaContent() {
 
       {producto === 'biochar' ? (
         <>
-          <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 [perspective:1200px]">
+          <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi
               label="En bodega"
               valor={kg(disponible.kg)}
@@ -817,7 +815,6 @@ function BodegaContent() {
             pedidos={pedidos}
             cargando={pedidosCargando}
             kgBlendDisponible={blend?.kg ?? null}
-            hayLotes={lotesBlend.some((l) => l.kgDisponibles > 0.01)}
             onDespachar={setDespachando}
           />
 
@@ -1055,12 +1052,13 @@ function BodegaContent() {
       {despachando && (
         <Modal
           titulo={`Despachar ${despachando.codigo}`}
-          descripcion="Emite la remisión en Remisiones Core y descuenta el Blend del libro mayor. Solo sale lo que el lote tenga."
+          descripcion="Produce el Blend que falte con el biochar y el abono de bodega, emite la remisión y descuenta el libro mayor."
           onCerrar={() => setDespachando(null)}
         >
           <FormDespacho
             pedido={despachando}
             lotes={lotesBlend}
+            baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
             onListo={async (mensaje) => {
               setDespachando(null);
               await tras(mensaje);
@@ -2068,14 +2066,11 @@ function SeccionPedidos({
   pedidos,
   cargando,
   kgBlendDisponible,
-  hayLotes,
   onDespachar,
 }: {
   pedidos: PedidoBlend[] | null;
   cargando: boolean;
   kgBlendDisponible: number | null;
-  /** ¿Hay algún lote de Blend con producto? Sin eso no hay nada que despachar. */
-  hayLotes: boolean;
   onDespachar: (pedido: PedidoBlend) => void;
 }) {
   const [filtro, setFiltro] = useState<FiltroPedido>('todos');
@@ -2236,18 +2231,13 @@ function SeccionPedidos({
                       {kg(p.kgPendientes)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {/* Solo lo pendiente se despacha, y solo si hay producto: un
-                          botón que siempre lleva al mismo error no es un botón. */}
+                      {/* El botón no se apaga por falta de Blend: despachar
+                          PRODUCE lo que falte. Si tampoco hay biochar o abono, es
+                          el ensayo el que lo dice, con los kg de cada uno. */}
                       {p.pendiente && p.kgPendientes > 0.01 && (
                         <button
                           onClick={() => onDespachar(p)}
-                          disabled={!hayLotes}
-                          title={
-                            hayLotes
-                              ? undefined
-                              : 'No hay ningún lote de Blend con producto sin despachar'
-                          }
-                          className="rounded-lg bg-[#5A7836] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#4a6429] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded-lg bg-[#5A7836] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#4a6429]"
                         >
                           Despachar
                         </button>
@@ -2330,66 +2320,224 @@ interface PlanDespacho {
   };
   kg: number;
   lote: string;
+  origen: 'lote-existente' | 'produccion';
+  produccion: {
+    lote: string;
+    kgBlend: number;
+    kgBiochar: number;
+    kgAbono: number;
+    baches: Array<{ codigo: string; kg: number; disponible: number }>;
+    kgMaximoProducible: number;
+    biocharDisponible: number;
+    abonoDisponible: number;
+    limitante: 'biochar' | 'abono' | 'ninguno';
+  } | null;
   loteDisponibleAntes: number;
   loteDisponibleDespues: number;
   blendDisponibleAntes: number;
   blendDisponibleDespues: number;
   estadoPedidoResultante: 'Enviado' | 'Enviado Parcial';
+  motivoParcial?: string;
 }
 
 /**
- * Despachar un pedido: emite la remisión y descuenta el Blend del libro mayor.
+ * Despachar un pedido: produce el Blend si hace falta, emite la remisión y
+ * descuenta el producto del libro mayor.
  *
- * El inventario manda sobre el pedido, no al revés. Lo que se puede sacar es el
- * mínimo entre lo que el pedido debe y lo que el LOTE tiene sin despachar, y el
- * formulario lo impone antes de enviar nada — pero el veredicto real lo da el
- * servidor, que relee los dos Cores: entre que la pantalla cargó y alguien pulsa
- * "Despachar" pudo haber salido producto por otra vía.
+ * El Blend no se almacena esperando pedidos: se produce contra el pedido. Por eso
+ * el formulario no pide elegir lote — lo resuelve el servidor, que prefiere el
+ * producto que ya existe y solo produce lo que falte, con el biochar y el abono
+ * que haya—. El selector de lote queda como anulación manual para el caso en que
+ * el operador sepa de cuál quiere que salga.
  *
  * Se ensaya primero (`dryRun`) y se confirma después. Una remisión no se puede
  * deshacer: apenas se emite, el cliente puede firmarla desde el celular en la
- * finca. Ese ensayo es la única forma de "cancelar" que existe.
+ * finca. Y si hay producción de por medio, el ensayo es además la única forma de
+ * ver qué baches se van a consumir antes de consumirlos.
  */
 function FormDespacho({
   pedido,
   lotes,
+  baches,
   onListo,
   onCancelar,
 }: {
   pedido: PedidoBlend;
   lotes: LoteBlend[];
+  /** Los que tienen biochar en bodega: de acá sale lo que se produzca. */
+  baches: BacheBodega[];
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
 }) {
-  // Los lotes vacíos no se ofrecen: elegir uno sin producto solo lleva a un error
-  // del servidor que ya se sabía de antemano.
   const conProducto = lotes.filter((l) => l.kgDisponibles > 0.01);
 
-  // Se propone el lote MÁS VIEJO que alcance a cubrir lo que falta; si ninguno
-  // alcanza, el más viejo con producto: un despacho parcial sale primero del
-  // fondo de la bodega, que es lo que lleva más tiempo almacenado.
-  const sugerido =
-    conProducto.find((l) => l.kgDisponibles + 0.01 >= pedido.kgPendientes) ?? conProducto[0];
-
-  const [lote, setLote] = useState(sugerido?.lote ?? '');
-  const elegido = conProducto.find((l) => l.lote === lote) ?? null;
-
-  const tope = Math.min(pedido.kgPendientes, elegido?.kgDisponibles ?? 0);
-  const [kgTexto, setKgTexto] = useState(() => (tope > 0 ? String(tope) : ''));
+  /** '' = automático: que el servidor decida entre despachar de bodega o producir. */
+  const [lote, setLote] = useState('');
   const [responsable, setResponsable] = useState(() => usuarioActual());
-  const [transportista, setTransportista] = useState('');
-  const [cedula, setCedula] = useState('');
+  const [seleccion, setSeleccion] = useState<Record<string, SeleccionBache>>({});
+  const [pctBiochar, setPctBiochar] = useState<number | null>(null);
   const [fechaDespacho, setFechaDespacho] = useState(() => new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanDespacho | null>(null);
 
-  const kgPedidos = Number(kgTexto.replace(',', '.'));
-  const kgValidos = Number.isFinite(kgPedidos) && kgPedidos > 0;
-  const excedePedido = kgValidos && kgPedidos > pedido.kgPendientes + 0.01;
-  const excedeLote = kgValidos && !!elegido && kgPedidos > elegido.kgDisponibles + 0.01;
-  const listo = kgValidos && !excedePedido && !excedeLote && !!elegido && !!responsable.trim();
+  // ── Quien se lleva el producto ────────────────────────────────────────────
+  // Firma en la planta, en este mismo dispositivo, porque está acá cargando. La
+  // del receptor se da después en la finca, por la página pública.
+  const [conductor, setConductor] = useState('');
+  const [cedula, setCedula] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [emailConductor, setEmailConductor] = useState('');
+  const padRef = useRef<PadFirmaHandle | null>(null);
+  const [hayFirma, setHayFirma] = useState(false);
+
+  /** La remisión ya emitida: de acá sale el enlace para que el receptor firme. */
+  const [emitida, setEmitida] = useState<{ codigo: string; mensaje: string } | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  const elegido = conProducto.find((l) => l.lote === lote) ?? null;
+
+  /**
+   * Se despacha lo que le falta al pedido, y no se digita.
+   *
+   * Teclear la cantidad era la única forma de emitir un parcial a propósito, y
+   * un parcial honesto lo impone el inventario —lo que no alcanza a salir—, no
+   * alguien bajando el número. Despachar de más ya no tiene destino (el backend
+   * lo rechaza con `kgPedido > kgPendientes`) y de menos deja el pedido abierto
+   * por una decisión que nadie registra en ninguna parte.
+   *
+   * `Enviado Parcial` sigue existiendo: lo decide el servidor cuando el Blend y
+   * la producción no dan para el total.
+   */
+  const kgPedidos = pedido.kgPendientes;
+  const kgValidos = kgPedidos > 0;
+  const excedeLote = !!elegido && kgPedidos > elegido.kgDisponibles + 0.01;
+
+  // La proporción de biochar se pide al servidor: `config.blend` es la única
+  // fuente de la fórmula y sus variables no son `NEXT_PUBLIC_`, así que copiarla
+  // acá sería un segundo sitio donde puede divergir.
+  useEffect(() => {
+    let vigente = true;
+    fetch('/api/pirolisis/blend/produccion')
+      .then((res) => res.json())
+      .then((json) => {
+        const pct = json?.formula?.pctBiochar;
+        if (vigente && pct > 0) setPctBiochar(pct);
+      })
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  /**
+   * Si este despacho va a producir, y por lo tanto si hay que elegir baches.
+   *
+   * Es la misma regla del servidor (`elegirLoteExistente()`: el lote más viejo
+   * que cubra el despacho COMPLETO, porque una remisión no puede mezclar dos
+   * lotes), repetida acá solo para decidir qué se muestra. Quien manda es el
+   * servidor: si se equivoca hacia "no produce", el despacho falla pidiendo los
+   * baches en vez de escribir nada.
+   */
+  const hayLoteQueCubra = conProducto.some((l) => l.kgDisponibles + 0.01 >= kgPedidos);
+  const vaAProducir = !lote && !hayLoteQueCubra;
+
+  const biocharEnBodega = Math.round(baches.reduce((t, b) => t + b.kg, 0) * 100) / 100;
+
+  /**
+   * El biochar que hay que marcar: el de la fórmula, o todo el que haya si no
+   * alcanza.
+   *
+   * Sin ese tope, un pedido más grande que la bodega pediría marcar biochar que
+   * no existe y dejaría el botón apagado para siempre — matando el despacho
+   * parcial, que es justo lo que el servidor hace en ese caso: produce lo que se
+   * pueda y deja el pedido en `Enviado Parcial`.
+   */
+  const kgBiocharNecesario =
+    pctBiochar === null
+      ? null
+      : Math.min(Math.round(kgPedidos * pctBiochar * 100) / 100, biocharEnBodega);
+
+  const bachesMarcados = baches
+    .map((b) => ({ bache: b, sel: seleccion[b.codigo] }))
+    .filter((x) => x.sel?.marcado);
+
+  const kgDeBache = (sel?: SeleccionBache) => {
+    const n = Number((sel?.kgTexto ?? '').replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
+  const kgMarcado =
+    Math.round(bachesMarcados.reduce((t, x) => t + kgDeBache(x.sel), 0) * 100) / 100;
+  const bacheExcedido = bachesMarcados.find((x) => kgDeBache(x.sel) > x.bache.kg + 0.01);
+  const sinKg = bachesMarcados.find((x) => kgDeBache(x.sel) <= 0);
+
+  /**
+   * Marcar de más se frena acá y no solo en el servidor.
+   *
+   * `validarSeleccion()` tolera hasta un 10% por encima —la diferencia de
+   * balanza—, pero la pantalla exige que cuadre: es donde el operador puede
+   * corregir mientras digita, en vez de enterarse después de pulsar. Al ser la
+   * regla ESTRICTA de las dos, nada que la UI deje pasar puede caerse en el
+   * servidor; si el margen de allá cambia, acá no hay que tocar nada.
+   */
+  const excedeBiochar = kgBiocharNecesario !== null && kgMarcado > kgBiocharNecesario + 0.01;
+
+  /**
+   * La selección solo se exige cuando hay que producir, y solo si se sabe cuánto
+   * biochar hace falta: sin la fórmula no se puede decir si lo marcado alcanza,
+   * y bloquear el despacho por una petición que falló sería peor que dejar que el
+   * servidor —que sí tiene la fórmula— haga la cuenta y la rechace.
+   */
+  const bachesListos =
+    !vaAProducir ||
+    kgBiocharNecesario === null ||
+    (bachesMarcados.length > 0 &&
+      !bacheExcedido &&
+      !sinKg &&
+      !excedeBiochar &&
+      kgMarcado + 0.01 >= kgBiocharNecesario);
+
+  // Quien se lleva el producto va identificado y firmando: es la mitad de la
+  // cadena de custodia. Sin eso, la remisión dice que algo salió de la planta sin
+  // decir con quién, y el documento no acredita nada.
+  const conductorListo =
+    conductor.trim().length > 2 && cedula.trim().length > 3 && hayFirma;
+
+  const listo =
+    kgValidos && !excedeLote && !!responsable.trim() && bachesListos && conductorListo;
+
+  const alternarBache = (codigo: string) =>
+    setSeleccion((prev) => {
+      const actual = prev[codigo];
+      return { ...prev, [codigo]: { marcado: !actual?.marcado, kgTexto: actual?.kgTexto ?? '' } };
+    });
+
+  const cambiarKgBache = (codigo: string, kgTexto: string) =>
+    setSeleccion((prev) => ({ ...prev, [codigo]: { marcado: true, kgTexto } }));
+
+  /**
+   * Marca los baches más antiguos hasta cubrir el biochar, con los KG ya puestos.
+   *
+   * Es una propuesta para editar, no un atajo para no mirar: arranca vacío a
+   * propósito —el operador tiene las lonas delante y la app no sabe de cuál sacó—
+   * y esto solo le ahorra la digitación cuando el reparto FIFO es el que hizo.
+   */
+  const proponerFIFO = () => {
+    if (kgBiocharNecesario === null) return;
+    const porAntiguedad = [...baches].sort((a, b) => a.codigo.localeCompare(b.codigo));
+    const nueva: Record<string, SeleccionBache> = {};
+    let falta = kgBiocharNecesario;
+    for (const b of porAntiguedad) {
+      if (falta <= 0.01) break;
+      const usa = Math.round(Math.min(b.kg, falta) * 100) / 100;
+      if (usa <= 0.01) continue;
+      nueva[b.codigo] = { marcado: true, kgTexto: String(usa) };
+      falta = Math.round((falta - usa) * 100) / 100;
+    }
+    setSeleccion(nueva);
+  };
 
   const enviar = async (dryRun: boolean) => {
     setError(null);
@@ -2400,12 +2548,23 @@ function FormDespacho({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           idPedido: pedido.codigo,
-          lote,
+          lote: lote || undefined,
           kg: kgPedidos,
-          responsableEntrega: responsable.trim(),
-          transportista: cedula.trim()
-            ? { nombre: transportista.trim() || responsable.trim(), cedula: cedula.trim() }
+          // Solo cuando se va a producir: mandarlos con un lote elegido a mano
+          // sugeriría que se van a descontar, y ahí no se consume biochar.
+          baches: vaAProducir
+            ? bachesMarcados.map((x) => ({ codigo: x.bache.codigo, kg: kgDeBache(x.sel) }))
             : undefined,
+          responsableEntrega: responsable.trim(),
+          transportista: {
+            nombre: conductor.trim(),
+            cedula: cedula.trim(),
+            telefono: telefono.trim() || undefined,
+            email: emailConductor.trim() || undefined,
+            // El trazo solo se manda en el despacho real: en el ensayo no se sube
+            // nada a S3, que es lo que hace que ensayar no deje rastro.
+            firmaBase64: dryRun ? undefined : (padRef.current?.obtenerFirma() ?? undefined),
+          },
           observaciones: observaciones.trim() || undefined,
           fechaDespacho,
           dryRun,
@@ -2422,16 +2581,19 @@ function FormDespacho({
       }
 
       // 207: la remisión quedó emitida pero un paso de trazabilidad falló —el
-      // descuento del inventario, el estado del pedido—. Se dice con su detalle
-      // en vez de celebrar un éxito a medias.
+      // descuento del inventario, el estado del pedido, algún paso de la
+      // producción—. Se dice con su detalle en vez de celebrar un éxito a medias.
       const fallidos = ((json.steps ?? []) as StepResultUI[]).filter((s) => !s.ok);
-      await onListo(
-        fallidos.length
-          ? `${json.message} Pasos con problema: ${fallidos
-              .map((s) => `${s.step} (${s.error})`)
-              .join(' · ')}`
-          : json.message
-      );
+      const mensaje = fallidos.length
+        ? `${json.message} Pasos con problema: ${fallidos
+            .map((s) => `${s.step} (${s.error})`)
+            .join(' · ')}`
+        : json.message;
+
+      // El despacho no termina al emitir: falta que el receptor firme. Cerrar acá
+      // dejaba el enlace sin aparecer por ningún lado, y la mitad de la cadena de
+      // custodia sin camino.
+      setEmitida({ codigo: json.remision?.codigo ?? '', mensaje });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2439,31 +2601,103 @@ function FormDespacho({
     }
   };
 
-  if (!conProducto.length) {
+  if (emitida) {
+    const enlace =
+      typeof window !== 'undefined' && emitida.codigo
+        ? `${window.location.origin}/pirolisis/blend/firmar/${emitida.codigo}`
+        : '';
     return (
-      <div className="text-sm text-white/70">
-        No hay ningún lote de Biochar Blend con producto sin despachar. Produce un lote desde la
-        tarjeta del Blend antes de despachar este pedido.
-        <div className="mt-4">
-          <BotonAccion onClick={onCancelar}>Cerrar</BotonAccion>
+      <div className="space-y-4 text-sm text-white">
+        <div className="rounded-xl bg-[#5A7836]/20 ring-1 ring-[#5A7836]/50 p-4">
+          <p className="font-medium">{emitida.mensaje}</p>
         </div>
+
+        <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-2">
+          <p className="font-medium">Falta la firma de quien recibe</p>
+          <p className="text-white/60 text-xs">
+            El receptor la da en la finca, desde su celular. Pásale este enlace —o
+            ábrelo tú con él delante—: ahí acepta el compromiso de uso, firma, y el
+            documento queda entregado.
+          </p>
+          {enlace ? (
+            <>
+              <p className="break-all rounded-lg bg-black/30 p-2 font-mono text-xs text-white/80">
+                {enlace}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(enlace).then(
+                      () => setCopiado(true),
+                      () => setCopiado(false)
+                    );
+                  }}
+                  className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium ring-1 ring-white/20 hover:bg-white/20"
+                >
+                  {copiado ? 'Copiado' : 'Copiar enlace'}
+                </button>
+                <a
+                  href={enlace}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium ring-1 ring-white/20 hover:bg-white/20"
+                >
+                  Abrir para firmar
+                </a>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-amber-300">
+              La remisión se emitió pero no se pudo leer su código, así que no hay enlace. Búscala
+              en Remisiones Core para firmarla.
+            </p>
+          )}
+        </div>
+
+        <BotonAccion onClick={() => onListo(emitida.mensaje)}>Cerrar</BotonAccion>
       </div>
     );
   }
 
   if (plan) {
+    const prod = plan.produccion;
     return (
       <div className="space-y-4 text-sm text-white">
         <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-1.5">
           <p className="font-medium">Esto es lo que se va a escribir:</p>
           <p className="text-white/70">
-            Pedido <span className="text-white">{plan.pedido.codigo}</span> ·{' '}
-            {plan.pedido.cliente}
+            Pedido <span className="text-white">{plan.pedido.codigo}</span> · {plan.pedido.cliente}
           </p>
+
+          {prod ? (
+            <>
+              {/* Producir es la parte irreversible que el operador tiene que ver
+                  ANTES: consume baches que ya no se podrán vender como puro. */}
+              <p className="text-white/70">
+                Se produce el lote{' '}
+                <span className="font-mono text-xs text-white">{prod.lote}</span> con{' '}
+                <span className="text-white">{kg(prod.kgBiochar)}</span> de biochar y{' '}
+                <span className="text-white">{kg(prod.kgAbono)}</span> de abono →{' '}
+                <span className="text-white">{kg(prod.kgBlend)}</span> de Blend
+              </p>
+              <ul className="ml-4 list-disc text-xs text-white/60">
+                {prod.baches.map((b) => (
+                  <li key={b.codigo}>
+                    {b.codigo}: salen {kg(b.kg)} de {kg(b.disponible)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="text-white/70">
+              Sale del lote <span className="font-mono text-xs text-white">{plan.lote}</span>, que
+              tiene {kg(plan.loteDisponibleAntes)}
+            </p>
+          )}
+
           <p className="text-white/70">
-            Salen <span className="text-white">{kg(plan.kg)}</span> del lote{' '}
-            <span className="font-mono text-xs text-white">{plan.lote}</span>, que queda en{' '}
-            {kg(plan.loteDisponibleDespues)} de {kg(plan.loteDisponibleAntes)}
+            Se despachan <span className="text-white">{kg(plan.kg)}</span> · el lote queda en{' '}
+            {kg(plan.loteDisponibleDespues)}
           </p>
           <p className="text-white/70">
             La bodega queda en {kg(plan.blendDisponibleDespues)} de Blend
@@ -2474,9 +2708,12 @@ function FormDespacho({
           </p>
         </div>
 
+        {plan.motivoParcial && <Aviso>⚠️ {plan.motivoParcial}</Aviso>}
+
         <p className="text-xs text-white/50">
-          Al confirmar se emite la remisión en Sirius Remisiones Core, se descuenta el Blend del
-          libro mayor y el pedido cambia de estado. La remisión no se puede deshacer desde acá.
+          Al confirmar {prod ? 'se descuentan los baches y el abono, ' : ''}se emite la remisión en
+          Sirius Remisiones Core, se descuenta el Blend del libro mayor y el pedido cambia de
+          estado. Nada de esto se deshace desde acá.
         </p>
 
         {error && <p className="text-red-300">{error}</p>}
@@ -2487,7 +2724,7 @@ function FormDespacho({
             disabled={enviando}
             className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
           >
-            {enviando ? 'Despachando…' : 'Confirmar despacho'}
+            {enviando ? 'Despachando…' : prod ? 'Producir y despachar' : 'Confirmar despacho'}
           </button>
           <BotonAccion onClick={() => setPlan(null)}>Volver</BotonAccion>
         </div>
@@ -2513,9 +2750,27 @@ function FormDespacho({
         </p>
       </div>
 
+      <div className="block">
+        <span className="text-white/70">KG a despachar</span>
+        <p className={`${CAMPO} ${excedeLote ? 'ring-red-400/60' : ''}`}>
+          {kg(pedido.kgPendientes)}
+        </p>
+        <span className="mt-1 block text-xs text-white/50">
+          Si no hay tanto Blend, se produce lo que falte con el biochar y el abono de bodega. Si ni
+          eso alcanza, sale lo que se pueda y el pedido queda Enviado Parcial.
+        </span>
+        {excedeLote && !!elegido && (
+          <span className="mt-1 block text-xs text-red-300">
+            El lote {elegido.lote} solo tiene {kg(elegido.kgDisponibles)} sin despachar: elige otro
+            lote o déjalo en automático.
+          </span>
+        )}
+      </div>
+
       <label className="block">
-        <span className="text-white/70">Lote del que sale</span>
+        <span className="text-white/70">Lote</span>
         <select value={lote} onChange={(e) => setLote(e.target.value)} className={CAMPO}>
+          <option value="">Automático — usa lo que haya y produce lo que falte</option>
           {conProducto.map((l) => (
             <option key={l.lote} value={l.lote}>
               {l.lote} — {kg(l.kgDisponibles)} sin despachar
@@ -2523,35 +2778,113 @@ function FormDespacho({
           ))}
         </select>
         <span className="mt-1 block text-xs text-white/50">
-          Un lote sin producto no aparece. El propuesto es el más viejo que alcanza a cubrir lo que
-          falta.
+          {/* Elegir lote a mano APAGA la producción: si ese lote no alcanza, el
+              despacho se rechaza en vez de fabricar por su cuenta. */}
+          Elegir un lote concreto no produce nada: sale solo de ese lote, o no sale.
         </span>
       </label>
 
-      <label className="block">
-        <span className="text-white/70">KG a despachar</span>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={kgTexto}
-          onChange={(e) => setKgTexto(e.target.value)}
-          className={`${CAMPO} ${excedePedido || excedeLote ? 'ring-red-400/60' : ''}`}
-        />
-        <span className="mt-1 block text-xs text-white/50">
-          Máximo {kg(tope)}: lo menor entre lo que falta del pedido y lo que tiene el lote.
-        </span>
-        {excedePedido && (
-          <span className="mt-1 block text-xs text-red-300">
-            Al pedido solo le faltan {kg(pedido.kgPendientes)}.
-          </span>
-        )}
-        {excedeLote && !!elegido && (
-          <span className="mt-1 block text-xs text-red-300">
-            El lote {elegido.lote} solo tiene {kg(elegido.kgDisponibles)} sin despachar.
-          </span>
-        )}
-      </label>
+      {/* El selector solo aparece cuando este despacho va a producir: con producto
+          en bodega no se consume biochar y pedir baches sería pedir un dato que no
+          se va a escribir. */}
+      {vaAProducir && (
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-white/70">Baches de los que sale el biochar</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={proponerFIFO}
+                disabled={kgBiocharNecesario === null || !baches.length}
+                title="Marca los baches más antiguos hasta cubrir el biochar, para editarlos"
+                className="rounded-lg bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20 hover:bg-white/20 disabled:opacity-40"
+              >
+                Proponer los más antiguos
+              </button>
+              {bachesMarcados.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSeleccion({})}
+                  className="rounded-lg px-3 py-1 text-xs font-medium text-white/60 ring-1 ring-white/15 hover:bg-white/10 hover:text-white"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="mt-0.5 text-xs text-white/50">
+            {kgBiocharNecesario === null
+              ? 'Marca de cuáles salió el biochar y cuánto pesó cada uno.'
+              : `Este despacho necesita ${kg(kgBiocharNecesario)} de biochar. Digita lo que pesó de cada bache.`}
+          </p>
+
+          {!baches.length ? (
+            <p className="mt-2 text-xs text-amber-200">
+              Ningún bache tiene biochar disponible en bodega, así que no hay con qué producir.
+            </p>
+          ) : (
+            <div className="mt-2 max-h-56 space-y-1.5 overflow-y-auto rounded-xl bg-white/5 ring-1 ring-white/10 p-2">
+              {baches.map((b) => {
+                const sel = seleccion[b.codigo];
+                const sobra = kgDeBache(sel) > b.kg + 0.01;
+                return (
+                  <div key={b.codigo} className="flex items-center gap-2">
+                    <label className="flex flex-1 items-center gap-2 text-white/80">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(sel?.marcado)}
+                        onChange={() => alternarBache(b.codigo)}
+                        className="h-4 w-4 accent-[#5A7836]"
+                      />
+                      <span className="font-mono text-xs">{b.codigo}</span>
+                      <span className="text-white/50">{kg(b.kg)}</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max={b.kg}
+                      value={sel?.kgTexto ?? ''}
+                      onChange={(e) => cambiarKgBache(b.codigo, e.target.value)}
+                      placeholder="kg"
+                      aria-label={`KG del bache ${b.codigo}`}
+                      className={`w-24 rounded-lg bg-white/10 px-2 py-1 text-right text-xs text-white placeholder-white/30 ring-1 focus:outline-none focus-visible:ring-2 ${
+                        sobra ? 'ring-red-400/60' : 'ring-white/20 focus-visible:ring-[#5A7836]'
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {bachesMarcados.length > 0 && (
+            <p className="mt-1.5 text-xs">
+              <span className="text-white/50">Total marcado: </span>
+              <span className={bachesListos ? 'text-white' : 'text-amber-200'}>
+                {kg(kgMarcado)}
+              </span>
+              {kgBiocharNecesario !== null && (
+                <span className="text-white/50"> de {kg(kgBiocharNecesario)} necesarios</span>
+              )}
+            </p>
+          )}
+
+          {bacheExcedido && (
+            <p className="mt-1 text-xs text-red-300">
+              El bache {bacheExcedido.bache.codigo} solo tiene {kg(bacheExcedido.bache.kg)}.
+            </p>
+          )}
+
+          {excedeBiochar && kgBiocharNecesario !== null && (
+            <p className="mt-1 text-xs text-red-300">
+              Sobran {kg(kgMarcado - kgBiocharNecesario)}: este Blend solo lleva{' '}
+              {kg(kgBiocharNecesario)} de biochar. Descontar de más deja el inventario por debajo
+              de lo que hay en bodega.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -2573,24 +2906,54 @@ function FormDespacho({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-white/70">Transportista (opcional)</span>
-          <input
-            value={transportista}
-            onChange={(e) => setTransportista(e.target.value)}
-            className={CAMPO}
-          />
-        </label>
-        <label className="block">
-          <span className="text-white/70">Cédula del transportista</span>
-          <input value={cedula} onChange={(e) => setCedula(e.target.value)} className={CAMPO} />
-          {/* La cédula es la que decide: sin ella no hay a quién registrar como
-              persona, y la remisión sale "Pendiente" en vez de "En Tránsito". */}
-          <span className="mt-1 block text-xs text-white/50">
-            Con cédula la remisión sale En Tránsito; sin ella, Pendiente.
-          </span>
-        </label>
+      {/* Quien se lleva el producto: la primera mitad de la cadena de custodia.
+          Se pide acá porque acá está —cargando el camión—, y su firma en este
+          dispositivo es lo que acredita que el producto salió con él. La segunda
+          mitad, la del receptor, se da en la finca. */}
+      <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-3">
+        <p className="text-white/80">Quién se lleva el pedido</p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-white/70">Nombre completo</span>
+            <input
+              value={conductor}
+              onChange={(e) => setConductor(e.target.value)}
+              className={CAMPO}
+            />
+          </label>
+          <label className="block">
+            <span className="text-white/70">Cédula</span>
+            <input value={cedula} onChange={(e) => setCedula(e.target.value)} className={CAMPO} />
+          </label>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-white/70">Teléfono (opcional)</span>
+            <input
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              className={CAMPO}
+            />
+          </label>
+          <label className="block">
+            <span className="text-white/70">Correo (opcional)</span>
+            <input
+              type="email"
+              value={emailConductor}
+              onChange={(e) => setEmailConductor(e.target.value)}
+              className={CAMPO}
+            />
+          </label>
+        </div>
+
+        <PadFirma
+          titulo="Firma de quien se lleva el pedido"
+          ayuda="Firma con el dedo o el mouse. Queda en el documento de la remisión."
+          handleRef={padRef}
+          onCambio={setHayFirma}
+        />
       </div>
 
       <label className="block">
@@ -2620,14 +2983,24 @@ function FormDespacho({
       {!listo && (
         <p className="text-xs text-white/50">
           {!kgValidos
-            ? 'Escribe cuántos KG se despachan.'
-            : excedePedido
-              ? 'Son más KG de los que el pedido debe.'
-              : excedeLote
-                ? 'El lote no tiene esos KG.'
+            ? 'Este pedido ya no tiene KG pendientes.'
+            : excedeLote
+              ? 'El lote elegido no tiene esos KG.'
+              : !conductorListo
+                ? 'Falta identificar y que firme quien se lleva el pedido.'
                 : !responsable.trim()
-                  ? 'Falta quién entrega.'
-                  : 'Revisa los datos.'}
+                ? 'Falta quién entrega.'
+                : bacheExcedido
+                  ? `El bache ${bacheExcedido.bache.codigo} no tiene esos KG.`
+                  : excedeBiochar && kgBiocharNecesario !== null
+                    ? `Sobran ${kg(kgMarcado - kgBiocharNecesario)} de biochar marcado.`
+                    : sinKg
+                    ? `Falta digitar los KG del bache ${sinKg.bache.codigo}.`
+                    : !bachesMarcados.length
+                      ? 'Marca de qué baches sale el biochar.'
+                      : kgBiocharNecesario !== null
+                        ? `Faltan ${kg(kgBiocharNecesario - kgMarcado)} de biochar por marcar.`
+                        : 'Revisa los datos.'}
         </p>
       )}
     </form>
@@ -2691,7 +3064,7 @@ function SeccionProducto({
 
   return (
     <>
-      <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 [perspective:1200px]">
+      <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi
           label={etiquetas.kpiSaldo}
           valor={resumen.kg === null ? '—' : kg(resumen.kg)}

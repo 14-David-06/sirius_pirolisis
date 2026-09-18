@@ -8,9 +8,17 @@ import {
 /**
  * POST /api/pirolisis/pedidos/despachar
  *
- * Despacha un pedido de Biochar Blend: emite la remisión en Sirius Remisiones
- * Core y descuenta el producto del libro mayor, SIEMPRE que el inventario y el
- * pedido lo permitan (ver `despacharPedidoBlend()`).
+ * Despacha un pedido de Biochar Blend: produce el Blend que falte con el biochar
+ * y el abono de bodega, emite la remisión en Sirius Remisiones Core y descuenta el
+ * producto del libro mayor (ver `despacharPedidoBlend()`).
+ *
+ * `lote` es opcional: sin él, el despacho usa el producto que ya exista y produce
+ * lo que falte. Con él, sale de ese lote o no sale — elegirlo a mano es decir de
+ * dónde tiene que salir.
+ *
+ * `baches` ([{ codigo, kg }]) es REQUERIDO cuando hay que producir: de qué bache
+ * salió cada kg es la trazabilidad que sostiene la contabilidad de carbono, y la
+ * app no puede inventarla. Se ignora si el despacho sale de un lote existente.
  *
  * `dryRun: true` devuelve el plan sin escribir nada. La pantalla lo pide primero
  * y muestra qué va a pasar —cuánto sale, de qué lote, con cuánto queda el lote y
@@ -23,16 +31,16 @@ import {
  *   207 — la remisión se emitió pero un paso best-effort falló (el descuento del
  *         inventario o el estado del pedido). Se responde con los `steps` para que
  *         el operador vea exactamente qué quedó a medias.
- *   409 — no se despachó nada: el pedido está cerrado, no hay tanto Blend en el
- *         lote, o se está despachando más de lo que se debe.
+ *   409 — no se despachó nada: el pedido está cerrado, se pide más de lo que debe,
+ *         o no hay ni Blend ni con qué producirlo.
  */
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Partial<DespachoBlendInput> & { dryRun?: boolean };
 
-    if (!body?.idPedido || !body?.lote) {
+    if (!body?.idPedido) {
       return NextResponse.json(
-        { error: 'Faltan datos', details: 'Se requieren idPedido y lote' },
+        { error: 'Faltan datos', details: 'Se requiere idPedido' },
         { status: 400 }
       );
     }
@@ -40,8 +48,11 @@ export async function POST(request: Request) {
     const resultado = await despacharPedidoBlend(
       {
         idPedido: String(body.idPedido),
-        lote: String(body.lote),
-        kg: Number(body.kg),
+        lote: body.lote ? String(body.lote) : undefined,
+        kg: body.kg === undefined ? undefined : Number(body.kg),
+        baches: Array.isArray(body.baches)
+          ? body.baches.map((b) => ({ codigo: String(b?.codigo ?? ''), kg: Number(b?.kg) }))
+          : undefined,
         responsableEntrega: String(body.responsableEntrega ?? ''),
         transportista: body.transportista,
         observaciones: body.observaciones,
@@ -61,7 +72,8 @@ export async function POST(request: Request) {
       {
         success: resultado.ok,
         message: resultado.ok
-          ? `Remisión ${codigo} emitida por ${resultado.plan.kg} kg del lote ${resultado.plan.lote}.`
+          ? `Remisión ${codigo} emitida por ${resultado.plan.kg} kg del lote ${resultado.plan.lote}` +
+            `${resultado.plan.origen === 'produccion' ? ' (producido en este despacho)' : ''}.`
           : 'El despacho no se pudo completar.',
         ...resultado,
       },
