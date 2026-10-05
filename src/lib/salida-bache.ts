@@ -45,14 +45,14 @@ import {
 } from './biochar-inventario-core';
 import { actualizarEstadoBaches, estadoTrasConsumo } from './baches-biochar';
 import { MOTIVOS_SALIDA, marcaSalida, referenciaSalida } from './salida-bache.constants';
-import type { MotivoSalida } from './salida-bache.constants';
+import type { MotivoSalida, ReceptorEntrega } from './salida-bache.constants';
 import type { StepResult } from '@/types/step-result';
 
 const AT = 'https://api.airtable.com/v0';
 
 // Re-exportados para que el endpoint y los tests tengan un único punto de entrada.
 export { MOTIVOS_SALIDA, esMotivoSalida, marcaSalida, referenciaSalida } from './salida-bache.constants';
-export type { MotivoSalida } from './salida-bache.constants';
+export type { MotivoSalida, ReceptorEntrega } from './salida-bache.constants';
 
 /** Por debajo de esto el bache se considera vacío: son restos de redondeo. */
 const TOLERANCIA_KG = 0.01;
@@ -88,6 +88,11 @@ export interface SalidaBacheInput {
    * identidad propia (`ACTA-BC-0007`). Ver `referenciaSalida`.
    */
   referenciaBase?: string;
+  /**
+   * Quién se lleva el biochar. Solo aplica a `entrega`, donde es obligatorio (lo
+   * valida el endpoint): es lo que imprime el acta. Ver `acta-entrega-biochar.ts`.
+   */
+  receptor?: ReceptorEntrega;
   /**
    * Resuelve y valida todo, pero no escribe nada.
    *
@@ -230,7 +235,7 @@ async function buscarSalidaExistente(
  * reintento no podría escribir la Salida del Core que faltó — que es exactamente el
  * caso que este servicio existe para cerrar.
  */
-async function leerKgDeRemision(remision: { fields?: Record<string, unknown> }): Promise<number> {
+export async function leerKgDeRemision(remision: { fields?: Record<string, unknown> }): Promise<number> {
   const { baseId, detalleCantidadesRemisionTableId } = config.airtable;
   const campoCantidad = config.airtable.detalleCantidadesFields.cantidadEspecificada;
   const detalles = remision.fields?.['Detalle Cantidades Bache Pirolisis'];
@@ -256,6 +261,32 @@ async function leerKgDeRemision(remision: { fields?: Record<string, unknown> }):
 }
 
 /**
+ * Los campos de quien recibe, por field ID.
+ *
+ * Nombre y cédula reutilizan los campos de recepción que la tabla ya tenía; el
+ * vehículo se agregó el 2026-09-28 para el acta de entrega. Un campo sin
+ * configurar se omite en vez de mandarse con una llave `undefined`, que Airtable
+ * rechaza con 422 y tumba la escritura completa.
+ */
+export function camposReceptor(receptor: ReceptorEntrega): Record<string, string> {
+  const rf = config.airtable.remisionesBachesFields;
+  const pares: Array<[string | undefined, string | undefined]> = [
+    [rf.responsableRecibe, receptor.nombre],
+    [rf.numeroDocumentoRecibe, receptor.cedula],
+    [rf.vehiculoRecibe, receptor.vehiculo],
+    [rf.colorVehiculoRecibe, receptor.color],
+    // La placa se normaliza: es lo que alguien va a buscar, y "koq 999" no
+    // encontraría "KOQ999".
+    [rf.placaVehiculoRecibe, receptor.placa?.replace(/\s+/g, '').toUpperCase()],
+  ];
+  const campos: Record<string, string> = {};
+  for (const [campo, valor] of pares) {
+    if (campo && valor?.trim()) campos[campo] = valor.trim();
+  }
+  return campos;
+}
+
+/**
  * Remisión de baches + su detalle: es lo que baja la fórmula del bache.
  *
  * Se reutiliza el par remisión/detalle del flujo tradicional en vez de escribir el
@@ -268,6 +299,7 @@ async function escribirRemisionYDetalle(
     destino: string;
     observaciones?: string;
     fecha: string;
+    receptor?: ReceptorEntrega;
   },
   bache: BacheResuelto,
   kg: number,
@@ -307,6 +339,9 @@ async function escribirRemisionYDetalle(
   // `Cliente` es un singleLineText: no hay tabla de destinos, así que aquí va el
   // laboratorio o el área que recibe. No es una venta, y la observación lo dice.
   if (rf.cliente) remisionFields[rf.cliente] = input.destino;
+  // En el mismo POST que la remisión, no en un PATCH después: si el receptor
+  // fallara aparte, quedaría una entrega descontada sin decir a quién se hizo.
+  if (input.receptor) Object.assign(remisionFields, camposReceptor(input.receptor));
 
   const remRes = await atFetch(`${AT}/${baseId}/${remisionesBachesTableId}`, {
     method: 'POST',
@@ -432,9 +467,11 @@ export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBac
   const fecha = input.fecha?.trim() || new Date().toISOString().split('T')[0];
   const bache = await resolverBache(input.bache);
   const referencia = referenciaSalida(input.motivo, fecha, bache.codigo, input.referenciaBase);
-  // Sin destino explícito queda el motivo: es más honesto que un campo vacío, y la
-  // merma no tiene a dónde ir.
-  const destino = input.destino?.trim() || MOTIVOS_SALIDA[input.motivo].etiqueta;
+  // Sin destino explícito queda quien recibe y, si no hay, el motivo: es más honesto
+  // que un campo vacío, y la merma no tiene a dónde ir.
+  const receptor = input.motivo === 'entrega' ? input.receptor : undefined;
+  const destino =
+    input.destino?.trim() || receptor?.nombre?.trim() || MOTIVOS_SALIDA[input.motivo].etiqueta;
 
   // La idempotencia se consulta ANTES de validar disponibilidad, y no después: en
   // cuanto el detalle está escrito la fórmula del bache marca 0, así que validar
@@ -528,6 +565,19 @@ export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBac
       skipped: true,
       detail: { remisionId: existente.remisionId, motivo: `La salida ${referencia} ya estaba registrada` },
     });
+    // Reintentar una entrega con el receptor es como se le completa el acta a una
+    // salida registrada sin él. Son campos de texto: el PATCH no pisa ningún link.
+    if (receptor) {
+      const res = await atFetch(
+        `${AT}/${config.airtable.baseId}/${config.airtable.remisionesBachesTableId}/${existente.remisionId}`,
+        { method: 'PATCH', headers: localHeaders(), body: JSON.stringify({ fields: camposReceptor(receptor) }) }
+      );
+      steps.push(
+        res.ok
+          ? { step: 'receptor', ok: true, detail: { remisionId: existente.remisionId } }
+          : { step: 'receptor', ok: false, error: `No se guardó quién recibe: ${JSON.stringify(res.data)}` }
+      );
+    }
   } else {
     const paso = await escribirRemisionYDetalle(
       {
@@ -536,6 +586,7 @@ export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBac
         destino,
         observaciones: input.observaciones,
         fecha,
+        receptor,
       },
       bache,
       kg,
@@ -598,7 +649,9 @@ export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBac
     );
   }
 
-  const yaExistia = steps.every((paso) => paso.skipped);
+  // Completar el receptor de una salida ya registrada no la vuelve nueva: no movió
+  // inventario, y el mensaje debe seguir diciendo que no se descontó de nuevo.
+  const yaExistia = steps.filter((paso) => paso.step !== 'receptor').every((paso) => paso.skipped);
 
   return {
     ok: true,

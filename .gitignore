@@ -52,3 +52,6 @@ src/lib/INVENTARIO_REFACTOR_SUMMARY.md
 src/app/inventario-pirolisis/README.md
 /src/__tests__/api/activos
 
+scripts/activos-pirolisis-conteo-2026-10.mjs
+scripts/insumos-pirolisis-conteo-2026-10.mjs
+Acta-SAL-ENT-2026-09-29-S-00144.pdf

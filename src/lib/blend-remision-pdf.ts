@@ -1,42 +1,35 @@
 // src/lib/blend-remision-pdf.ts
 //
-// Generación y publicación del PDF de una remisión de Biochar Blend.
+// Datos del PDF de una remisión de Biochar Blend, armados desde el Core.
 //
 // Vive aparte del generador de bytes (`blend-remision-pdf-generator.ts`) porque
-// junta tres cosas que antes estaban copiadas en dos rutas: armar el objeto de
-// datos desde la remisión del Core, subir a S3 y adjuntar la URL al documento.
-// La ruta de generar-pdf y la de firmar llamaban a lo mismo con el código pegado,
-// que es cómo se llega a que una arregle un bug y la otra no.
+// el generador no sabe nada del Core: aquí se decide qué dato de la remisión va en
+// qué casilla del documento.
 
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { getS3Client, awsServerConfig } from './aws-config.server';
-import { generateBlendRemisionPdf, type BlendRemisionData } from './blend-remision-pdf-generator';
-import {
-  guardarDocumento,
-  TIPO_PERSONA,
-  type PersonaRemision,
-  type RemisionBlend,
-} from './blend-remisiones-core';
-
-/** Datos de la firma, que no viven en el Core: van embebidos en el PDF. */
-export interface DatosFirma {
-  timestamp?: string;
-  imagenUrl?: string;
-  ip?: string;
-  compromisoAceptado?: boolean;
-}
+import { type BlendRemisionData } from './blend-remision-pdf-generator';
+import { TIPO_PERSONA, type PersonaRemision, type RemisionBlend } from './blend-remisiones-core';
 
 function persona(personas: PersonaRemision[], tipo: string): PersonaRemision | undefined {
   return personas.find((p) => p.tipo === tipo);
 }
 
 /** Arma el payload del generador desde una remisión del Core y sus derivados. */
-export function construirDatosPdf(
-  remision: RemisionBlend,
-  firma: DatosFirma = {}
-): BlendRemisionData {
+export function construirDatosPdf(remision: RemisionBlend): BlendRemisionData {
   const transportista = persona(remision.personas, TIPO_PERSONA.transportista);
-  const receptor = persona(remision.personas, TIPO_PERSONA.receptor);
+  // Quien se lleva el pedido es personal del cliente, elegido de su nómina en el
+  // despacho: es él mismo quien recibe. Antes el receptor se registraba al firmar
+  // en la página pública; sin ella (2026-10-02) ninguna remisión nueva tiene uno,
+  // y el documento salía sin la casilla de recepción que se firma en papel.
+  const receptorRegistrado = persona(remision.personas, TIPO_PERSONA.receptor);
+  const receptor = receptorRegistrado ?? transportista;
+  // Y si recibe quien se lo lleva, lo recibió al cargarlo en la planta: la fecha
+  // de recepción es la del despacho. "Pendiente" sugería una entrega por venir
+  // que no existe.
+  const fechaRecibido =
+    remision.fechaRecibido ||
+    (!receptorRegistrado && transportista
+      ? remision.fechaDespacho || remision.fechaRemision
+      : undefined);
 
   return {
     id: remision.codigo,
@@ -44,71 +37,29 @@ export function construirDatosPdf(
     fecha_evento: remision.fechaDespacho || remision.fechaRemision,
 
     cliente: remision.clienteNombre,
+    id_cliente: remision.idCliente,
     pedido_id: remision.idPedido,
-    // El "origen" de la producción es el lote: no hay record de producción local.
-    produccion_id: remision.lote,
+    area_cliente: remision.idAreaCliente
+      ? { nombre: remision.areaClienteNombre, codigo: remision.idAreaCliente }
+      : undefined,
 
-    kg_biochar_puro: remision.composicion.biochar,
-    kg_abono_4g: remision.composicion.abono,
-    kg_agua: remision.composicion.agua,
-    kg_biologicos: remision.composicion.biologicos,
     kg_total: remision.kgTotal,
     co2_secuestrado_kg: remision.co2SecuestradoKg,
 
-    responsable_entrega: remision.responsableEntrega || transportista?.nombre || '',
-    num_doc_entrega: transportista?.cedula ?? '',
-    telefono_entrega: transportista?.telefono,
-    email_entrega: transportista?.email,
-
-    responsable_recibe: receptor?.nombre,
-    num_doc_recibe: receptor?.cedula,
-    telefono_recibe: receptor?.telefono,
-    email_recibe: receptor?.email,
-
-    firma_timestamp: firma.timestamp,
-    compromiso_aceptado: firma.compromisoAceptado,
-    firma_imagen_url: firma.imagenUrl,
-    ip_firma: firma.ip,
+    // Quien entrega es el responsable de planta; la cédula que tiene el Core es
+    // la del transportista, y va en su propia tarjeta. Juntarlas hacía decir al
+    // documento "Santiago Amaya" con la cédula del conductor.
+    responsable_entrega: remision.responsableEntrega,
+    transportista: transportista?.cedula
+      ? { nombre: transportista.nombre, cedula: transportista.cedula }
+      : undefined,
+    receptor: receptor?.cedula ? { nombre: receptor.nombre, cedula: receptor.cedula } : undefined,
+    fecha_recibido: fechaRecibido || undefined,
 
     estado: remision.estado,
-    realiza_registro: remision.responsableEntrega,
-    observaciones: remision.notas,
+    // `crearRemision()` arma las notas como `[marcas…] Biochar Blend — <obs>`:
+    // las marcas son la trazabilidad que lee la app y "Biochar Blend" la etiqueta
+    // del tipo. Al cliente solo le corresponde lo que escribió el operador.
+    observaciones: remision.notas.split(' — ').slice(1).join(' — ').trim() || undefined,
   };
-}
-
-/**
- * Genera el PDF, lo sube a S3 y lo adjunta a la remisión del Core.
- *
- * La clave de S3 lleva timestamp para no sobrescribir: al firmar se regenera el
- * documento con ambas firmas y conviene conservar el anterior como rastro. El
- * `filename` del adjunto sí es estable (`SIRIUS-REM-XXXX.pdf`) para que el cliente
- * siempre descargue un archivo con el nombre del documento.
- *
- * @returns la URL pública del PDF.
- */
-export async function generarYPublicarPdf(
-  remision: RemisionBlend,
-  firma: DatosFirma = {}
-): Promise<string> {
-  const datos = construirDatosPdf(remision, firma);
-
-  const bytes = await generateBlendRemisionPdf(datos);
-  const nombreArchivo = `${remision.codigo || remision.recordId}.pdf`;
-  const key = `blend-remisiones/${remision.recordId}-${Date.now()}.pdf`;
-
-  await getS3Client().send(
-    new PutObjectCommand({
-      Bucket: awsServerConfig.bucketName,
-      Key: key,
-      Body: Buffer.from(bytes),
-      ContentType: 'application/pdf',
-      ContentDisposition: `attachment; filename="${nombreArchivo}"`,
-    })
-  );
-
-  const url = `https://${awsServerConfig.bucketName}.s3.${awsServerConfig.region}.amazonaws.com/${key}`;
-  await guardarDocumento(remision.recordId, url, nombreArchivo);
-
-  console.log(`📄 PDF de ${remision.codigo}: ${bytes.byteLength} bytes → ${url}`);
-  return url;
 }

@@ -10,6 +10,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import type { SolicitudesInfra } from '@sirius/solicitudes/infra';
 import { crearDiaSirianoInfra } from '@sirius/solicitudes/dia-siriano';
 import { getS3Client } from './aws-config.server';
+import { solicitudesAirtable } from './solicitudesAirtable';
 
 /**
  * ⚠️ La firma va al bucket de nómina, NO al de pirólisis.
@@ -84,8 +85,43 @@ export const solicitudesInfra: SolicitudesInfra = {
     return { key, archivadaEn };
   },
 
-  // `adjuntar` se omite a propósito: copiar la firma a un campo Attachment de
-  // Airtable es comodidad de consulta, y la referencia canónica ya es la key.
+  // Copia el PDF y las firmas a los campos Attachment del registro. La referencia
+  // canónica sigue siendo la key de S3, pero sin este puerto el documento del día
+  // siriano no aparece en Airtable y Gestión del Ser no lo ve desde la tabla. El
+  // bucket es privado, por eso se usa uploadAttachment (contenido en base64) y no
+  // un adjunto por URL.
+  //
+  // No lanza: el paquete llama a este puerto fuera de un try en al menos un camino
+  // (el gemelo de la firma del trabajador, cuyo campo no existe en la tabla), y un
+  // throw ahí tumbaría la radicación con el permiso ya creado.
+  async adjuntar({ recordId, campo, contenido, filename, contentType }) {
+    try {
+      const res = await fetch(
+        `https://content.airtable.com/v0/${solicitudesAirtable.baseId}/${recordId}/` +
+          `${encodeURIComponent(campo)}/uploadAttachment`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${solicitudesAirtable.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contentType,
+            filename,
+            file: Buffer.from(contenido).toString('base64'),
+          }),
+        },
+      );
+      if (!res.ok) {
+        console.error(`[solicitudes adjuntar] ${campo} → ${res.status}:`, await res.text());
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error(`[solicitudes adjuntar] ${campo}:`, error);
+      return false;
+    }
+  },
 
   // El día siriano nace autorizado y el PDF es su único respaldo. El paquete lo
   // emite; PiroliApp lo archiva junto a las firmas, en el bucket de nómina, con

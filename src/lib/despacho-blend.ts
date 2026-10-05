@@ -16,8 +16,15 @@
 //   2. Los KG son positivos y no superan lo que el pedido todavía debe.
 //   3. Hay de dónde sacar el producto: un lote con saldo, o biochar y abono con
 //      que producirlo.
-// Si un lote se elige a mano, ese lote tiene que alcanzar por sí solo: pedir un
-// lote concreto es decir de dónde sale, y fabricar por debajo sería desobedecer.
+// Si los lotes se eligen a mano, entre ellos tienen que alcanzar: pedir lotes
+// concretos es decir de dónde sale, y fabricar por debajo sería desobedecer.
+//
+// ═══ UN PEDIDO, UNA REMISIÓN, LOS LOTES QUE HAGAN FALTA ══════════════════════
+// Un pedido se produce en tantas tandas como alcancen el abono y el biochar
+// (`BLEND-<fecha>-<pedido>`, `…-<pedido>-2`), pero se despacha COMPLETO: una sola
+// remisión por el total, con una fila de producto remitido y una Salida por lote.
+// La remisión guarda cuánto salió de cada uno (`[kg-lote:…]`), y con eso la
+// composición y el CO₂ se siguen derivando exactos, ponderados por lote.
 //
 // ═══ DESPACHAR PRODUCE ════════════════════════════════════════════════════════
 // El Blend no se almacena esperando pedidos: se produce contra el pedido. Si lo
@@ -26,6 +33,14 @@
 // eso alcanza despacha lo que se pueda y deja el pedido en `Enviado Parcial`.
 // Producir primero y documentar después es el único orden que no deja un documento
 // entregando producto que no existe.
+//
+// ⚠️ Desde el 2026-09-22 la pantalla de bodega NO usa esa producción en línea: el
+// pedido tiene un botón Producir (lote `BLEND-<fecha>-<pedido>`) y el despacho
+// sale siempre de un lote elegido. El Blend se produce días antes de que lo
+// recojan, y producir desde el despacho exigía tener al conductor delante —su
+// nombre y su cédula— para poder producir. El camino sin lote queda para la API.
+// Mientras espera su despacho, el lote de un pedido es de ESE pedido: ningún otro
+// lo toma (`esLoteDeOtroPedido()`).
 //
 // ═══ EL SALDO SE DERIVA DE LOS MOVIMIENTOS, NO DE `Stock_Actual` ══════════════
 // ⚠️ La fila de `Stock_Actual` del Blend está ROTA (deuda conocida, §8 de
@@ -44,14 +59,19 @@
 // descuenta por el MAYOR de los dos, que es la lectura conservadora — ver
 // `lotesDisponiblesBlend()`.
 
-import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { config } from './config';
-import { getS3Client, awsServerConfig } from './aws-config.server';
-import { escapeAirtableValue } from './airtable-escape';
+import { assertCodigoSimbolico, escapeAirtableValue } from './airtable-escape';
 import { fetchAll, toNumber, r2 } from './inventario-prod-core';
 import { credencialesBlend, resumenBlend } from './blend-inventario-core';
-import { crearRemision, ESTADO_REMISION, type RemisionBlend } from './blend-remisiones-core';
+import {
+  crearRemision,
+  lotesDeNotas,
+  ESTADO_REMISION,
+  type LoteDeRemision,
+  type RemisionBlend,
+} from './blend-remisiones-core';
 import { listarPedidosBlend, type PedidoBlend } from './pedidos-blend-core';
+import { listarAreasCliente } from './areas-cliente-core';
 import { runProduccionBlend, loteDeProduccion } from './produccion-blend';
 import {
   planearProduccionParaDespacho,
@@ -60,9 +80,6 @@ import {
   type PlanProduccion,
 } from './produccion-para-despacho';
 import type { StepResult } from '@/types/step-result';
-
-/** Marca del lote en las notas de la remisión. La escribe `crearRemision()`. */
-const MARCA_LOTE = /\[lote:([A-Za-z0-9\-_]+)\]/;
 
 /** Restos de redondeo: por debajo de esto, dos cantidades son la misma. */
 const TOLERANCIA_KG = 0.01;
@@ -211,9 +228,10 @@ async function kgRemitidosPorLote(): Promise<Map<string, number>> {
   try {
     for (const r of await fetchAll(base, tabla, token)) {
       if (String(r.fields['Estado'] ?? '') === ESTADO_REMISION.cancelada) continue;
-      const lote = MARCA_LOTE.exec(String(r.fields['Notas de Remisión'] ?? ''))?.[1];
-      if (!lote) continue;
-      porLote.set(lote, (porLote.get(lote) ?? 0) + toNumber(r.fields['Total Cantidad Remitida']));
+      const notas = String(r.fields['Notas de Remisión'] ?? '');
+      for (const { lote, kg } of lotesDeNotas(notas, toNumber(r.fields['Total Cantidad Remitida']))) {
+        porLote.set(lote, (porLote.get(lote) ?? 0) + kg);
+      }
     }
   } catch (err) {
     // Sin este dato NO se puede validar: se propaga para que el despacho se
@@ -242,6 +260,12 @@ export interface DespachoBlendInput {
    */
   lote?: string;
   /**
+   * Varios lotes de los que sale el producto, en el orden en que se vacían. Es
+   * como despacha la pantalla: un pedido producido en dos tandas se despacha
+   * completo en UNA remisión, no en una por tanda. Tiene prioridad sobre `lote`.
+   */
+  lotes?: string[];
+  /**
    * Baches de los que sale el biochar, con los KG pesados de cada uno.
    *
    * Requerido cuando el despacho tiene que producir: el bache es la unidad de la
@@ -258,19 +282,23 @@ export interface DespachoBlendInput {
    * el transporte entre al flujo.
    */
   /**
-   * Quien se lleva el producto. Su firma es del MOMENTO DEL DESPACHO: está en la
-   * planta cargando, así que firma en el mismo dispositivo. La del receptor se da
-   * después, en la finca, por la página pública.
+   * Quien se lleva el producto. Nadie firma en la app: la remisión se imprime y
+   * se firma en papel (2026-10-02).
    */
   transportista?: {
     nombre: string;
     cedula: string;
     telefono?: string;
     email?: string;
-    /** PNG en data-URL del trazo. */
-    firmaBase64?: string;
   };
   observaciones?: string;
+  /**
+   * `AC-XXXX`: el área del cliente a la que va (Sanidad, Fertilización…).
+   * Omitido = la del pedido, si la tiene. Tiene que ser un área del MISMO
+   * cliente: la remisión la imprime, y una ajena mandaría el producto a nombre
+   * de otra empresa.
+   */
+  idAreaCliente?: string;
   /** `YYYY-MM-DD`. */
   fechaDespacho?: string;
 }
@@ -291,8 +319,13 @@ export interface PlanDespacho {
     kgDespachados: number;
     kgPendientes: number;
   };
+  /** Área del cliente a la que va, o null si no se indicó. */
+  areaCliente: { codigo: string; nombre: string } | null;
   kg: number;
+  /** Los lotes del despacho separados por coma; uno solo en el caso normal. */
   lote: string;
+  /** Cuánto sale de cada lote. Suma `kg`. */
+  reparto: LoteDeRemision[];
   /** De dónde sale el producto: de lo que ya hay, o de producir ahora. */
   origen: 'lote-existente' | 'produccion';
   /** Null cuando se despacha de un lote que ya tenía producto. */
@@ -325,14 +358,37 @@ export class DespachoInvalido extends Error {}
  * es lo que evita que un remanente se quede añejando mientras se produce al lado.
  * Se toma el lote más VIEJO que alcance a cubrir el despacho completo.
  *
- * ⚠️ Un despacho sale de UN solo lote, no de la suma de varios. No es una
- * limitación técnica: la composición del Blend y el CO₂ secuestrado de la remisión
- * se DERIVAN del lote (§5 de CLAUDE.md), y un documento que mezcla dos lotes no
- * puede declarar ni una composición ni un CO₂ ciertos. Si hay que partir el
- * despacho, son dos remisiones.
+ * Este camino automático busca UN lote que cubra todo. Despachar de varios se pide
+ * explícito con `lotes`: la remisión entonces guarda cuánto sale de cada uno
+ * (`[kg-lote:…]`), que es lo que le permite derivar composición y CO₂ ciertos.
  */
-function elegirLoteExistente(lotes: LoteBlendDisponible[], kg: number): LoteBlendDisponible | null {
-  return lotes.find((l) => l.kgDisponibles + TOLERANCIA_KG >= kg) ?? null;
+function elegirLoteExistente(
+  lotes: LoteBlendDisponible[],
+  kg: number,
+  idPedido: string
+): LoteBlendDisponible | null {
+  const cubre = (l: LoteBlendDisponible) => l.kgDisponibles + TOLERANCIA_KG >= kg;
+  return (
+    lotes.find((l) => esLoteDePedido(l.lote, idPedido) && cubre(l)) ??
+    lotes.find((l) => !esLoteDeOtroPedido(l.lote, idPedido) && cubre(l)) ??
+    null
+  );
+}
+
+/**
+ * ¿El lote se produjo para este pedido? `BLEND-<fecha>-<pedido>` o `…-<pedido>-<n>`.
+ *
+ * El Blend se produce contra lo que el pedido programó, días antes de que lo
+ * recojan. Mientras espera, ese lote es de ESE pedido: despacharlo a otro dejaría
+ * al primero sin su producto y con el biochar ya consumido.
+ */
+function esLoteDePedido(lote: string, idPedido: string): boolean {
+  const escapado = idPedido.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^BLEND-\\d{4}-\\d{2}-\\d{2}-${escapado}(-\\d+)?$`).test(lote);
+}
+
+function esLoteDeOtroPedido(lote: string, idPedido: string): boolean {
+  return /SIRIUS-PED-/.test(lote) && !esLoteDePedido(lote, idPedido);
 }
 
 /**
@@ -366,8 +422,8 @@ function loteParaProducir(fecha: string, idPedido: string, lotes: LoteBlendDispo
  * ═══ EL ORDEN IMPORTA ═══════════════════════════════════════════════════════
  * Todo lo que se puede validar se valida ANTES de la primera escritura, y la
  * producción va antes que la remisión: si producir falla, no se emite un documento
- * por un producto que no existe. Al revés no tiene arreglo —una remisión es un
- * documento que el cliente puede firmar desde el celular apenas se emite—.
+ * por un producto que no existe. Al revés no tiene arreglo —una remisión emitida
+ * tiene consecutivo en el Core y no se puede borrar—.
  *
  * ═══ PARCIAL ANTES QUE NADA ═════════════════════════════════════════════════
  * Si el inventario no da para el pedido completo se despacha lo que alcance y el
@@ -414,6 +470,11 @@ export async function despacharPedidoBlend(
     );
   }
 
+  const areaCliente = await resolverAreaDespacho(
+    input.idAreaCliente?.trim() || pedido.idAreaCliente,
+    pedido.idCliente
+  );
+
   // Sin KG explícitos se despacha todo lo que el pedido debe: es lo que se quiere
   // el 99% de las veces, y escribirlo a mano solo agrega una forma de equivocarse.
   const kgPedido = input.kg === undefined ? pedido.kgPendientes : r2(Number(input.kg));
@@ -433,22 +494,53 @@ export async function despacharPedidoBlend(
   let produccion: PlanProduccionDespacho | null = null;
   let kg = kgPedido;
   let motivoParcial: string | undefined;
+  /** Solo cuando el despacho sale de lotes elegidos: cuánto de cada uno. */
+  const repartoElegido: Array<LoteDeRemision & { disponible: number }> = [];
 
-  if (input.lote) {
-    // Lote elegido a mano: no se produce nada y el tope es lo que ese lote tenga.
-    lote = lotes.find((l) => l.lote === input.lote) ?? null;
-    if (!lote) {
+  const lotesElegidos = [...new Set(input.lotes?.length ? input.lotes : input.lote ? [input.lote] : [])];
+
+  if (lotesElegidos.length) {
+    // Lotes elegidos a mano: no se produce nada y el tope es lo que esos lotes
+    // tengan entre todos. Se vacían en el orden recibido.
+    const elegidos = lotesElegidos.map((codigo) => {
+      const l = lotes.find((x) => x.lote === codigo);
+      if (!l) {
+        throw new DespachoInvalido(
+          `El lote ${codigo} no tiene ninguna producción de Blend registrada en el Core.`
+        );
+      }
+      if (esLoteDeOtroPedido(l.lote, pedido.codigo)) {
+        throw new DespachoInvalido(
+          `El lote ${l.lote} se produjo para otro pedido: no se despacha a ${pedido.codigo}.`
+        );
+      }
+      return l;
+    });
+
+    const totalDisponible = r2(elegidos.reduce((t, l) => t + l.kgDisponibles, 0));
+    if (kg > totalDisponible + TOLERANCIA_KG) {
       throw new DespachoInvalido(
-        `El lote ${input.lote} no tiene ninguna producción de Blend registrada en el Core.`
+        elegidos.length === 1
+          ? `El lote ${elegidos[0].lote} solo tiene ${totalDisponible} kg sin despachar y se están sacando ${kg} kg.`
+          : `Los lotes elegidos solo tienen ${totalDisponible} kg sin despachar y se están sacando ${kg} kg.`
       );
     }
-    if (kg > lote.kgDisponibles + TOLERANCIA_KG) {
-      throw new DespachoInvalido(
-        `El lote ${lote.lote} solo tiene ${lote.kgDisponibles} kg sin despachar y se están sacando ${kg} kg.`
-      );
+
+    let resto = kg;
+    for (const l of elegidos) {
+      if (resto <= TOLERANCIA_KG) break;
+      const toma = r2(Math.min(resto, l.kgDisponibles));
+      if (toma <= TOLERANCIA_KG) continue;
+      repartoElegido.push({ lote: l.lote, kg: toma, disponible: l.kgDisponibles });
+      resto = r2(resto - toma);
     }
+    // El redondeo por lote puede dejar un centavo suelto: va al último.
+    const ultimo = repartoElegido[repartoElegido.length - 1];
+    if (ultimo && Math.abs(resto) > 0) ultimo.kg = r2(ultimo.kg + resto);
+
+    lote = elegidos.find((l) => l.lote === repartoElegido[0]?.lote) ?? elegidos[0];
   } else {
-    lote = elegirLoteExistente(lotes, kg);
+    lote = elegirLoteExistente(lotes, kg, pedido.codigo);
 
     if (!lote) {
       // Una selección que no cuadra es un error del despacho, no un "no se pudo
@@ -470,7 +562,9 @@ export async function despacharPedidoBlend(
       } else {
         // No hay con qué producir. Antes de rendirse, el remanente de un lote viejo
         // sigue siendo producto despachable: media carga vale más que ninguna.
-        const conSaldo = lotes.find((l) => l.kgDisponibles > TOLERANCIA_KG);
+        const conSaldo = lotes.find(
+          (l) => l.kgDisponibles > TOLERANCIA_KG && !esLoteDeOtroPedido(l.lote, pedido.codigo)
+        );
         if (!conSaldo) {
           throw new DespachoInvalido(
             `No hay Blend en bodega y no se puede producir: hay ${plan.biocharDisponible} kg de ` +
@@ -488,7 +582,14 @@ export async function despacharPedidoBlend(
   }
 
   const loteCodigo = produccion?.lote ?? lote?.lote ?? '';
-  const disponibleAntes = produccion ? 0 : (lote?.kgDisponibles ?? 0);
+  const reparto: LoteDeRemision[] = repartoElegido.length
+    ? repartoElegido.map(({ lote: l, kg: k }) => ({ lote: l, kg: k }))
+    : [{ lote: loteCodigo, kg }];
+  const disponibleAntes = produccion
+    ? 0
+    : repartoElegido.length
+      ? r2(repartoElegido.reduce((t, l) => t + l.disponible, 0))
+      : (lote?.kgDisponibles ?? 0);
   const blendDisponibleAntes = resumen.kgSegunMovimientos;
   const cubre = kg + TOLERANCIA_KG >= pedido.kgPendientes;
 
@@ -501,8 +602,10 @@ export async function despacharPedidoBlend(
       kgDespachados: pedido.kgDespachados,
       kgPendientes: pedido.kgPendientes,
     },
+    areaCliente,
     kg,
-    lote: loteCodigo,
+    lote: reparto.map((l) => l.lote).join(', '),
+    reparto,
     origen: produccion ? 'produccion' : 'lote-existente',
     produccion,
     loteDisponibleAntes: disponibleAntes,
@@ -517,30 +620,6 @@ export async function despacharPedidoBlend(
   if (dryRun) return { ok: true, plan };
 
   const steps: StepResult[] = [];
-
-  // ── 0. La firma de quien entrega ────────────────────────────────────────────
-  // Va antes que todo lo demás y es CRÍTICA cuando se dio: si el trazo no se puede
-  // guardar, es mejor no consumir baches ni emitir un documento que después dirá
-  // "entregado" sin nada que lo respalde. Quien no exige firma —un traslado
-  // interno— simplemente no manda `firmaBase64` y esto no corre.
-  let firmaEntregaKey: string | undefined;
-  if (input.transportista?.firmaBase64) {
-    try {
-      firmaEntregaKey = await subirFirmaEntrega(
-        input.transportista.firmaBase64,
-        pedido.codigo,
-        fecha
-      );
-      steps.push({ step: 'firma_entrega', ok: true, detail: { key: firmaEntregaKey } });
-    } catch (err) {
-      steps.push({
-        step: 'firma_entrega',
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return { ok: false, plan, remision: null, steps };
-    }
-  }
 
   // ── 1. Producir, si hace falta ──────────────────────────────────────────────
   if (produccion) {
@@ -574,6 +653,7 @@ export async function despacharPedidoBlend(
         `Se produjeron ${resultado.kgBlend} kg, menos de los ${kg} kg previstos.`;
       plan.estadoPedidoResultante =
         plan.kg + TOLERANCIA_KG >= pedido.kgPendientes ? 'Enviado' : 'Enviado Parcial';
+      plan.reparto = [{ lote: loteCodigo, kg: plan.kg }];
     }
   }
 
@@ -581,13 +661,14 @@ export async function despacharPedidoBlend(
   const resultado = await crearRemision({
     idPedido: pedido.codigo,
     idCliente: pedido.idCliente,
-    lote: loteCodigo,
+    idAreaCliente: areaCliente?.codigo,
+    lote: plan.reparto[0]?.lote ?? loteCodigo,
     kg: plan.kg,
+    reparto: plan.reparto.length > 1 ? plan.reparto : undefined,
     responsableEntrega: input.responsableEntrega.trim(),
     transportista: input.transportista,
     observaciones: input.observaciones,
     fechaDespacho: fecha,
-    firmaEntregaKey,
   });
   steps.push(...resultado.steps);
 
@@ -595,30 +676,30 @@ export async function despacharPedidoBlend(
 }
 
 /**
- * Sube el trazo de quien entrega y devuelve su key de S3.
- *
- * Se guarda la KEY y no una URL firmada porque el PDF con las dos firmas se
- * genera cuando el receptor firma —días después, a veces—, y una URL firmada de
- * S3 caduca a los 7 días. La key no caduca; la URL se pide cuando se necesita.
+ * Valida que el área exista y sea del cliente del pedido. Va antes de escribir
+ * nada: un área equivocada no se nota hasta que el documento llega impreso.
  */
-async function subirFirmaEntrega(
-  firmaBase64: string,
-  idPedido: string,
-  fecha: string
-): Promise<string> {
-  const base64 = firmaBase64.replace(/^data:image\/\w+;base64,/, '');
-  if (base64.length < 100) {
-    throw new Error('La firma de quien entrega llegó vacía.');
+async function resolverAreaDespacho(
+  codigo: string | undefined,
+  idCliente: string
+): Promise<{ codigo: string; nombre: string } | null> {
+  if (!codigo) return null;
+  try {
+    assertCodigoSimbolico(codigo, 'área del cliente');
+  } catch (err) {
+    throw new DespachoInvalido(err instanceof Error ? err.message : String(err));
   }
-
-  const key = `firmas-blend/entrega-${idPedido}-${fecha}-${Date.now()}.png`;
-  await getS3Client().send(
-    new PutObjectCommand({
-      Bucket: awsServerConfig.bucketName,
-      Key: key,
-      Body: Buffer.from(base64, 'base64'),
-      ContentType: 'image/png',
-    })
-  );
-  return key;
+  const areas = await listarAreasCliente(idCliente);
+  if (areas === null) {
+    throw new DespachoInvalido(
+      'Sirius Clients Core no está configurado: no se puede verificar el área del cliente.'
+    );
+  }
+  const area = areas.find((a) => a.codigo === codigo);
+  if (!area) {
+    throw new DespachoInvalido(
+      `El área ${codigo} no es un área activa del cliente ${idCliente}.`
+    );
+  }
+  return { codigo: area.codigo, nombre: area.nombre };
 }

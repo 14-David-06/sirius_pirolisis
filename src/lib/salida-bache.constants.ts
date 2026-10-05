@@ -89,3 +89,52 @@ export function referenciaSalida(
 export function marcaSalida(referencia: string): string {
   return `[SALIDA:${referencia}]`;
 }
+
+/**
+ * Quién se lleva el biochar en una entrega sin contraprestación.
+ *
+ * Vive en la remisión de la salida (`Remisiones Baches Pirolisis`), no en Clients
+ * Core: quien recibe una donación o un piloto no es un cliente, y darlo de alta
+ * allá lo metería en pedidos y en el CRM de las otras apps.
+ */
+export interface ReceptorEntrega {
+  nombre: string;
+  cedula: string;
+  vehiculo?: string;
+  color?: string;
+  placa?: string;
+}
+
+/**
+ * El compromiso que asume quien recibe. Lo muestra el formulario y lo imprime el
+ * acta: tienen que decir lo mismo, porque lo que se firma es el papel.
+ *
+ * No quemarlo y llevarlo al suelo es lo que hace que ese biochar siga siendo
+ * carbono secuestrado: quemado, el CO₂ vuelve a la atmósfera y la entrega deja de
+ * poder contarse en la contabilidad de carbono.
+ */
+export const COMPROMISO_ENTREGA_BIOCHAR =
+  'Quien recibe se compromete con Sirius Regenerative Solutions S.A.S. ZOMAC a NO QUEMAR ' +
+  'este biochar y a LLEVARLO AL SUELO como enmienda. El biochar es carbono estable: ' +
+  'quemarlo devuelve ese carbono a la atmósfera como CO₂ y anula el secuestro que ' +
+  'respalda esta entrega.';
+
+/** Solo las salidas por `entrega` tienen acta. */
+export function esReferenciaEntrega(referencia: string): boolean {
+  return /^SAL-ENT-\d{4}-\d{2}-\d{2}-S-\d{5}$/.test(referencia);
+}
+
+/** El bache va al final de la referencia (`SAL-ENT-<fecha>-S-00144`). */
+export function bacheDeReferencia(referencia: string): string | null {
+  return referencia.match(/(S-\d{5})$/)?.[1] ?? null;
+}
+
+/**
+ * Nombre y cédula son obligatorios: sin ellos el acta no dice a quién se le
+ * entregó, que es justamente lo que la metodología pide documentar.
+ */
+export function receptorIncompleto(r: Partial<ReceptorEntrega> | undefined | null): string | null {
+  if (!r?.nombre?.trim()) return 'Falta el nombre de quien recibe.';
+  if (!r?.cedula?.trim()) return 'Falta la cédula de quien recibe.';
+  return null;
+}

@@ -1,405 +1,405 @@
 /**
- * blend-remision-pdf-generator.ts
- * Generador server-side de Remisión de Despacho Biochar Blend usando pdf-lib.
- * Retorna Uint8Array (bytes del PDF) listo para subir a S3.
+ * PDF de una remisión de Biochar Blend.
  *
- * Secciones del documento:
- *   1. Encabezado: identificación del documento
- *   2. Datos del Pedido / Vinculación
- *   3. Composición del Despacho (KG por componente)
- *   4. Impacto Ambiental (CO2 secuestrado)
- *   5. Responsable de Entrega
- *   6. Responsable que Recibe
- *   7. Firma y Compromiso
- *   8. Pie de Página (observaciones + aviso legal)
+ * Sigue el formato estándar de remisión del ecosistema, el de DataLab
+ * (`sirius_laboratorio/src/lib/remision-pdf-generator.ts`, Manual de Marca 2023):
+ * el cliente recibe remisiones de las dos áreas —GUAICARAMO compra biológicos y
+ * Blend— y tienen que verse como el mismo documento de la misma empresa. La
+ * versión anterior era un diseño propio de la planta que no se parecía en nada.
+ *
+ * Lo único que el Blend agrega al estándar, con el mismo lenguaje visual, es el
+ * bloque de CO₂, que sostiene la contabilidad de carbono.
  */
-
-import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage, PDFImage } from 'pdf-lib';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface BlendRemisionData {
-  // Identificación
-  id: string;           // REM-BLEND-recXXX
-  record_id: string;    // recXXX de Airtable
-  fecha_evento: string; // ISO date
+  /** `SIRIUS-REM-XXXX`. */
+  id: string;
+  record_id: string;
+  /** `YYYY-MM-DD`. */
+  fecha_evento: string;
 
-  // Datos del pedido
   cliente: string;
-  nit_cc_cliente?: string;
+  id_cliente?: string;
   pedido_id?: string;
-  produccion_id?: string;
+  /** Área del cliente a la que va (Sanidad, Fertilización…) y su `AC-XXXX`. */
+  area_cliente?: { nombre: string; codigo: string };
 
-  // Composición
-  kg_biochar_puro: number;
-  kg_abono_4g: number;
-  kg_agua: number;
-  kg_biologicos: number;
   kg_total: number;
   co2_secuestrado_kg: number;
 
-  // Responsable entrega
   responsable_entrega: string;
-  num_doc_entrega: string;
-  telefono_entrega?: string;
-  email_entrega?: string;
+  transportista?: { nombre: string; cedula: string };
+  receptor?: { nombre: string; cedula: string };
+  /** Fecha en que se recibió, si ya se recibió. */
+  fecha_recibido?: string;
 
-  // Responsable recibe (puede estar vacío si es borrador)
-  responsable_recibe?: string;
-  num_doc_recibe?: string;
-  telefono_recibe?: string;
-  email_recibe?: string;
-
-  // Firma y compromiso
-  firma_timestamp?: string;
-  compromiso_aceptado?: boolean;
-  firma_imagen_url?: string;
-  ip_firma?: string;
-
-  // Otros
   estado: string;
-  realiza_registro: string;
   observaciones?: string;
 }
 
-// ─── Colores corporativos ─────────────────────────────────────────────────────
-const COLOR_VERDE_PRIMARIO = rgb(0.10, 0.44, 0.19);   // #1A7030
-const COLOR_VERDE_CLARO    = rgb(0.82, 0.93, 0.84);   // #D1EDD6
-const COLOR_GRIS_TEXTO     = rgb(0.20, 0.20, 0.20);   // #333333
-const COLOR_GRIS_BORDE     = rgb(0.75, 0.75, 0.75);   // #BFBFBF
-const COLOR_BLANCO         = rgb(1, 1, 1);
-const COLOR_AMARILLO_CO2   = rgb(1.00, 0.95, 0.60);   // #FFF299
+// ============ COLORES MARCA SIRIUS (los mismos de DataLab) ============
+export const SIRIUS_BLACK = rgb(0.067, 0.067, 0.067);
+export const SIRIUS_DARK = rgb(0.122, 0.137, 0.161);
+export const SIRIUS_GREEN = rgb(0.180, 0.741, 0.420);
+export const TEXT_PRIMARY = rgb(0.133, 0.133, 0.133);
+export const TEXT_SECONDARY = rgb(0.400, 0.420, 0.450);
+export const TEXT_MUTED = rgb(0.560, 0.580, 0.610);
+export const WHITE = rgb(1, 1, 1);
+export const BG_PAPER = rgb(0.992, 0.992, 0.996);
+export const BORDER_MAIN = rgb(0.880, 0.890, 0.905);
+export const BORDER_LIGHT = rgb(0.930, 0.935, 0.945);
+export const ROW_ALT = rgb(0.965, 0.970, 0.978);
 
-// ─── Constantes de layout ─────────────────────────────────────────────────────
-const MARGIN_X = 50;
-const PAGE_WIDTH = 595.28;   // A4 pts
-const PAGE_HEIGHT = 841.89;  // A4 pts
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
+export const NOTES_BG = rgb(0.996, 0.973, 0.882);
+export const NOTES_BORDER = rgb(0.910, 0.770, 0.310);
+export const NOTES_TEXT = rgb(0.480, 0.370, 0.060);
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+export const COMPLETED_BG = rgb(0.925, 0.980, 0.945);
+export const COMPLETED_BORDER = rgb(0.180, 0.741, 0.420);
+export const COMPLETED_TEXT = rgb(0.090, 0.400, 0.200);
 
-function drawRect(
-  page: PDFPage,
-  x: number, y: number, w: number, h: number,
-  fill: ReturnType<typeof rgb>,
-  stroke?: ReturnType<typeof rgb>
-) {
-  page.drawRectangle({
-    x, y, width: w, height: h,
-    color: fill,
-    borderColor: stroke ?? fill,
-    borderWidth: stroke ? 0.5 : 0,
-  });
-}
+export const PAGE_WIDTH = 595.28; // A4
+export const PAGE_HEIGHT = 841.89;
+export const MARGIN = 50;
+export const CONTENT_W = PAGE_WIDTH - 2 * MARGIN;
 
-// Las fuentes estándar de pdf-lib usan codificación WinAnsi, que no puede
-// codificar caracteres como el subíndice ₂ o el check ✓. Se reemplazan por
-// equivalentes ASCII antes de dibujar.
-function sanitizeWinAnsi(text: string): string {
-  if (!text) return text;
+// ============ HELPERS ============
+// Exportados para el acta de entrega de biochar (`acta-entrega-biochar-pdf.ts`):
+// es otro documento de la misma empresa y tiene que verse como tal.
+
+// Las fuentes estándar de pdf-lib usan WinAnsi: el subíndice de CO₂ se pasa a
+// ASCII antes de que el filtro general lo borre y quede "CO".
+export function sanitize(text: string): string {
+  if (!text) return '';
   return text
     .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (c) => String('₀₁₂₃₄₅₆₇₈₉'.indexOf(c)))
-    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => String('⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(c)))
-    .replace(/[✓✔]/g, 'OK')
-    .replace(/→/g, '->')
-    .replace(/←/g, '<-')
-    .replace(/≥/g, '>=')
-    .replace(/≤/g, '<=')
-    .replace(/•/g, '-');
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, '')
+    .trim();
 }
 
-function drawText(
+export function rect(page: PDFPage, x: number, y: number, w: number, h: number, color: ReturnType<typeof rgb>) {
+  page.drawRectangle({ x, y, width: w, height: h, color });
+}
+
+export function borderRect(
   page: PDFPage,
-  text: string,
-  x: number, y: number,
-  font: PDFFont,
-  size: number,
-  color: ReturnType<typeof rgb> = COLOR_GRIS_TEXTO
+  x: number, y: number, w: number, h: number,
+  borderColor: ReturnType<typeof rgb>,
+  borderWidth = 0.75,
+  fillColor?: ReturnType<typeof rgb>
 ) {
-  const safe = sanitizeWinAnsi(text);
-  try {
-    page.drawText(safe, { x, y, font, size, color });
-  } catch {
-    // Fallback: cualquier carácter que aún no codifique WinAnsi → '?'
-    page.drawText(safe.replace(/[^\x20-\xFF]/g, '?'), { x, y, font, size, color });
+  page.drawRectangle({ x, y, width: w, height: h, borderColor, borderWidth, color: fillColor });
+}
+
+export function line(page: PDFPage, x1: number, y1: number, x2: number, y2: number, color: ReturnType<typeof rgb>, thickness = 0.5) {
+  page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, color, thickness });
+}
+
+export function truncate(text: string, font: PDFFont, size: number, maxW: number): string {
+  if (font.widthOfTextAtSize(text, size) <= maxW) return text;
+  let t = text;
+  while (t.length > 0 && font.widthOfTextAtSize(t + '...', size) > maxW) t = t.slice(0, -1);
+  return t + '...';
+}
+
+export function wrapText(text: string, font: PDFFont, size: number, maxW: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    const test = cur ? `${cur} ${w}` : w;
+    if (font.widthOfTextAtSize(test, size) > maxW && cur) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = test;
+    }
   }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
-function drawLabel(
-  page: PDFPage,
-  label: string, value: string,
-  x: number, y: number,
-  labelFont: PDFFont, valueFont: PDFFont,
-  labelSize = 8, valueSize = 9
-) {
-  drawText(page, label, x, y, labelFont, labelSize, COLOR_VERDE_PRIMARIO);
-  drawText(page, value || '—', x, y - 11, valueFont, valueSize);
-}
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-function formatDate(iso?: string): string {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  } catch {
-    return iso;
+// Se parte el texto en vez de usar `new Date()`: `YYYY-MM-DD` se leería como
+// medianoche UTC, que en Bogotá todavía es el día anterior.
+export function formatDateES(dateStr?: string): string {
+  if (!dateStr) return 'N/A';
+  const parts = dateStr.split('T')[0].split('-').map(Number);
+  if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+    const [y, m, d] = parts;
+    return `${d} de ${MESES[m - 1]} de ${y}`;
   }
+  return dateStr;
 }
 
-function formatDateTime(iso?: string): string {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('es-CO', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-      timeZone: 'America/Bogota',
-    });
-  } catch {
-    return iso;
-  }
+export function formatKg(n: number): string {
+  return n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function formatKg(val: number): string {
-  return val.toFixed(2) + ' kg';
+export function textRight(page: PDFPage, text: string, font: PDFFont, size: number, rightX: number, yPos: number, color: ReturnType<typeof rgb>) {
+  const w = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x: rightX - w, y: yPos, size, font, color });
 }
 
-// ─── Generador principal ──────────────────────────────────────────────────────
+export function textCenter(page: PDFPage, text: string, font: PDFFont, size: number, cx: number, colW: number, yPos: number, color: ReturnType<typeof rgb>) {
+  const w = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x: cx + (colW - w) / 2, y: yPos, size, font, color });
+}
+
+export function sectionTitle(page: PDFPage, title: string, y: number, bold: PDFFont) {
+  rect(page, MARGIN, y - 2, 3, 14, SIRIUS_GREEN);
+  page.drawText(title, { x: MARGIN + 10, y, size: 9, font: bold, color: TEXT_PRIMARY });
+  line(page, MARGIN, y - 8, MARGIN + CONTENT_W, y - 8, BORDER_MAIN, 0.5);
+}
+
+// ============ GENERADOR ============
 
 export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  doc.setTitle(`Remisión Blend ${data.id}`);
-  doc.setAuthor('Sirius Pirólisis SAS');
-  doc.setCreator('Sistema Sirius Pirólisis');
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle(`Remisión ${data.id}`);
+  pdfDoc.setAuthor('Sirius Regenerative Solutions S.A.S.');
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  // Sin logo el documento sigue siendo válido: se avisa y se dibuja el nombre.
+  let logoImage: PDFImage | null = null;
+  try {
+    const logoBytes = fs.readFileSync(path.join(process.cwd(), 'public', 'logo.png'));
+    logoImage = await pdfDoc.embedPng(logoBytes);
+  } catch {
+    console.warn('⚠️ public/logo.png no encontrado: remisión sin logo');
+  }
 
-  const fontBold    = await doc.embedFont(StandardFonts.HelveticaBold);
-  const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
-  const fontOblique = await doc.embedFont(StandardFonts.HelveticaOblique);
+  let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = PAGE_HEIGHT;
 
-  let cursorY = PAGE_HEIGHT - MARGIN_X;
+  // El servidor puede correr en UTC: la hora del documento es la de la planta.
+  const ahora = new Date();
+  const fechaGen = ahora.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Bogota' });
+  const horaGen = ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' });
 
-  // ── SECCIÓN 1: Encabezado ──────────────────────────────────────────────────
-  // Barra verde de cabecera
-  drawRect(page, MARGIN_X, cursorY - 60, CONTENT_WIDTH, 60, COLOR_VERDE_PRIMARIO);
+  function ensureSpace(needed: number) {
+    if (y - needed < 65) {
+      page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      y = PAGE_HEIGHT - 40;
+    }
+  }
 
-  // Título principal
-  drawText(
-    page,
-    'REMISIÓN DE DESPACHO',
-    MARGIN_X + 12, cursorY - 22,
-    fontBold, 15, COLOR_BLANCO
-  );
-  drawText(
-    page,
-    'BIOCHAR BLEND — SIRIUS PIRÓLISIS SAS',
-    MARGIN_X + 12, cursorY - 38,
-    fontRegular, 10, COLOR_BLANCO
-  );
+  // ═══ ENCABEZADO ═══════════════════════════════════════════════════════════
+  const headerH = 90;
+  y -= headerH;
+  rect(page, 0, y, PAGE_WIDTH, headerH, SIRIUS_BLACK);
+  rect(page, 0, y, PAGE_WIDTH, 3, SIRIUS_GREEN);
 
-  // ID y fecha — parte derecha
-  const idText = data.id;
-  const idWidth = fontBold.widthOfTextAtSize(idText, 11);
-  drawText(page, idText, PAGE_WIDTH - MARGIN_X - idWidth - 4, cursorY - 22, fontBold, 11, COLOR_BLANCO);
-  const fechaStr = 'Fecha: ' + formatDate(data.fecha_evento);
-  const fechaWidth = fontRegular.widthOfTextAtSize(fechaStr, 8);
-  drawText(page, fechaStr, PAGE_WIDTH - MARGIN_X - fechaWidth - 4, cursorY - 38, fontRegular, 8, COLOR_BLANCO);
+  if (logoImage) {
+    const dims = logoImage.scale(1);
+    const logoH = 52;
+    const logoW = (dims.width / dims.height) * logoH;
+    page.drawImage(logoImage, { x: MARGIN, y: y + (headerH - logoH) / 2 + 2, width: logoW, height: logoH });
 
-  // Badge de estado
-  drawRect(page, MARGIN_X + 12, cursorY - 58, 90, 14, COLOR_BLANCO);
-  drawText(page, `Estado: ${data.estado}`, MARGIN_X + 16, cursorY - 52, fontBold, 7.5, COLOR_VERDE_PRIMARIO);
+    const textX = MARGIN + logoW + 14;
+    page.drawText('SIRIUS', { x: textX, y: y + 55, size: 20, font: bold, color: WHITE });
+    page.drawText('REGENERATIVE SOLUTIONS', { x: textX, y: y + 38, size: 10, font: regular, color: rgb(0.75, 0.78, 0.82) });
+    page.drawText('S.A.S. ZOMAC  |  NIT: 901.234.567-8', { x: textX, y: y + 22, size: 7.5, font: regular, color: rgb(0.55, 0.58, 0.62) });
+  } else {
+    page.drawText('SIRIUS REGENERATIVE SOLUTIONS', { x: MARGIN, y: y + 52, size: 18, font: bold, color: WHITE });
+    page.drawText('S.A.S. ZOMAC  |  NIT: 901.234.567-8', { x: MARGIN, y: y + 34, size: 8, font: regular, color: rgb(0.55, 0.58, 0.62) });
+  }
 
-  cursorY -= 70;
+  textRight(page, 'REMISION DE DESPACHO', regular, 7.5, PAGE_WIDTH - MARGIN, y + 68, rgb(0.55, 0.58, 0.62));
+  textRight(page, 'No. ' + data.id.split('-').pop(), bold, 28, PAGE_WIDTH - MARGIN, y + 30, SIRIUS_GREEN);
+  textRight(page, sanitize(data.id), regular, 8, PAGE_WIDTH - MARGIN, y + 15, rgb(0.65, 0.68, 0.72));
 
-  // ── SECCIÓN 2: Datos del Pedido ───────────────────────────────────────────
-  cursorY -= 10;
-  drawRect(page, MARGIN_X, cursorY - 14, CONTENT_WIDTH, 14, COLOR_VERDE_CLARO);
-  drawText(page, '1. DATOS DEL PEDIDO Y CLIENTE', MARGIN_X + 5, cursorY - 11, fontBold, 9, COLOR_VERDE_PRIMARIO);
-  cursorY -= 22;
+  // ═══ DATOS DEL DOCUMENTO ══════════════════════════════════════════════════
+  y -= 22;
+  ensureSpace(120);
 
-  const col = CONTENT_WIDTH / 3;
-
-  drawLabel(page, 'Cliente', data.cliente, MARGIN_X, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'NIT / CC', data.nit_cc_cliente || '—', MARGIN_X + col, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'Pedido Origen', data.pedido_id || '—', MARGIN_X + col * 2, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-
-  drawLabel(page, 'Producción Origen', data.produccion_id || '—', MARGIN_X, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'Registrado por', data.realiza_registro, MARGIN_X + col, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-
-  // ── SECCIÓN 3: Composición del Despacho ──────────────────────────────────
-  cursorY -= 4;
-  drawRect(page, MARGIN_X, cursorY - 14, CONTENT_WIDTH, 14, COLOR_VERDE_CLARO);
-  drawText(page, '2. COMPOSICIÓN DEL DESPACHO', MARGIN_X + 5, cursorY - 11, fontBold, 9, COLOR_VERDE_PRIMARIO);
-  cursorY -= 20;
-
-  // Tabla de composición
-  const compCols = 5;
-  const compColW = CONTENT_WIDTH / compCols;
-  const tableTop = cursorY;
-  const tableRowH = 22;
-
-  // Encabezado de tabla
-  drawRect(page, MARGIN_X, tableTop - tableRowH, CONTENT_WIDTH, tableRowH, COLOR_VERDE_PRIMARIO);
-  const headers = ['Biochar Puro', 'Abono 4G', 'Agua', 'Biológicos', 'TOTAL DESPACHO'];
-  headers.forEach((h, i) => {
-    drawText(page, h, MARGIN_X + compColW * i + 5, tableTop - 9, fontBold, 8, COLOR_BLANCO);
-  });
-
-  // Fila de valores
-  cursorY = tableTop - tableRowH;
-  drawRect(page, MARGIN_X, cursorY - tableRowH, CONTENT_WIDTH, tableRowH, COLOR_VERDE_CLARO);
-  const values = [
-    formatKg(data.kg_biochar_puro),
-    formatKg(data.kg_abono_4g),
-    formatKg(data.kg_agua),
-    formatKg(data.kg_biologicos),
-    formatKg(data.kg_total),
+  const col1X = MARGIN + 18;
+  const col2X = MARGIN + CONTENT_W / 2 + 10;
+  const rowStep = 24;
+  const leftFields = [
+    { label: 'CLIENTE', value: sanitize(data.cliente) },
+    { label: 'FECHA DE REMISION', value: sanitize(formatDateES(data.fecha_evento)) },
+    { label: 'PEDIDO RELACIONADO', value: sanitize(data.pedido_id || 'N/A') },
   ];
-  values.forEach((v, i) => {
-    const isTotalCol = i === compCols - 1;
-    drawText(
-      page, v,
-      MARGIN_X + compColW * i + 5, cursorY - 13,
-      isTotalCol ? fontBold : fontRegular, 9,
-      isTotalCol ? COLOR_VERDE_PRIMARIO : COLOR_GRIS_TEXTO
-    );
-  });
-  cursorY -= tableRowH;
+  const rightFields = [
+    { label: 'CODIGO CLIENTE', value: sanitize(data.id_cliente || 'N/A') },
+    { label: 'HORA DE GENERACION', value: sanitize(horaGen) },
+    { label: 'AREA DE ORIGEN', value: 'Pirólisis' },
+  ];
+  // Solo si se indicó: una fila "N/A" en cada remisión vieja sería ruido.
+  if (data.area_cliente) {
+    leftFields.push({ label: 'AREA DESTINO', value: sanitize(data.area_cliente.nombre) });
+    rightFields.push({ label: 'CODIGO AREA', value: sanitize(data.area_cliente.codigo) });
+  }
 
-  // Bordes de tabla
-  drawRect(page, MARGIN_X, cursorY, CONTENT_WIDTH, tableRowH * 2, COLOR_BLANCO, COLOR_GRIS_BORDE);
-  for (let i = 1; i < compCols; i++) {
-    page.drawLine({
-      start: { x: MARGIN_X + compColW * i, y: cursorY },
-      end:   { x: MARGIN_X + compColW * i, y: tableTop },
-      thickness: 0.3,
-      color: COLOR_GRIS_BORDE,
+  const infoBoxH = 20 + (leftFields.length - 1) * rowStep + 22;
+  borderRect(page, MARGIN, y - infoBoxH, CONTENT_W, infoBoxH, BORDER_MAIN, 0.75, BG_PAPER);
+  const divX = MARGIN + CONTENT_W / 2;
+  line(page, divX, y - 10, divX, y - infoBoxH + 10, BORDER_LIGHT, 0.5);
+
+  for (let i = 0; i < leftFields.length; i++) {
+    const rowY = y - 20 - i * rowStep;
+    for (const [x, f] of [[col1X, leftFields[i]], [col2X, rightFields[i]]] as const) {
+      page.drawText(f.label, { x, y: rowY, size: 7, font: bold, color: TEXT_MUTED });
+      page.drawText(truncate(f.value, bold, 9.5, CONTENT_W / 2 - 40), { x, y: rowY - 12, size: 9.5, font: bold, color: TEXT_PRIMARY });
+    }
+    if (i < leftFields.length - 1) {
+      line(page, MARGIN + 12, rowY - 19, MARGIN + CONTENT_W - 12, rowY - 19, BORDER_LIGHT, 0.3);
+    }
+  }
+  y -= infoBoxH;
+
+  // ═══ TRANSPORTE Y ENTREGA ═════════════════════════════════════════════════
+  if (data.transportista || data.responsable_entrega) {
+    y -= 16;
+    ensureSpace(65);
+    page.drawText('TRANSPORTE Y ENTREGA', { x: MARGIN, y, size: 7, font: bold, color: TEXT_MUTED });
+    y -= 8;
+
+    const cardH = 44;
+    const gap = 10;
+    const showBoth = Boolean(data.transportista && data.responsable_entrega);
+    const halfW = showBoth ? (CONTENT_W - gap) / 2 : CONTENT_W;
+    y -= cardH;
+
+    if (data.transportista) {
+      const cw = halfW;
+      borderRect(page, MARGIN, y, cw, cardH, BORDER_MAIN, 0.5, BG_PAPER);
+      rect(page, MARGIN, y, 3, cardH, SIRIUS_GREEN);
+      page.drawText('TRANSPORTISTA', { x: MARGIN + 14, y: y + cardH - 14, size: 6.5, font: bold, color: TEXT_MUTED });
+      page.drawText(truncate(sanitize(data.transportista.nombre), bold, 10, cw - 30), { x: MARGIN + 14, y: y + cardH - 28, size: 10, font: bold, color: TEXT_PRIMARY });
+      page.drawText(`C.C. ${sanitize(data.transportista.cedula)}`, { x: MARGIN + 14, y: y + 6, size: 7.5, font: regular, color: TEXT_SECONDARY });
+    }
+
+    if (data.responsable_entrega) {
+      const rx = showBoth ? MARGIN + halfW + gap : MARGIN;
+      const rw = halfW;
+      borderRect(page, rx, y, rw, cardH, BORDER_MAIN, 0.5, BG_PAPER);
+      rect(page, rx, y, 3, cardH, SIRIUS_GREEN);
+      page.drawText('RESPONSABLE DE ENTREGA', { x: rx + 14, y: y + cardH - 14, size: 6.5, font: bold, color: TEXT_MUTED });
+      page.drawText(truncate(sanitize(data.responsable_entrega), bold, 10, rw - 30), { x: rx + 14, y: y + cardH - 28, size: 10, font: bold, color: TEXT_PRIMARY });
+    }
+  }
+
+  // ═══ PRODUCTOS DESPACHADOS ════════════════════════════════════════════════
+  y -= 24;
+  ensureSpace(40);
+  sectionTitle(page, 'PRODUCTOS DESPACHADOS', y, bold);
+  y -= 12;
+
+  const colW = [36, CONTENT_W - 36 - 85 - 70, 85, 70];
+  const thH = 28;
+  const tdH = 26;
+  // Un solo renglón aunque la remisión junte varios lotes: al cliente se le
+  // despacha un producto, no tandas de producción. El reparto por lote vive en
+  // las notas de la remisión y en las Salidas del Core, que es donde se audita.
+  const filas = [{ nombre: 'Biochar Blend', kg: data.kg_total }];
+
+  ensureSpace(thH + tdH * (filas.length + 1) + 20);
+  y -= thH;
+  rect(page, MARGIN, y, CONTENT_W, thH, SIRIUS_DARK);
+  let cx = MARGIN;
+  ['#', 'PRODUCTO', 'CANTIDAD', 'UNIDAD'].forEach((h, i) => {
+    if (i === 1) page.drawText(h, { x: cx + 10, y: y + 10, size: 7, font: bold, color: WHITE });
+    else textCenter(page, h, bold, 7, cx, colW[i], y + 10, WHITE);
+    cx += colW[i];
+  });
+
+  filas.forEach((f, idx) => {
+    y -= tdH;
+    if (idx % 2 === 0) rect(page, MARGIN, y, CONTENT_W, tdH, ROW_ALT);
+    line(page, MARGIN, y, MARGIN + CONTENT_W, y, BORDER_LIGHT, 0.3);
+    cx = MARGIN;
+    const vals = [String(idx + 1), sanitize(f.nombre), formatKg(f.kg), 'kg'];
+    vals.forEach((v, i) => {
+      const sz = i === 1 ? 9 : 8.5;
+      const t = truncate(v, regular, sz, colW[i] - 20);
+      if (i === 1) page.drawText(t, { x: cx + 10, y: y + 8, size: sz, font: regular, color: TEXT_PRIMARY });
+      else textCenter(page, t, regular, sz, cx, colW[i], y + 8, TEXT_PRIMARY);
+      cx += colW[i];
+    });
+  });
+
+  y -= tdH;
+  rect(page, MARGIN, y, CONTENT_W, tdH, SIRIUS_GREEN);
+  const totalLabelW = bold.widthOfTextAtSize('TOTAL', 9);
+  page.drawText('TOTAL', { x: MARGIN + colW[0] + colW[1] - totalLabelW - 12, y: y + 8, size: 9, font: bold, color: WHITE });
+  textCenter(page, formatKg(data.kg_total), bold, 9, MARGIN + colW[0] + colW[1], colW[2], y + 8, WHITE);
+  textCenter(page, 'kg', bold, 9, MARGIN + colW[0] + colW[1] + colW[2], colW[3], y + 8, WHITE);
+
+  // ═══ CARBONO ══════════════════════════════════════════════════════════════
+  // Se deriva del lote, no se guarda (ver `composicionDeDespacho()`). La tabla
+  // de composición (biochar/abono/agua/biológicos) se quitó a pedido: al cliente
+  // no le dice nada y la receta sigue disponible en la API de la remisión.
+  const co2H = 30;
+  y -= 18;
+  ensureSpace(co2H + 5);
+  y -= co2H;
+  borderRect(page, MARGIN, y, CONTENT_W, co2H, COMPLETED_BORDER, 0.75, COMPLETED_BG);
+  page.drawText('CO2 SECUESTRADO', { x: MARGIN + 14, y: y + 11, size: 7, font: bold, color: COMPLETED_TEXT });
+  textRight(page, `${formatKg(data.co2_secuestrado_kg)} kg CO2-eq`, bold, 11, MARGIN + CONTENT_W - 14, y + 10, COMPLETED_TEXT);
+
+  // ═══ OBSERVACIONES ════════════════════════════════════════════════════════
+  const notas = sanitize(data.observaciones ?? '');
+  if (notas) {
+    y -= 18;
+    const notasLines = wrapText(notas, regular, 9, CONTENT_W - 30);
+    const boxH = 32 + notasLines.length * 14;
+    ensureSpace(boxH + 5);
+    y -= boxH;
+    borderRect(page, MARGIN, y, CONTENT_W, boxH, NOTES_BORDER, 0.75, NOTES_BG);
+    page.drawText('OBSERVACIONES', { x: MARGIN + 14, y: y + boxH - 16, size: 7, font: bold, color: NOTES_TEXT });
+    notasLines.forEach((l, i) => {
+      page.drawText(l, { x: MARGIN + 14, y: y + boxH - 30 - i * 14, size: 9, font: regular, color: NOTES_TEXT });
     });
   }
 
-  cursorY -= 10;
+  // ═══ RECEPCIÓN ════════════════════════════════════════════════════════════
+  // DataLab solo la pinta con la firma del receptor. Aquí la remisión se emite
+  // sin firma (2026-09-25), así que va siempre que se sepa quién recibe, con el
+  // estado real: decir "ENTREGADA" de algo en tránsito sería falso.
+  if (data.receptor) {
+    y -= 18;
+    ensureSpace(70);
+    const compH = 62;
+    y -= compH;
+    borderRect(page, MARGIN, y, CONTENT_W, compH, COMPLETED_BORDER, 1, COMPLETED_BG);
 
-  // ── SECCIÓN 4: Impacto Ambiental ──────────────────────────────────────────
-  cursorY -= 8;
-  drawRect(page, MARGIN_X, cursorY - 44, CONTENT_WIDTH, 44, COLOR_AMARILLO_CO2);
-  drawRect(page, MARGIN_X, cursorY - 44, CONTENT_WIDTH, 44, COLOR_BLANCO, COLOR_GRIS_BORDE);
-
-  drawText(page, '3. IMPACTO AMBIENTAL', MARGIN_X + 5, cursorY - 12, fontBold, 9, COLOR_VERDE_PRIMARIO);
-  drawText(
-    page,
-    `CO₂ Secuestrado Total:  ${data.co2_secuestrado_kg.toFixed(4)} kg CO₂-eq`,
-    MARGIN_X + 5, cursorY - 28,
-    fontBold, 13, COLOR_VERDE_PRIMARIO
-  );
-  drawText(
-    page,
-    `Factor de secuestro aplicado: ${data.kg_biochar_puro.toFixed(2)} kg Biochar Puro × factor CO₂`,
-    MARGIN_X + 5, cursorY - 42,
-    fontOblique, 7.5, COLOR_GRIS_TEXTO
-  );
-  cursorY -= 52;
-
-  // ── SECCIÓN 5: Responsable Entrega ────────────────────────────────────────
-  cursorY -= 8;
-  drawRect(page, MARGIN_X, cursorY - 14, CONTENT_WIDTH, 14, COLOR_VERDE_CLARO);
-  drawText(page, '4. RESPONSABLE DE ENTREGA', MARGIN_X + 5, cursorY - 11, fontBold, 9, COLOR_VERDE_PRIMARIO);
-  cursorY -= 22;
-
-  drawLabel(page, 'Nombre / Razón Social', data.responsable_entrega, MARGIN_X, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'N° Documento', data.num_doc_entrega, MARGIN_X + col, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'Teléfono', data.telefono_entrega || '—', MARGIN_X + col * 2, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-  drawLabel(page, 'Email', data.email_entrega || '—', MARGIN_X, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-
-  // ── SECCIÓN 6: Responsable Recibe ─────────────────────────────────────────
-  cursorY -= 4;
-  drawRect(page, MARGIN_X, cursorY - 14, CONTENT_WIDTH, 14, COLOR_VERDE_CLARO);
-  drawText(page, '5. RESPONSABLE QUE RECIBE', MARGIN_X + 5, cursorY - 11, fontBold, 9, COLOR_VERDE_PRIMARIO);
-  cursorY -= 22;
-
-  drawLabel(page, 'Nombre', data.responsable_recibe || 'Pendiente firma', MARGIN_X, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'N° Documento', data.num_doc_recibe || '—', MARGIN_X + col, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'Teléfono', data.telefono_recibe || '—', MARGIN_X + col * 2, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-  drawLabel(page, 'Email', data.email_recibe || '—', MARGIN_X, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-
-  // ── SECCIÓN 7: Firma y Compromiso ─────────────────────────────────────────
-  cursorY -= 4;
-  drawRect(page, MARGIN_X, cursorY - 14, CONTENT_WIDTH, 14, COLOR_VERDE_CLARO);
-  drawText(page, '6. FIRMA Y COMPROMISO', MARGIN_X + 5, cursorY - 11, fontBold, 9, COLOR_VERDE_PRIMARIO);
-  cursorY -= 22;
-
-  drawLabel(page, 'Compromiso Aceptado', data.compromiso_aceptado ? 'Sí' : 'No', MARGIN_X, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'Fecha / Hora Firma', formatDateTime(data.firma_timestamp), MARGIN_X + col, cursorY, fontBold, fontRegular);
-  drawLabel(page, 'IP de Firma', data.ip_firma || '—', MARGIN_X + col * 2, cursorY, fontBold, fontRegular);
-  cursorY -= 28;
-
-  // Caja de firma (solo muestra nota si no hay imagen — la imagen real se ve en el portal)
-  const firmaBoxH = 50;
-  drawRect(page, MARGIN_X, cursorY - firmaBoxH, CONTENT_WIDTH / 2 - 5, firmaBoxH, COLOR_BLANCO, COLOR_GRIS_BORDE);
-  drawText(page, 'Firma digital del receptor', MARGIN_X + 5, cursorY - 14, fontBold, 7.5, COLOR_VERDE_PRIMARIO);
-  if (data.firma_imagen_url) {
-    drawText(page, '✓ Firma capturada — ver portal', MARGIN_X + 5, cursorY - 30, fontRegular, 8, COLOR_VERDE_PRIMARIO);
-    drawText(page, data.firma_imagen_url.substring(0, 60) + '...', MARGIN_X + 5, cursorY - 42, fontOblique, 6, COLOR_GRIS_TEXTO);
-  } else {
-    drawText(page, 'Pendiente de firma', MARGIN_X + 5, cursorY - 30, fontOblique, 8, COLOR_GRIS_TEXTO);
-  }
-  cursorY -= firmaBoxH + 10;
-
-  // ── SECCIÓN 8: Observaciones ──────────────────────────────────────────────
-  if (data.observaciones) {
-    cursorY -= 4;
-    drawRect(page, MARGIN_X, cursorY - 14, CONTENT_WIDTH, 14, COLOR_VERDE_CLARO);
-    drawText(page, '7. OBSERVACIONES', MARGIN_X + 5, cursorY - 11, fontBold, 9, COLOR_VERDE_PRIMARIO);
-    cursorY -= 22;
-
-    const obsLines = data.observaciones.match(/.{1,90}/g) || [];
-    for (const line of obsLines.slice(0, 5)) {
-      drawText(page, line, MARGIN_X, cursorY, fontRegular, 8.5);
-      cursorY -= 12;
+    const badge = sanitize(data.estado).toUpperCase();
+    if (badge) {
+      const btW = bold.widthOfTextAtSize(badge, 7) + 14;
+      rect(page, MARGIN + 14, y + compH - 20, btW, 15, SIRIUS_GREEN);
+      page.drawText(badge, { x: MARGIN + 21, y: y + compH - 17, size: 7, font: bold, color: WHITE });
     }
-    cursorY -= 6;
+
+    const midX = MARGIN + CONTENT_W / 2;
+    page.drawText('Receptor:', { x: MARGIN + 14, y: y + compH - 38, size: 7, font: regular, color: COMPLETED_TEXT });
+    page.drawText(`${sanitize(data.receptor.nombre)}  -  C.C. ${sanitize(data.receptor.cedula)}`, { x: MARGIN + 14, y: y + compH - 52, size: 9, font: bold, color: COMPLETED_TEXT });
+    page.drawText('Fecha de Recepcion:', { x: midX + 10, y: y + compH - 38, size: 7, font: regular, color: COMPLETED_TEXT });
+    page.drawText(data.fecha_recibido ? sanitize(formatDateES(data.fecha_recibido)) : 'Pendiente', { x: midX + 10, y: y + compH - 52, size: 9, font: bold, color: COMPLETED_TEXT });
   }
 
-  // ── PIE DE PÁGINA ─────────────────────────────────────────────────────────
-  const footerY = MARGIN_Y_FOOTER(cursorY);
-  drawRect(page, MARGIN_X, footerY - 30, CONTENT_WIDTH, 30, COLOR_VERDE_PRIMARIO);
-  drawText(
-    page,
-    'SIRIUS PIRÓLISIS SAS — NIT 901.123.456-0 — Colombia',
-    MARGIN_X + 5, footerY - 12,
-    fontBold, 7.5, COLOR_BLANCO
-  );
-  drawText(
-    page,
-    `Documento generado el ${formatDateTime(new Date().toISOString())} · ID Registro: ${data.record_id}`,
-    MARGIN_X + 5, footerY - 24,
-    fontOblique, 6.5, COLOR_BLANCO
-  );
-
-  // Línea divisoria antes del pie
-  page.drawLine({
-    start: { x: MARGIN_X, y: footerY },
-    end:   { x: PAGE_WIDTH - MARGIN_X, y: footerY },
-    thickness: 0.5,
-    color: COLOR_GRIS_BORDE,
+  // ═══ PIE — en todas las páginas ═══════════════════════════════════════════
+  const pages = pdfDoc.getPages();
+  pages.forEach((pg, pi) => {
+    const fY = 22;
+    line(pg, MARGIN, fY + 18, PAGE_WIDTH - MARGIN, fY + 18, SIRIUS_GREEN, 0.75);
+    pg.drawText('Documento generado automaticamente por PiroliApp  |  Sirius Regenerative Solutions S.A.S.', { x: MARGIN, y: fY + 8, size: 6.5, font: regular, color: TEXT_MUTED });
+    pg.drawText(sanitize(`${fechaGen}  -  ${horaGen}`), { x: MARGIN, y: fY - 2, size: 6.5, font: regular, color: TEXT_MUTED });
+    textRight(pg, `${pi + 1} / ${pages.length}`, regular, 6.5, PAGE_WIDTH - MARGIN, fY + 8, TEXT_MUTED);
+    const badge = 'DOCUMENTO VALIDO';
+    const bW = bold.widthOfTextAtSize(badge, 6.5) + 12;
+    const bX = PAGE_WIDTH - MARGIN - bW;
+    rect(pg, bX, fY - 5, bW, 13, SIRIUS_GREEN);
+    pg.drawText(badge, { x: bX + 6, y: fY - 2, size: 6.5, font: bold, color: WHITE });
   });
 
-  // Aviso legal pequeño
-  drawText(
-    page,
-    'Este documento tiene validez como remisión de despacho y acredita la entrega del producto descrito.',
-    MARGIN_X, footerY + 6,
-    fontOblique, 6, COLOR_GRIS_TEXTO
-  );
-
-  return doc.save();
-}
-
-function MARGIN_Y_FOOTER(cursorY: number): number {
-  // El pie va a 32 pts del fondo de la página, aunque el cursor esté más arriba
-  return Math.min(cursorY - 10, 50);
+  return pdfDoc.save();
 }

@@ -62,8 +62,8 @@ filterByFormula: `{Cedula} = '${escapeAirtableValue(cedula)}'`
 filterByFormula: `{Cedula} = '${cedula}'`
 ```
 
-Crítico en los endpoints **públicos y sin autenticar** (la firma de remisiones, que
-el cliente abre desde el celular en la finca).
+Crítico en cualquier endpoint **público y sin autenticar**. Hoy no queda ninguno de
+Blend: la firma pública de remisiones se eliminó el 2026-10-02.
 
 Para códigos que vienen de la URL, además validar el formato con
 `assertCodigoSimbolico()`: si no parece un código, rechazar en vez de consultar.
@@ -272,6 +272,19 @@ numeral 5.4.2 de la Puro Biochar Methodology, y vivían en PiroliApp —no en un
 porque no son documentos comerciales. Si vuelven, esa separación es la decisión a
 respetar: receptores en tabla propia, no clientes de Clients Core.
 
+**El acta volvió en versión mínima (2026-09-28): es la salida `entrega`, no un
+módulo.** Sin tabla de actas ni firma en vivo. `/api/baches/salida` con motivo
+`entrega` EXIGE el receptor (nombre y cédula; vehículo, color y placa opcionales) y
+lo escribe en la misma remisión de `Remisiones Baches Pirolisis` que registra la
+salida —en el POST, no en un PATCH aparte—. El PDF (`/api/baches/salida/acta`,
+con sesión) se ARMA de esa fila cada vez: no hay copia archivada que pueda
+contradecir a la base. Lleva el banner del compromiso de no quemar el biochar y
+llevarlo al suelo (`COMPROMISO_ENTREGA_BIOCHAR`, el mismo texto que muestra el
+formulario) y se firma en papel. El vehículo se guarda pero NO se imprime
+(decisión de David). Las salidas `SAL-ENT-…` ya registradas se
+completan desde el botón `Acta` de los movimientos del biochar. Ver
+`acta-entrega-biochar.ts`.
+
 **Todo el biochar se maneja en MASA SECA** (decisión de David, 2026-08-05). El acta
 física deja abierta la casilla húmeda/seca, pero la app no: no hay selector ni
 conversión, los KG que se digitan son secos y `Base Cantidad` siempre se escribe
@@ -296,6 +309,43 @@ por bache, o el chequeo de duplicados se saltaría todos menos el primero) mient
 `produccion_destino_id` lleva el lote pelado, que es lo que `getBachesDeLote()` cruza.
 ⚠️ Dos producciones distintas el mismo día SIN sufijo comparten lote y la segunda se
 lee como reintento de la primera; por eso el formulario ofrece el pedido como sufijo.
+
+**Un pedido se produce y DESPUÉS se despacha (2026-09-22).** En la tabla de pedidos,
+`Producir` fabrica lo programado con el pedido en el lote `BLEND-<fecha>-<pedido>`
+(`-<n>` si ya hubo otro ese día), y solo cuando ese lote tiene producto aparece
+`Despachar`, que es donde se piden los datos de quien se lo lleva. El
+despacho nunca produce desde la UI. El lote de un pedido no se le despacha a otro
+(`esLoteDeOtroPedido()` en `despacho-blend.ts`).
+
+**La remisión se firma en papel (2026-10-02).** Ni quien se lleva el pedido ni
+quien lo recibe firman en la app: primero salió el trazo del conductor del
+despacho y después la página pública `/pirolisis/blend/firmar/[remisionId]`, que
+era el único endpoint de Blend sin autenticar. Al emitir, el despacho ofrece el
+PDF (`/api/pirolisis/blend/remision/pdf`, con sesión), que se ARMA del Core cada
+vez, igual que el acta de entrega. Consecuencia: nada pasa la remisión a
+`Entregada` ni llena `Fecha Recibido`; si se necesita, es un paso a construir
+aparte, no la firma de vuelta.
+
+**Se despacha el PEDIDO, no un lote (2026-09-24).** Un pedido producido en varias
+tandas (SIRIUS-PED-0093: 1.446,98 + 585,23 kg) sale completo en UNA remisión con
+todos sus lotes; si no alcanzan, se completa con lotes que no son de ningún pedido.
+La remisión lleva una marca `[lote:…]` por lote más `[kg-lote:<lote>=<kg>]` con el
+reparto (`lotesDeNotas()`), una fila de `Productos Remitidos` y una Salida
+(`DESP-<rem>-<lote>`) por lote. Con el reparto, la composición y el CO₂ se siguen
+derivando exactos: el biochar de la remisión es la suma de lo que aporta cada lote
+con su propia proporción real. Sin él no se podría, y por eso antes era un lote
+por remisión. Las remisiones de un solo lote quedan como siempre.
+
+**Un despacho va a un ÁREA del cliente (2026-09-28).** Sanidad, Fertilización,
+Cultivo… son áreas de la organización del cliente y viven por cliente en Sirius
+Clients Core › `Areas Cliente` (`AC-XXXX`), no en una lista fija: cada cliente se
+organiza distinto. Pedidos y Remisiones Core las apuntan en `ID Area Cliente`.
+⚠️ No es `ID Area Core` del pedido, que es un área INTERNA de Sirius
+(`SIRIUS-AREA-XXXX`). El pedido solo propone el área —PiroliApp no escribe
+pedidos—; la remisión guarda la suya, porque un pedido puede salir en tandas para
+áreas distintas, y el despacho rechaza un área que no sea del mismo cliente. El
+operador puede registrar una nueva desde el despacho (`/api/clientes/areas`,
+idempotente por nombre). Ver `areas-cliente-core.ts`.
 
 **La fórmula del Blend suma 99,7%** (biochar 20% / abono 74% / agua 5% / biológicos
 0,7%). Es una decisión abierta con DataLab; los componentes NO cuadran con el total
@@ -396,8 +446,7 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   `/pirolisis/blend/admin-pedidos` (pedidos y remisiones), con sus componentes, sus
   APIs (`/api/bodega/**`, `/api/actas-biochar/**`, casi todo `/api/pirolisis/blend/**`,
   las entradas de abono/biológicos, `/api/baches/salida` y `/api/baches/disponibles`) y
-  las libs que quedaron huérfanas. Sobreviven `pirolisis/blend/firmar/[remisionId]`
-  (firma pública de remisiones ya emitidas) y `/api/pirolisis/inventario/biochar-disponible`
+  las libs que quedaron huérfanas. Sobrevivió `/api/pirolisis/inventario/biochar-disponible`
   (lo consume `dashboard-produccion`). Consecuencia práctica: **ya no hay UI para
   agendar pedidos ni emitir remisiones**; el biochar sigue entrando a bodega al crear
   el bache (`/api/baches/update` → `biochar-bodega.ts`). El árbol previo quedó en el

@@ -12,9 +12,10 @@ import {
  * y el abono de bodega, emite la remisión en Sirius Remisiones Core y descuenta el
  * producto del libro mayor (ver `despacharPedidoBlend()`).
  *
- * `lote` es opcional: sin él, el despacho usa el producto que ya exista y produce
- * lo que falte. Con él, sale de ese lote o no sale — elegirlo a mano es decir de
- * dónde tiene que salir.
+ * `lotes` ([códigos]) o `lote` son opcionales: sin ellos, el despacho usa el
+ * producto que ya exista y produce lo que falte. Con ellos, sale de esos lotes
+ * —una remisión por el total, una Salida por lote— o no sale: elegirlos a mano es
+ * decir de dónde tiene que salir.
  *
  * `baches` ([{ codigo, kg }]) es REQUERIDO cuando hay que producir: de qué bache
  * salió cada kg es la trazabilidad que sostiene la contabilidad de carbono, y la
@@ -23,8 +24,8 @@ import {
  * `dryRun: true` devuelve el plan sin escribir nada. La pantalla lo pide primero
  * y muestra qué va a pasar —cuánto sale, de qué lote, con cuánto queda el lote y
  * la bodega, y en qué estado queda el pedido—: una remisión no se puede deshacer,
- * porque es un documento que el cliente puede firmar desde el celular apenas se
- * emite. Ensayar antes es la única forma de "cancelar" que existe.
+ * porque apenas se emite tiene consecutivo en el Core y ya descontó el producto.
+ * Ensayar antes es la única forma de "cancelar" que existe.
  *
  * Códigos:
  *   200 — despachado (o plan, si fue ensayo)
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       {
         idPedido: String(body.idPedido),
         lote: body.lote ? String(body.lote) : undefined,
+        lotes: Array.isArray(body.lotes) ? body.lotes.map(String).filter(Boolean) : undefined,
         kg: body.kg === undefined ? undefined : Number(body.kg),
         baches: Array.isArray(body.baches)
           ? body.baches.map((b) => ({ codigo: String(b?.codigo ?? ''), kg: Number(b?.kg) }))
@@ -56,6 +58,7 @@ export async function POST(request: Request) {
         responsableEntrega: String(body.responsableEntrega ?? ''),
         transportista: body.transportista,
         observaciones: body.observaciones,
+        idAreaCliente: body.idAreaCliente ? String(body.idAreaCliente) : undefined,
         fechaDespacho: body.fechaDespacho,
       },
       { dryRun: Boolean(body.dryRun) }
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
       {
         success: resultado.ok,
         message: resultado.ok
-          ? `Remisión ${codigo} emitida por ${resultado.plan.kg} kg del lote ${resultado.plan.lote}` +
+          ? `Remisión ${codigo} emitida por ${resultado.plan.kg} kg ${resultado.plan.reparto.length > 1 ? 'de los lotes' : 'del lote'} ${resultado.plan.lote}` +
             `${resultado.plan.origen === 'produccion' ? ' (producido en este despacho)' : ''}.`
           : 'El despacho no se pudo completar.',
         ...resultado,

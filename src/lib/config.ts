@@ -200,6 +200,9 @@ export const config = {
     // notifica una remisión (`Email Notificacion`), que antes se copiaba a mano en
     // los campos de la remisión.
     clientesPersonalTableId: process.env.AIRTABLE_CLIENTES_PERSONAL_TABLE_ID,
+    // `Areas Cliente`: las áreas de la organización del cliente (Sanidad,
+    // Fertilización…) a las que va un pedido. Se referencian por `AC-XXXX`.
+    clientesAreasTableId: process.env.AIRTABLE_CLIENTES_AREAS_TABLE_ID,
     // Sirius Pedidos Core (pedidos centralizados) — Blend
     pedidosCoreBaseId: process.env.AIRTABLE_PEDIDOS_CORE_BASE_ID,
     pedidosCorePedidosTable: process.env.AIRTABLE_PEDIDOS_CORE_PEDIDOS_TABLE,
@@ -280,6 +283,10 @@ export const config = {
       telefonoRecibe: process.env.AIRTABLE_REMISIONES_TELEFONO_RECIBE_FIELD_ID,
       emailRecibe: process.env.AIRTABLE_REMISIONES_EMAIL_RECIBE_FIELD_ID,
       observacionesRecepcion: process.env.AIRTABLE_REMISIONES_OBSERVACIONES_RECEPCION_FIELD_ID,
+      // Vehículo de quien recibe: lo pide el acta de entrega sin contraprestación.
+      vehiculoRecibe: process.env.AIRTABLE_REMISIONES_VEHICULO_RECIBE_FIELD_ID,
+      colorVehiculoRecibe: process.env.AIRTABLE_REMISIONES_COLOR_VEHICULO_RECIBE_FIELD_ID,
+      placaVehiculoRecibe: process.env.AIRTABLE_REMISIONES_PLACA_VEHICULO_RECIBE_FIELD_ID,
       // Documentos y Firmas
       documentoRemision: process.env.AIRTABLE_REMISIONES_DOCUMENTO_REMISION_FIELD_ID,
       qrDocumento: process.env.AIRTABLE_REMISIONES_QR_DOCUMENTO_FIELD_ID,

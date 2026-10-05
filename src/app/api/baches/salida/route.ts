@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { config } from '@/lib/config';
 import { esMotivoSalida, MOTIVOS_SALIDA, runSalidaBache } from '@/lib/salida-bache';
+import { receptorIncompleto, type ReceptorEntrega } from '@/lib/salida-bache.constants';
 
 /**
  * POST /api/baches/salida
@@ -20,6 +21,7 @@ import { esMotivoSalida, MOTIVOS_SALIDA, runSalidaBache } from '@/lib/salida-bac
  *     observaciones?: string,
  *     realizaRegistro?: string,      // queda como responsable del movimiento del Core
  *     fecha?: "YYYY-MM-DD",          // por defecto hoy; entra en la referencia
+ *     receptor?: { nombre, cedula, vehiculo?, color?, placa? }, // OBLIGATORIO en `entrega`
  *     dryRun?: boolean               // resuelve y valida sin escribir nada
  *   }
  *
@@ -72,6 +74,28 @@ export async function POST(request: Request) {
     );
   }
 
+  // La entrega sin contraprestación sale con acta, y el acta sin quién recibe no
+  // documenta nada. Se rechaza antes de mover inventario.
+  const receptorRaw = (body as Record<string, unknown>).receptor as Partial<ReceptorEntrega> | undefined;
+  let receptor: ReceptorEntrega | undefined;
+  if (motivo === 'entrega') {
+    const falta = receptorIncompleto(receptorRaw);
+    if (falta) {
+      return NextResponse.json(
+        { success: false, error: falta, details: 'Una entrega sin contraprestación necesita quién la recibe: es lo que imprime el acta.' },
+        { status: 400 }
+      );
+    }
+    const texto = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    receptor = {
+      nombre: String(receptorRaw!.nombre).trim(),
+      cedula: String(receptorRaw!.cedula).trim(),
+      vehiculo: texto(receptorRaw!.vehiculo),
+      color: texto(receptorRaw!.color),
+      placa: texto(receptorRaw!.placa),
+    };
+  }
+
   try {
     const resultado = await runSalidaBache({
       bache,
@@ -82,6 +106,7 @@ export async function POST(request: Request) {
       realizaRegistro: String((body as Record<string, unknown>).realizaRegistro ?? '').trim() || 'Sistema',
       fecha: String((body as Record<string, unknown>).fecha ?? '').trim() || undefined,
       dryRun: (body as Record<string, unknown>).dryRun === true,
+      receptor,
     });
 
     const fallidos = resultado.steps.filter((paso) => !paso.ok);

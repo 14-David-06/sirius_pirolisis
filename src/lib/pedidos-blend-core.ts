@@ -60,6 +60,12 @@ export interface PedidoBlend {
   idCliente: string;
   /** Nombre comercial; cae al código si Clients Core no responde. */
   clienteNombre: string;
+  /**
+   * `AC-XXXX`: el área del cliente a la que va el pedido, si quien lo creó la
+   * indicó. Es solo lo que el despacho propone por defecto: la remisión guarda la
+   * suya, porque un pedido puede salir en tandas para áreas distintas.
+   */
+  idAreaCliente: string;
   /** `YYYY-MM-DD`. */
   fecha: string;
   kgSolicitados: number;
@@ -268,6 +274,7 @@ export async function listarPedidosBlend(): Promise<PedidoBlend[] | null> {
       pendiente: (ESTADOS_PEDIDO_PENDIENTE as readonly string[]).includes(estado),
       idCliente,
       clienteNombre: clientes[idCliente] || idCliente || '—',
+      idAreaCliente: String(p.fields['ID Area Cliente'] ?? '').trim(),
       fecha: String(p.fields['Fecha de Pedido'] ?? '').slice(0, 10),
       kgSolicitados: r2(kgSolicitados),
       kgDespachados,
