@@ -118,6 +118,8 @@ export interface MovimientoBiocharPuro {
   bache: string;
   /** Lote `BLEND-…` o referencia `SAL-…` que lo consumió. */
   destino: string;
+  /** Texto libre: a quién o adónde fue. */
+  ubicacionDestino: string;
   documento: string;
   /** ISO completo, sin recortar: sirve para ordenar contra otras fuentes. */
   fecha: string;

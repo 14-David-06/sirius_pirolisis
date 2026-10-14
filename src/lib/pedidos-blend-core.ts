@@ -140,7 +140,7 @@ function parseNotas(notas: string): { kg: number; empaque: string; observaciones
 }
 
 /** `CL-XXXX` → nombre comercial. Best-effort: sin Clients Core queda el código. */
-async function mapaClientes(): Promise<Record<string, string>> {
+export async function mapaClientes(): Promise<Record<string, string>> {
   const { clientesBaseId, clientesTableId, clientesToken } = config.airtable;
   if (!clientesBaseId || !clientesTableId || !clientesToken) return {};
   try {

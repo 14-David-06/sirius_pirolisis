@@ -50,6 +50,25 @@ export const MOTIVOS_SALIDA = {
 
 export type MotivoSalida = keyof typeof MOTIVOS_SALIDA;
 
+const PREFIJOS_NO_COMERCIALES = Object.values(MOTIVOS_SALIDA).map((m) => m.prefijo).join('|');
+/**
+ * `SAL-REMISION-<n>-<bache>`: las salidas de la UI de remisión de baches, anterior
+ * a los motivos. Ninguna corresponde a un despacho de Blend de la hoja de bodega.
+ */
+const NO_COMERCIAL = new RegExp(`^SAL-(${PREFIJOS_NO_COMERCIALES}|REMISION)-`);
+
+/**
+ * ¿La salida de biochar NO fue una venta? Laboratorio, muestra, merma, traslado,
+ * entrega sin contraprestación y las remisiones de baches viejas.
+ *
+ * Comerciales son las demás: los lotes `BLEND-…` y los despachos a un cliente
+ * (`SAL-<CLIENTE>-<fecha>`). Son las que suma la hoja de salidas de bodega, y por
+ * eso el total despachado no las mezcla con las otras (2026-10-07).
+ */
+export function esSalidaNoComercial(destino: string): boolean {
+  return NO_COMERCIAL.test(destino);
+}
+
 export function esMotivoSalida(valor: unknown): valor is MotivoSalida {
   return typeof valor === 'string' && valor in MOTIVOS_SALIDA;
 }

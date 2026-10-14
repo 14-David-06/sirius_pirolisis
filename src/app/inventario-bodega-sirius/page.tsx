@@ -62,6 +62,14 @@ interface Movimiento {
   fecha: string;
   motivo: string;
   observaciones: string;
+  /** Solo en las Salidas de biochar: a qué pedido y cliente fue. */
+  pedido?: string;
+  cliente?: string;
+  remisiones?: string[];
+  /** El lote es de un pedido pero el Blend todavía no se despacha. */
+  porDespachar?: boolean;
+  /** Salida que fue venta. Las demás (laboratorio, muestra, entrega…) no suman al despacho. */
+  comercial?: boolean;
 }
 
 /** Los movimientos del Core traen `cantidad`; los del biochar por bache, `kg`. */
@@ -363,6 +371,10 @@ const ETIQUETAS_BLEND: EtiquetasProducto = {
 type VistaBiochar = 'baches' | 'movimientos';
 type FiltroEstado = EstadoBodega | 'todos';
 type FiltroTipo = 'todos' | 'Entrada' | 'Salida';
+/** En el biochar, `Salida` son solo las comerciales: las otras tienen su propio filtro. */
+type FiltroMovBiochar = FiltroTipo | 'NoComercial';
+
+const esNoComercial = (m: Movimiento) => m.tipo === 'Salida' && !m.comercial;
 type Orden = 'kg-desc' | 'kg-asc' | 'codigo-desc' | 'codigo-asc';
 
 const FORMATO_FECHA: Intl.DateTimeFormatOptions = {
@@ -571,7 +583,7 @@ function BodegaContent() {
   const [busqueda, setBusqueda] = useState('');
   const [vista, setVista] = useState<VistaBiochar>('baches');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
-  const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
+  const [filtroTipo, setFiltroTipo] = useState<FiltroMovBiochar>('todos');
   // Un solo filtro para abono y Blend: son vistas excluyentes, nunca se ven a la vez.
   const [filtroTipoProd, setFiltroTipoProd] = useState<FiltroTipo>('todos');
   const [orden, setOrden] = useState<Orden>('kg-desc');
@@ -667,13 +679,17 @@ function BodegaContent() {
   const movimientosFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return (biochar?.movimientos ?? []).filter((m) => {
-      if (filtroTipo !== 'todos' && m.tipo !== filtroTipo) return false;
+      if (filtroTipo === 'NoComercial' && !esNoComercial(m)) return false;
+      if (filtroTipo === 'Salida' && (m.tipo !== 'Salida' || esNoComercial(m))) return false;
+      if (filtroTipo === 'Entrada' && m.tipo !== 'Entrada') return false;
       if (!q) return true;
       return (
         m.bache.toLowerCase().includes(q) ||
         m.destino.toLowerCase().includes(q) ||
         m.documento.toLowerCase().includes(q) ||
-        m.codigo.toLowerCase().includes(q)
+        m.codigo.toLowerCase().includes(q) ||
+        (m.pedido ?? '').toLowerCase().includes(q) ||
+        (m.cliente ?? '').toLowerCase().includes(q)
       );
     });
   }, [biochar, busqueda, filtroTipo]);
@@ -693,6 +709,21 @@ function BodegaContent() {
   }, [resumenProd, busqueda, filtroTipoProd]);
 
   /** Lo que suma la selección actual: un filtro sin su subtotal obliga a sumar a mano. */
+  // Las salidas no comerciales se cuentan APARTE: el despacho que se cuadra con la
+  // hoja de bodega son solo las ventas, y sumarle laboratorio y muestras lo infla.
+  const salidas = useMemo(() => {
+    const todas = (biochar?.movimientos ?? []).filter((m) => m.tipo === 'Salida');
+    const comerciales = todas.filter((m) => !esNoComercial(m));
+    const noComerciales = todas.filter(esNoComercial);
+    const suma = (ms: Movimiento[]) => ms.reduce((t, m) => t + m.kg, 0);
+    return {
+      comerciales,
+      noComerciales,
+      kgComerciales: suma(comerciales),
+      kgNoComerciales: suma(noComerciales),
+    };
+  }, [biochar]);
+
   const subtotal = useMemo(() => {
     if (producto !== 'biochar') {
       return movimientosProd.reduce((s, m) => s + (m.tipo === 'Salida' ? -m.cantidad : m.cantidad), 0);
@@ -884,7 +915,7 @@ function BodegaContent() {
 
       {producto === 'biochar' ? (
         <>
-          <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <section className="mt-6 grid grid-cols-2 lg:grid-cols-5 gap-3">
             <Kpi
               label="En bodega"
               valor={kg(disponible.kg)}
@@ -902,9 +933,15 @@ function BodegaContent() {
               nota="Todo lo que ha entrado"
             />
             <Kpi
-              label="Despachado / consumido"
-              valor={totales ? kg(totales.consumido) : '—'}
-              nota="Blend, laboratorio y salidas"
+              label="Salidas comerciales"
+              valor={biochar.movimientos ? kg(salidas.kgComerciales) : '—'}
+              nota="Despachos de Blend a clientes"
+            />
+            <Kpi
+              label="Salidas no comerciales"
+              valor={biochar.movimientos ? kg(salidas.kgNoComerciales) : '—'}
+              nota="Laboratorio, muestras y entregas · aparte del total"
+              acento="text-violet-300"
             />
           </section>
 
@@ -985,11 +1022,25 @@ function BodegaContent() {
                   })}
                 </>
               ) : (
-                (['todos', 'Entrada', 'Salida'] as const).map((t) => (
-                  <Chip key={t} activo={filtroTipo === t} onClick={() => setFiltroTipo(t)}>
-                    {t === 'todos'
-                      ? `Todos (${biochar.movimientos?.length ?? 0})`
-                      : `${t}s (${biochar.movimientos?.filter((m) => m.tipo === t).length ?? 0})`}
+                (
+                  [
+                    { t: 'todos', etiqueta: 'Todos', n: biochar.movimientos?.length ?? 0 },
+                    {
+                      t: 'Entrada',
+                      etiqueta: 'Entradas',
+                      n: biochar.movimientos?.filter((m) => m.tipo === 'Entrada').length ?? 0,
+                    },
+                    { t: 'Salida', etiqueta: 'Salidas comerciales', n: salidas.comerciales.length },
+                    {
+                      t: 'NoComercial',
+                      etiqueta: 'No comerciales',
+                      n: salidas.noComerciales.length,
+                      clase: 'bg-violet-500/15 text-violet-200 ring-violet-400/30',
+                    },
+                  ] as Array<{ t: FiltroMovBiochar; etiqueta: string; n: number; clase?: string }>
+                ).map(({ t, etiqueta, n, clase }) => (
+                  <Chip key={t} activo={filtroTipo === t} onClick={() => setFiltroTipo(t)} clase={clase}>
+                    {etiqueta} ({n})
                   </Chip>
                 ))
               )}
@@ -999,7 +1050,11 @@ function BodegaContent() {
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar bache, lote o documento…"
+                placeholder={
+                  vista === 'movimientos'
+                    ? 'Buscar bache, lote, pedido, cliente o documento…'
+                    : 'Buscar bache, lote o documento…'
+                }
                 className="flex-1 min-w-[220px] rounded-lg bg-white/5 px-4 py-2 text-sm text-white placeholder-white/40 ring-1 ring-white/10 focus:outline-none focus:ring-white/30"
               />
               {vista === 'baches' && (
@@ -1021,7 +1076,7 @@ function BodegaContent() {
               {vista === 'baches'
                 ? `${bachesFiltrados.length} bache(s) · suman ${kg(subtotal)} en bodega`
                 : `${movimientosFiltrados.length} movimiento(s) · efecto neto ${kg(subtotal)}`}
-              {(filtroEstado === 'agotado' || filtroTipo === 'Salida') &&
+              {(filtroEstado === 'agotado' || filtroTipo === 'Salida' || filtroTipo === 'NoComercial') &&
                 ' · histórico, ya no es stock'}
             </p>
           </div>
@@ -1096,19 +1151,45 @@ function BodegaContent() {
                     <th className="px-4 py-3 text-right font-medium">Cantidad</th>
                     <th className="px-4 py-3 text-left font-medium">Bache</th>
                     <th className="px-4 py-3 text-left font-medium">Destino</th>
+                    <th className="px-4 py-3 text-left font-medium">Pedido</th>
+                    <th className="px-4 py-3 text-left font-medium">Cliente</th>
                     <th className="px-4 py-3 text-left font-medium">Documento</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {movimientosFiltrados.map((m) => (
-                    <tr key={m.id} className="bg-white/[0.02] hover:bg-white/[0.06]">
+                    <tr
+                      key={m.id}
+                      className={
+                        esNoComercial(m)
+                          ? 'bg-violet-500/10 hover:bg-violet-500/20'
+                          : 'bg-white/[0.02] hover:bg-white/[0.06]'
+                      }
+                    >
                       <td className="px-4 py-3 whitespace-nowrap text-white/70">{fecha(m.fecha)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <TipoBadge tipo={m.tipo} />
+                        {esNoComercial(m) && (
+                          <span className="ml-1.5 rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-medium text-violet-200 ring-1 ring-violet-400/30">
+                            No comercial
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">{kg(m.kg)}</td>
                       <td className="px-4 py-3">{m.bache || '—'}</td>
                       <td className="px-4 py-3 text-white/60">{m.destino || '—'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {m.pedido || '—'}
+                        {!!m.remisiones?.length && (
+                          <span className="block text-xs text-white/50">{m.remisiones.join(', ')}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {m.cliente || '—'}
+                        {m.porDespachar && (
+                          <span className="block text-xs text-amber-200/80">Producido, sin despachar</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-white/50 text-xs">
                         {m.documento || '—'}
                         {m.tipo === 'Salida' && esReferenciaEntrega(m.documento) && (
@@ -1124,7 +1205,7 @@ function BodegaContent() {
                   ))}
                   {!movimientosFiltrados.length && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-white/50">
+                      <td colSpan={8} className="px-4 py-10 text-center text-white/50">
                         Ningún movimiento coincide con el filtro.
                       </td>
                     </tr>
@@ -1239,14 +1320,12 @@ function BodegaContent() {
       {modal === 'produccion-blend' && (
         <Modal
           titulo="Producción de Biochar Blend"
-          descripcion="Convierte biochar puro y abono 4G en producto terminado. Todo queda unido por un lote BLEND-…"
+          descripcion="Indica cuánto Blend vas a producir y verifica si alcanza con el biochar y el abono 4G en bodega."
           onCerrar={() => setModal(null)}
         >
-          <FormProduccionBlend
-            baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
+          <ProduccionPorTotales
+            biocharDisponible={disponible.kg}
             abonoDisponible={abono?.kg ?? abono?.kgSegunMovimientos ?? 0}
-            onListo={tras}
-            onCancelar={() => setModal(null)}
           />
         </Modal>
       )}
@@ -1909,6 +1988,111 @@ interface PlanProduccion {
     estadoNuevo: string | null;
     yaExistia: boolean;
   }>;
+}
+
+/**
+ * Producción por totales: se pide solo cuánto Blend se va a producir y se
+ * contrasta con lo que hay de biochar y de abono en bodega.
+ *
+ * El operador piensa en kilos de producto, no en lonas: qué baches aportan el
+ * biochar lo resuelve el sistema por detrás, así que acá no se elige nada.
+ *
+ * La proporción se pide al servidor: `config.blend` es la única fuente de la
+ * fórmula y sus variables no son `NEXT_PUBLIC_`.
+ */
+function ProduccionPorTotales({
+  biocharDisponible,
+  abonoDisponible,
+}: {
+  biocharDisponible: number;
+  abonoDisponible: number;
+}) {
+  const [kgBlendTexto, setKgBlendTexto] = useState('');
+  const [formula, setFormula] = useState<{ pctBiochar: number; pctAbono: number } | null>(null);
+  const [errorFormula, setErrorFormula] = useState(false);
+
+  useEffect(() => {
+    let vigente = true;
+    fetch('/api/pirolisis/blend/produccion')
+      .then((res) => res.json())
+      .then((json) => {
+        const { pctBiochar, pctAbono } = json?.formula ?? {};
+        if (!vigente) return;
+        if (pctBiochar > 0 && pctAbono > 0) setFormula({ pctBiochar, pctAbono });
+        else setErrorFormula(true);
+      })
+      .catch(() => vigente && setErrorFormula(true));
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  if (errorFormula) {
+    return <p className="text-sm text-red-300">No se pudo leer la fórmula del Blend.</p>;
+  }
+  if (!formula) {
+    return <p className="text-sm text-white/60">Cargando la fórmula del Blend…</p>;
+  }
+
+  const kgBlend = Number(kgBlendTexto);
+  const valido = kgBlendTexto.trim() !== '' && Number.isFinite(kgBlend) && kgBlend > 0;
+  const kgBiochar = valido ? kgBlend * formula.pctBiochar : 0;
+  const kgAbono = valido ? kgBlend * formula.pctAbono : 0;
+  const faltaBiochar = Math.max(0, kgBiochar - biocharDisponible);
+  const faltaAbono = Math.max(0, kgAbono - abonoDisponible);
+  const maximo = Math.max(
+    0,
+    Math.min(biocharDisponible / formula.pctBiochar, abonoDisponible / formula.pctAbono)
+  );
+  const alcanza = valido && faltaBiochar <= 0.01 && faltaAbono <= 0.01;
+
+  const fila = (nombre: string, necesita: number, hay: number, falta: number) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-white/70">{nombre}</span>
+      <span className={falta > 0.01 ? 'text-red-300' : 'text-white'}>
+        {kg(necesita)} <span className="text-white/40">de {kg(hay)}</span>
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4 text-sm">
+      <label className="block">
+        <span className="text-white/70">Biochar Blend a producir (kg)</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={kgBlendTexto}
+          onChange={(e) => setKgBlendTexto(e.target.value)}
+          placeholder="0,00"
+          autoFocus
+          className={CAMPO}
+        />
+        <span className="mt-1 block text-xs text-white/50">
+          Con lo que hay en bodega se pueden producir hasta {kg(maximo)}.
+        </span>
+      </label>
+
+      <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-3 space-y-1.5">
+        {fila(`Biochar (${pct(formula.pctBiochar * 100)})`, kgBiochar, biocharDisponible, faltaBiochar)}
+        {fila(`Abono 4G (${pct(formula.pctAbono * 100)})`, kgAbono, abonoDisponible, faltaAbono)}
+      </div>
+
+      {valido &&
+        (alcanza ? (
+          <p className="rounded-xl bg-emerald-500/10 p-3 text-emerald-200 ring-1 ring-emerald-400/30">
+            ✓ Se pueden producir {kg(kgBlend)} de Biochar Blend.
+          </p>
+        ) : (
+          <p className="rounded-xl bg-red-500/10 p-3 text-red-200 ring-1 ring-red-400/30">
+            ✕ No alcanza para {kg(kgBlend)}.
+            {faltaBiochar > 0.01 && ` Faltan ${kg(faltaBiochar)} de biochar.`}
+            {faltaAbono > 0.01 && ` Faltan ${kg(faltaAbono)} de abono 4G.`}
+          </p>
+        ))}
+    </div>
+  );
 }
 
 /** Un bache marcado para entrar a la producción. `kgTexto` vacío = entra completo. */

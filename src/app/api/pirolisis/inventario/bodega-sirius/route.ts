@@ -7,6 +7,8 @@ import {
 } from '@/lib/biochar-inventario-core';
 import { resumenAbono } from '@/lib/abono-inventario-core';
 import { resumenBlend } from '@/lib/blend-inventario-core';
+import { destinatariosDeSalidas } from '@/lib/destinatarios-biochar';
+import { esSalidaNoComercial } from '@/lib/salida-bache.constants';
 
 /**
  * GET /api/pirolisis/inventario/bodega-sirius
@@ -86,8 +88,35 @@ export async function GET() {
     ]);
 
     // Más reciente primero: lo que interesa al abrir es el último movimiento.
+    // A quién fue cada Salida: el pedido y el cliente se derivan del destino, no
+    // viven en el movimiento (ver destinatarios-biochar.ts).
+    const destinatarios = movimientos
+      ? await destinatariosDeSalidas(
+          movimientos.filter((m) => m.tipo === 'Salida').map((m) => m.destino || m.documento)
+        ).catch((err) => {
+          console.error('⚠️ No se pudieron resolver los destinatarios del biochar:', err);
+          return new Map();
+        })
+      : new Map();
+
     const ordenados = movimientos
-      ? [...movimientos].sort((a, b) => b.fecha.localeCompare(a.fecha))
+      ? [...movimientos]
+          .sort((a, b) => b.fecha.localeCompare(a.fecha))
+          .map((m) => {
+            const d = m.tipo === 'Salida' ? destinatarios.get(m.destino || m.documento) : undefined;
+            // Los despachos reconstruidos de la hoja de bodega no tienen remisión:
+            // su cliente quedó escrito en `ubicacion_destino_id` del movimiento.
+            const anotado =
+              m.tipo === 'Salida' && !m.ubicacionDestino.startsWith('Producción ') ? m.ubicacionDestino : '';
+            return {
+              ...m,
+              pedido: d?.pedido ?? '',
+              cliente: d?.cliente || anotado,
+              remisiones: d?.remisiones ?? [],
+              porDespachar: d?.porDespachar ?? false,
+              comercial: m.tipo === 'Salida' && !esSalidaNoComercial(m.destino || m.documento),
+            };
+          })
       : null;
 
     // Se devuelven TODOS los baches, agotados incluidos, y el filtrado se hace en

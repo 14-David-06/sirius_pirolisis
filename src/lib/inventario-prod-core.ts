@@ -193,6 +193,8 @@ export interface MovimientoProducto {
   bache: string;
   /** Lote `BLEND-…` o referencia de la salida. */
   destino: string;
+  /** Texto libre: a quién o adónde fue (un cliente, "Producción BLEND-…"). */
+  ubicacionDestino: string;
   documento: string;
   /** ISO completo, sin recortar: sirve para ordenar contra otras fuentes. */
   fecha: string;
@@ -226,6 +228,7 @@ export async function fetchMovimientosDeProducto(
     unidad: String(m.fields[f.unidadMedida] ?? ''),
     bache: String(m.fields[f.bacheOrigen] ?? ''),
     destino: String(m.fields[f.produccionDestino] ?? ''),
+    ubicacionDestino: String(m.fields[f.ubicacionDestino] ?? ''),
     documento: String(m.fields[f.documentoReferencia] ?? ''),
     fecha: String(m.fields[f.fechaMovimiento] ?? m.fields[f.fechaRegistro] ?? ''),
     motivo: String(m.fields[f.motivo] ?? ''),
