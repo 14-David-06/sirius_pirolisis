@@ -11,7 +11,8 @@
 // ═══ SOLO SE ESCRIBE DESDE LA PRODUCCIÓN ══════════════════════════════════════
 // La única escritura de este módulo es `registrarEntradaBlend()`, y la llama
 // `produccion-blend.ts` como último paso de un lote `BLEND-…` que ya descontó su
-// biochar y su abono (ver §5 de CLAUDE.md). Las Salidas las escriben las remisiones.
+// biochar y su abono (ver §5 de CLAUDE.md). Las Salidas las escriben las remisiones
+// y, para lo que sale sin venta, `runSalidaBlend()` (`salida-blend.ts`).
 // Lo que NO puede existir es una entrada suelta: un botón de "ingresar Blend" sería
 // producto sin receta, kilos que no descontaron materia prima de nada. Por eso la
 // función pide el lote y no una cantidad a secas.

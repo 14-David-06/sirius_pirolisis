@@ -285,6 +285,26 @@ formulario) y se firma en papel. El vehículo se guarda pero NO se imprime
 completan desde el botón `Acta` de los movimientos del biochar. Ver
 `acta-entrega-biochar.ts`.
 
+**La salida se pide como TOTAL, no por bache (2026-10-20).** El operador digita
+los kg y `runSalidaBiochar()` los reparte FIFO (`repartirSalidaFIFO()`): cada kg
+sigue saliendo de un bache con su referencia, nunca de un "total suelto". El
+ensayo elige el reparto y la confirmación lo reenvía tal cual —recalcularlo
+caería en otros baches porque el saldo ya bajó—. Una segunda salida del mismo
+motivo el mismo día lleva `SAL-<M>-<fecha>-<n>-<bache>` (`referenciaBaseLibre()`)
+para no leerse como reintento. Se valida contra el saldo del **Core** (peso de
+referencia), igual que la producción: la fórmula seca rechazaba baches que la
+bodega mostraba con saldo (S-00165: 89,77 kg en el Core, 0 en la fórmula).
+
+**El Blend también se saca sin venta (2026-10-20).** `Sacar Blend` en la bodega
+→ `runSalidaBlend()` (`salida-blend.ts`): el total se reparte FIFO por **lote**
+(orden de `lotesDisponiblesBlend()`, por fecha), pero se escribe UNA sola Salida
+aunque cubra varios lotes (decisión de David): `documento_referencia` =
+`produccion_destino_id` = `SAL-<M>-<fecha>[-<n>]`, y el reparto va en las
+observaciones con las marcas de la remisión multilote (`[lote:…]`
+`[kg-lote:<lote>=<kg>]`), que `lotesDisponiblesBlend()` lee para descontar a
+cada lote lo suyo. Es el único camino de salida del Blend que no es una remisión. Sin motivo `entrega` (`MOTIVOS_SALIDA_BLEND`): el acta guarda quién
+recibe en PiroliApp atada a un bache, y el Blend solo vive en el Core.
+
 **Todo el biochar se maneja en MASA SECA** (decisión de David, 2026-08-05). El acta
 física deja abierta la casilla húmeda/seca, pero la app no: no hay selector ni
 conversión, los KG que se digitan son secos y `Base Cantidad` siempre se escribe

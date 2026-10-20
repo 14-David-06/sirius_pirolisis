@@ -1,8 +1,16 @@
 import {
+  bacheDeReferencia,
   esMotivoSalida,
+  esMotivoSalidaBlend,
+  esReferenciaEntrega,
+  esSalidaNoComercial,
   marcaSalida,
   MOTIVOS_SALIDA,
+  referenciaBaseLibre,
+  referenciaBaseSalida,
   referenciaSalida,
+  repartirEnOrden,
+  repartirSalidaFIFO,
 } from '@/lib/salida-bache.constants';
 
 /**
@@ -61,5 +69,76 @@ describe('esMotivoSalida', () => {
     for (const valor of ['LABORATORIO', 'venta', '', null, undefined, 7, {}]) {
       expect(esMotivoSalida(valor)).toBe(false);
     }
+  });
+});
+
+/**
+ * La salida se pide como total y se reparte por bache: el reparto decide de qué
+ * bache sale cada kg, que es lo que sostiene la contabilidad de carbono.
+ */
+describe('repartirSalidaFIFO', () => {
+  const BACHES = [
+    { codigo: 'S-00144', kg: 100 },
+    { codigo: 'S-00139', kg: 30 },
+    { codigo: 'S-00165', kg: 89.77 },
+    { codigo: 'S-00128', kg: 0 },
+  ];
+
+  it('toma primero el bache más antiguo y salta los vacíos', () => {
+    expect(repartirSalidaFIFO(BACHES, 20)).toEqual([{ codigo: 'S-00139', kg: 20 }]);
+  });
+
+  it('vacía un bache y sigue con el siguiente hasta cuadrar el total', () => {
+    expect(repartirSalidaFIFO(BACHES, 75)).toEqual([
+      { codigo: 'S-00139', kg: 30 },
+      { codigo: 'S-00144', kg: 45 },
+    ]);
+  });
+
+  it('devuelve null si el total excede lo que hay', () => {
+    expect(repartirSalidaFIFO(BACHES, 220)).toBeNull();
+    expect(repartirSalidaFIFO(BACHES, 219.77)).toHaveLength(3);
+  });
+});
+
+describe('referenciaBaseLibre', () => {
+  it('la primera salida del día conserva la referencia de siempre', () => {
+    expect(referenciaBaseLibre('muestra', '2026-10-20', ['S-00139'], () => false)).toBeUndefined();
+  });
+
+  it('una segunda salida del mismo bache el mismo día no se confunde con un reintento', () => {
+    const existentes = new Set(['SAL-MUE-2026-10-20-S-00139']);
+    const base = referenciaBaseLibre('muestra', '2026-10-20', ['S-00139', 'S-00144'], (r) => existentes.has(r));
+    expect(base).toBe('SAL-MUE-2026-10-20-2');
+    expect(referenciaSalida('muestra', '2026-10-20', 'S-00139', base)).toBe('SAL-MUE-2026-10-20-2-S-00139');
+    expect(referenciaBaseSalida('muestra', '2026-10-20', 1)).toBeUndefined();
+  });
+
+  it('las entregas numeradas siguen teniendo acta y siguen siendo no comerciales', () => {
+    const ref = referenciaSalida('entrega', '2026-10-20', 'S-00139', referenciaBaseSalida('entrega', '2026-10-20', 2));
+    expect(esReferenciaEntrega(ref)).toBe(true);
+    expect(bacheDeReferencia(ref)).toBe('S-00139');
+    expect(esSalidaNoComercial(ref)).toBe(true);
+  });
+});
+
+describe('repartirEnOrden (lotes de Blend)', () => {
+  it('respeta el orden de llegada —la fecha del lote—, no el código', () => {
+    const lotes = [
+      { codigo: 'SAL-GUAICARAMO-2025-08-01', kg: 0 },
+      { codigo: 'BLEND-2026-09-24-SIRIUS-PED-0093', kg: 32.21 },
+      { codigo: 'BLEND-2026-10-16', kg: 100 },
+    ];
+    expect(repartirEnOrden(lotes, 40)).toEqual([
+      { codigo: 'BLEND-2026-09-24-SIRIUS-PED-0093', kg: 32.21 },
+      { codigo: 'BLEND-2026-10-16', kg: 7.79 },
+    ]);
+  });
+});
+
+describe('esMotivoSalidaBlend', () => {
+  it('no ofrece la entrega: sin acta no hay dónde guardar quién recibe', () => {
+    expect(esMotivoSalidaBlend('muestra')).toBe(true);
+    expect(esMotivoSalidaBlend('entrega')).toBe(false);
   });
 });

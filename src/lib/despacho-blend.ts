@@ -148,6 +148,14 @@ export async function lotesDisponiblesBlend(): Promise<LoteBlendDisponible[]> {
   for (const m of movimientos) {
     if (String(m.fields['tipo_movimiento'] ?? '') !== 'Salida') continue;
     const kgSalida = toNumber(m.fields['cantidad']);
+    // Una salida no comercial que cubre varios lotes es UN movimiento con el reparto
+    // en las marcas (`salida-blend.ts`): atribuirla entera al lote más largo que
+    // aparezca le cargaría a un lote lo que salió de otro.
+    const repartida = lotesDeNotas(String(m.fields['observaciones'] ?? ''), kgSalida);
+    if (repartida.length > 1) {
+      for (const { lote: l, kg: k } of repartida) salidoPorLote.set(l, (salidoPorLote.get(l) ?? 0) + k);
+      continue;
+    }
     const lote = loteDeMovimiento(m.fields, codigosDeLote);
     if (lote) salidoPorLote.set(lote, (salidoPorLote.get(lote) ?? 0) + kgSalida);
     else sinAtribuir += kgSalida;

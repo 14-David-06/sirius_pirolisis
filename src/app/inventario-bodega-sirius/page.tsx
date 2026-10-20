@@ -27,10 +27,14 @@ import { TurnoProtection, Tarjeta3D } from '@/components';
 import {
   COMPROMISO_ENTREGA_BIOCHAR,
   MOTIVOS_SALIDA,
+  MOTIVOS_SALIDA_BLEND,
+  bacheDeReferencia,
   esReferenciaEntrega,
+  esSalidaNoComercial,
   receptorIncompleto,
+  repartirEnOrden,
+  repartirSalidaFIFO,
 } from '@/lib/salida-bache.constants';
-import { SelectorBache } from './SelectorBache';
 import {
   CAMPO,
   kg,
@@ -38,7 +42,7 @@ import {
   type BacheNoDisponible,
   type EstadoBodega,
 } from './comunes';
-import type { MotivoSalida, ReceptorEntrega } from '@/lib/salida-bache.constants';
+import type { MotivoSalida, MotivoSalidaBlend, ReceptorEntrega } from '@/lib/salida-bache.constants';
 
 const FONDO =
   "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')";
@@ -309,6 +313,11 @@ interface EtiquetasProducto {
   tituloPorLote: string;
   columnaPorLote: string;
   pie: React.ReactNode;
+  /**
+   * Contar aparte las salidas `SAL-<MOTIVO>-…` (muestras, laboratorio, merma,
+   * traslado). Solo el Blend: su "Despachado" es lo que se cuadra con las ventas.
+   */
+  separarNoComerciales?: boolean;
 }
 
 const ETIQUETAS_ABONO: EtiquetasProducto = {
@@ -353,7 +362,8 @@ const ETIQUETAS_BLEND: EtiquetasProducto = {
   kpiIngresado: 'Producido histórico',
   kpiIngresadoNota: 'Entradas de producción',
   kpiConsumido: 'Despachado',
-  kpiConsumidoNota: 'Salidas por remisión',
+  kpiConsumidoNota: 'Salidas a clientes',
+  separarNoComerciales: true,
   // Al contrario del abono: el Blend se PRODUCE por lote, así que el desglose
   // responde cuánto salió de cada producción, no cuánto se fue a ella.
   tituloPorLote: 'Producción por lote',
@@ -362,9 +372,10 @@ const ETIQUETAS_BLEND: EtiquetasProducto = {
     <>
       El Biochar Blend es el producto terminado: sus entradas las escribe la producción —el lote{' '}
       <code className="text-white/80">BLEND-…</code> que une los movimientos de biochar y de abono— y
-      sus salidas, las remisiones. Por eso el único botón es <strong>Producción</strong>, que
-      descuenta la materia prima al mismo tiempo: un ingreso suelto sería Blend sin receta, kilos que
-      no descontaron nada.
+      sus salidas, las remisiones. Por eso no hay botón de ingresar: entra solo con{' '}
+      <strong>Producción</strong>, que descuenta la materia prima al mismo tiempo —un ingreso suelto
+      sería Blend sin receta—. <strong>Sacar Blend</strong> es para lo que sale sin venta (muestras,
+      laboratorio, merma, traslado) y sale de los lotes más antiguos primero.
     </>
   ),
 };
@@ -590,7 +601,7 @@ function BodegaContent() {
 
   // Qué formulario está abierto. `null` = ninguno.
   const [modal, setModal] = useState<
-    'salida-biochar' | 'entrada-abono' | 'salida-abono' | 'produccion-blend' | null
+    'salida-biochar' | 'salida-blend' | 'entrada-abono' | 'salida-abono' | 'produccion-blend' | null
   >(null);
   const [aviso, setAviso] = useState<string | null>(null);
   /** Referencia `SAL-ENT-…` cuya acta está abierta. */
@@ -900,12 +911,14 @@ function BodegaContent() {
                 <>
                   {/* El Blend no tiene botón de "ingresar": entra SOLO produciéndolo,
                       porque una entrada suelta sería producto sin receta —kilos que no
-                      descontaron biochar ni abono de nada—. Las salidas las escriben
-                      las remisiones. */}
+                      descontaron biochar ni abono de nada—. Los despachos a clientes
+                      los escriben las remisiones; "Sacar" es para lo que sale sin venta. */}
                   <BotonAccion tono="entrada" onClick={() => setModal('produccion-blend')}>
                     Producción
                   </BotonAccion>
-                  <span className="text-xs text-white/40">Las salidas las hacen las remisiones</span>
+                  <BotonAccion tono="salida" onClick={() => setModal('salida-blend')}>
+                    Sacar Blend
+                  </BotonAccion>
                 </>
               )}
             </div>
@@ -1247,15 +1260,24 @@ function BodegaContent() {
       {modal === 'salida-biochar' && (
         <Modal
           titulo="Sacar biochar de bodega"
-          descripcion="Descuenta el bache en sus tres partes: su fórmula, el libro mayor del Core y su Estado Bache."
+          descripcion="Se pide el total y sale de los baches más antiguos primero; cada uno se descuenta en su fórmula, el libro mayor del Core y su Estado Bache."
           onCerrar={() => setModal(null)}
         >
           <FormSalidaBiochar
             baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
-            noDisponibles={biochar.noDisponibles ?? []}
             onListo={tras}
             onCancelar={() => setModal(null)}
           />
+        </Modal>
+      )}
+
+      {modal === 'salida-blend' && (
+        <Modal
+          titulo="Sacar Biochar Blend de bodega"
+          descripcion="Para lo que sale sin venta: muestras, laboratorio, merma o traslado. Se pide el total y sale de los lotes más antiguos primero. Los despachos a clientes van por remisión."
+          onCerrar={() => setModal(null)}
+        >
+          <FormSalidaBlend lotes={lotesBlend} onListo={tras} onCancelar={() => setModal(null)} />
         </Modal>
       )}
 
@@ -1493,16 +1515,21 @@ function ActaEntregaPanel({ referencia, onCerrar }: { referencia: string; onCerr
 
 /** Lo que devuelve /api/baches/salida: el plan de la salida y sus pasos. */
 interface PlanSalida {
-  referencia: string;
   destino: string;
   yaExistia: boolean;
-  bache: {
-    codigo: string;
-    kg: number;
-    disponibleAntes: number;
-    estadoAnterior: string;
-    estadoNuevo: string | null;
-  };
+  kg: number;
+  referenciaBase: string | null;
+  salidas: Array<{
+    referencia: string;
+    yaExistia: boolean;
+    bache: {
+      codigo: string;
+      kg: number;
+      disponibleAntes: number;
+      estadoAnterior: string;
+      estadoNuevo: string | null;
+    };
+  }>;
 }
 
 interface StepResultUI {
@@ -1512,32 +1539,28 @@ interface StepResultUI {
 }
 
 /**
- * Salida de biochar de un bache, por un motivo que NO es producción de Blend.
+ * Salida de biochar de bodega por un motivo que NO es producción de Blend.
  *
- * El bache es obligatorio y no hay "salida general": el biochar solo existe en el
- * inventario como el biochar DE un bache, y una salida sin bache descontaría kg de
- * la nada — que es exactamente el "biochar fantasma" de la auditoría del
+ * Se pide un TOTAL, no un bache: quien saca 75 kg para una feria no está eligiendo
+ * lona. Pero no hay "salida general": el servidor reparte el total FIFO y cada kg
+ * sale de un bache con su propia referencia, porque una salida sin bache
+ * descontaría kg de la nada — el "biochar fantasma" de la auditoría del
  * 2026-07-29 (4 filas sin bache que se comieron 8.070 kg).
  *
- * Antes de escribir se pide el plan al servidor (`dryRun`): esta operación mueve
- * inventario real en dos bases y no se deshace con un botón. Ver el plan —cuántos
- * kg, en qué estado queda el bache, qué parte ya estaba escrita— es lo que separa
- * un registro de un susto.
+ * Antes de escribir se pide el plan al servidor (`dryRun`) y la confirmación
+ * reenvía ESE reparto: recalcularlo después caería en otros baches, porque el
+ * saldo ya habría bajado.
  */
 function FormSalidaBiochar({
   baches,
-  noDisponibles,
   onListo,
   onCancelar,
 }: {
   baches: BacheBodega[];
-  noDisponibles: BacheNoDisponible[];
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
 }) {
-  const [codigo, setCodigo] = useState(baches[0]?.codigo ?? '');
   const [motivo, setMotivo] = useState<MotivoSalida>('laboratorio');
-  const [completo, setCompleto] = useState(true);
   const [kgTexto, setKgTexto] = useState('');
   const [destino, setDestino] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -1547,12 +1570,14 @@ function FormSalidaBiochar({
   const [plan, setPlan] = useState<PlanSalida | null>(null);
   const [receptor, setReceptor] = useState<ReceptorEntrega>(RECEPTOR_VACIO);
   /** Entrega ya registrada: se queda abierta para ofrecer el acta. */
-  const [entregada, setEntregada] = useState<{ referencia: string; mensaje: string } | null>(null);
+  const [entregada, setEntregada] = useState<{ referencias: string[]; mensaje: string } | null>(null);
   const esEntrega = motivo === 'entrega';
 
-  const bache = baches.find((b) => b.codigo === codigo);
-  const kgPedidos = completo ? (bache?.kg ?? 0) : Number(kgTexto);
-  const restante = (bache?.kg ?? 0) - (Number.isFinite(kgPedidos) ? kgPedidos : 0);
+  const enBodega = baches.reduce((t, b) => t + b.kg, 0);
+  const kgPedidos = Number(kgTexto);
+  const kgValidos = Number.isFinite(kgPedidos) && kgPedidos > 0;
+  // Solo para orientar mientras se digita: el reparto que manda es el del ensayo.
+  const previa = kgValidos ? repartirSalidaFIFO(baches, kgPedidos) : null;
 
   const enviar = async (dryRun: boolean) => {
     setError(null);
@@ -1567,9 +1592,10 @@ function FormSalidaBiochar({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bache: codigo,
           motivo,
-          kg: completo ? undefined : Number(kgTexto),
+          kg: dryRun ? kgPedidos : plan?.kg,
+          baches: dryRun ? undefined : plan?.salidas.map((s) => ({ bache: s.bache.codigo, kg: s.bache.kg })),
+          referenciaBase: dryRun ? undefined : (plan?.referenciaBase ?? undefined),
           destino: destino.trim() || undefined,
           observaciones: observaciones.trim() || undefined,
           realizaRegistro: usuarioActual(),
@@ -1588,8 +1614,8 @@ function FormSalidaBiochar({
         return;
       }
 
-      // 207: el bache quedó descontado pero un paso de trazabilidad falló. Se dice
-      // con su detalle en vez de celebrar un éxito a medias.
+      // 207: los baches quedaron descontados pero un paso de trazabilidad falló. Se
+      // dice con su detalle en vez de celebrar un éxito a medias.
       const fallidos = (json.steps ?? []).filter((p: StepResultUI) => !p.ok);
       const mensaje = fallidos.length
         ? `${json.message} Pasos con problema: ${fallidos
@@ -1599,7 +1625,10 @@ function FormSalidaBiochar({
       // La entrega no se cierra al registrar: falta imprimir el acta y que quien
       // recibe la firme, y es ahora, con esa persona enfrente.
       if (esEntrega) {
-        setEntregada({ referencia: json.referencia, mensaje });
+        setEntregada({
+          referencias: (json.salidas ?? []).map((s: { referencia: string }) => s.referencia),
+          mensaje,
+        });
         return;
       }
       await onListo(mensaje);
@@ -1613,7 +1642,7 @@ function FormSalidaBiochar({
   if (!baches.length) {
     return (
       <div className="text-sm text-white/70">
-        Ningún bache tiene biochar disponible en bodega, así que no hay de dónde sacar.
+        No hay biochar disponible en bodega, así que no hay de dónde sacar.
         <div className="mt-4">
           <BotonAccion onClick={onCancelar}>Cerrar</BotonAccion>
         </div>
@@ -1628,16 +1657,23 @@ function FormSalidaBiochar({
         <p className="text-white/60">
           Imprime el acta y pide que {receptor.nombre} la firme: ahí asume el compromiso de no
           quemar el biochar y llevarlo al suelo.
+          {entregada.referencias.length > 1 &&
+            ' La entrega salió de varios baches y cada uno tiene su acta.'}
         </p>
         <div className="flex flex-wrap gap-3">
-          <a
-            href={urlActa(entregada.referencia)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429]"
-          >
-            Descargar acta de entrega
-          </a>
+          {entregada.referencias.map((referencia) => (
+            <a
+              key={referencia}
+              href={urlActa(referencia)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429]"
+            >
+              {entregada.referencias.length > 1
+                ? `Acta ${bacheDeReferencia(referencia) ?? referencia}`
+                : 'Descargar acta de entrega'}
+            </a>
+          ))}
           <BotonAccion onClick={() => onListo(entregada.mensaje)}>Cerrar</BotonAccion>
         </div>
       </div>
@@ -1645,28 +1681,32 @@ function FormSalidaBiochar({
   }
 
   if (plan) {
-    const b = plan.bache;
     return (
       <div className="space-y-4 text-sm text-white">
-        <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-1.5">
-          <p className="font-medium">Esto es lo que se va a escribir:</p>
-          <p className="text-white/70">
-            Bache <span className="text-white">{b.codigo}</span> · salen{' '}
-            <span className="text-white">{kg(b.kg)}</span> de {kg(b.disponibleAntes)}
+        <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-2">
+          <p className="font-medium">
+            Esto es lo que se va a escribir: salen <span className="text-white">{kg(plan.kg)}</span>
+            {plan.salidas.length > 1 ? ` de ${plan.salidas.length} baches` : ''}
           </p>
-          <p className="text-white/70">
-            Queda en {kg(b.disponibleAntes - b.kg)} · estado {b.estadoNuevo ?? b.estadoAnterior}
-          </p>
+          <ul className="space-y-1">
+            {plan.salidas.map(({ bache: b, referencia, yaExistia }) => (
+              <li key={referencia} className="text-white/70">
+                <span className="text-white">{b.codigo}</span> · {kg(b.kg)} de {kg(b.disponibleAntes)} ·
+                queda en {kg(b.disponibleAntes - b.kg)} · {b.estadoNuevo ?? b.estadoAnterior}
+                <span className="block font-mono text-xs text-white/40">
+                  {referencia}
+                  {yaExistia && ' · ya registrada'}
+                </span>
+              </li>
+            ))}
+          </ul>
           {esEntrega && (
             <p className="text-white/70">
               Recibe {receptor.nombre} · C.C. {receptor.cedula}
               {receptor.placa ? ` · placa ${receptor.placa.toUpperCase()}` : ''}
             </p>
           )}
-          <p className="text-white/70">
-            Destino: {plan.destino} · Referencia:{' '}
-            <span className="font-mono text-xs">{plan.referencia}</span>
-          </p>
+          <p className="text-white/70">Destino: {plan.destino}</p>
           {plan.yaExistia && (
             <p className="text-amber-200">
               ⚠️ Esta salida ya está registrada: confirmar no descontará de nuevo.
@@ -1696,13 +1736,6 @@ function FormSalidaBiochar({
       }}
       className="space-y-4 text-sm"
     >
-      <SelectorBache
-        baches={baches}
-        valor={codigo}
-        onCambio={setCodigo}
-        noDisponibles={noDisponibles}
-      />
-
       <label className="block">
         <span className="text-white/70">Motivo</span>
         <select
@@ -1721,35 +1754,26 @@ function FormSalidaBiochar({
         </span>
       </label>
 
-      <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-3 space-y-2">
-        <label className="flex items-center gap-2 text-white/80">
-          <input
-            type="checkbox"
-            checked={completo}
-            onChange={(e) => setCompleto(e.target.checked)}
-            className="h-4 w-4 accent-[#5A7836]"
-          />
-          Sacar el bache completo ({kg(bache?.kg ?? 0)})
-        </label>
-        {!completo && (
-          <label className="block">
-            <span className="text-white/70">KG a sacar</span>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              max={bache?.kg ?? 0}
-              value={kgTexto}
-              onChange={(e) => setKgTexto(e.target.value)}
-              required
-              className={CAMPO}
-            />
-            <span className="mt-1 block text-xs text-white/50">
-              Quedarían {kg(Number.isFinite(restante) ? restante : 0)} en el bache.
-            </span>
-          </label>
-        )}
-      </div>
+      <label className="block">
+        <span className="text-white/70">KG a sacar</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          max={enBodega.toFixed(2)}
+          value={kgTexto}
+          onChange={(e) => setKgTexto(e.target.value)}
+          required
+          className={CAMPO}
+        />
+        <span className="mt-1 block text-xs text-white/50">
+          En bodega hay {kg(enBodega)} en {baches.length} baches.{' '}
+          {kgValidos &&
+            (previa
+              ? `Saldría de ${previa.map((b) => `${b.codigo} (${kg(b.kg)})`).join(', ')}: los baches más antiguos primero.`
+              : 'No alcanza con lo que hay en bodega.')}
+        </span>
+      </label>
 
       {esEntrega && <CamposReceptor valor={receptor} onCambio={setReceptor} />}
 
@@ -1792,7 +1816,242 @@ function FormSalidaBiochar({
       <div className="flex flex-wrap gap-3 pt-1">
         <button
           type="submit"
-          disabled={enviando || !bache}
+          disabled={enviando || !previa}
+          className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
+        >
+          {enviando ? 'Calculando…' : 'Ver qué se va a escribir'}
+        </button>
+        <BotonAccion onClick={onCancelar}>Cancelar</BotonAccion>
+      </div>
+    </form>
+  );
+}
+
+/** Lo que devuelve /api/pirolisis/inventario/blend/salida. */
+interface PlanSalidaBlend {
+  destino: string;
+  yaExistia: boolean;
+  kg: number;
+  referencia: string;
+  lotes: Array<{ lote: string; kg: number; disponibleAntes: number }>;
+}
+
+/**
+ * Salida de Biochar Blend sin venta: muestras, laboratorio, merma, traslado.
+ *
+ * Se pide un TOTAL y sale como UN movimiento, aunque cubra varios lotes: el
+ * servidor reparte FIFO —el lote es lo que dice de qué está hecho ese Blend— y
+ * guarda el reparto dentro del movimiento. Se ensaya y la confirmación reenvía ESE
+ * reparto y esa referencia. No ofrece "entrega sin contraprestación": esa
+ * sale con acta, y el acta vive en PiroliApp atada a un bache (ver
+ * `MOTIVOS_SALIDA_BLEND`).
+ */
+function FormSalidaBlend({
+  lotes,
+  onListo,
+  onCancelar,
+}: {
+  lotes: LoteBlend[];
+  onListo: (mensaje: string) => void | Promise<void>;
+  onCancelar: () => void;
+}) {
+  const [motivo, setMotivo] = useState<MotivoSalidaBlend>('muestra');
+  const [kgTexto, setKgTexto] = useState('');
+  const [destino, setDestino] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+  const [fechaSalida, setFechaSalida] = useState(() => new Date().toISOString().split('T')[0]);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<PlanSalidaBlend | null>(null);
+
+  const conSaldo = [...lotes]
+    .filter((l) => l.kgDisponibles > 0.01)
+    .sort((a, b) => (a.fecha || '9999').localeCompare(b.fecha || '9999'));
+  const enBodega = conSaldo.reduce((t, l) => t + l.kgDisponibles, 0);
+  const kgPedidos = Number(kgTexto);
+  const kgValidos = Number.isFinite(kgPedidos) && kgPedidos > 0;
+  // Solo para orientar mientras se digita: el reparto que manda es el del ensayo.
+  const previa = kgValidos
+    ? repartirEnOrden(conSaldo.map((l) => ({ codigo: l.lote, kg: l.kgDisponibles })), kgPedidos)
+    : null;
+
+  const enviar = async (dryRun: boolean) => {
+    setError(null);
+    setEnviando(true);
+    try {
+      const res = await fetch('/api/pirolisis/inventario/blend/salida', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          motivo,
+          kg: dryRun ? kgPedidos : plan?.kg,
+          lotes: dryRun ? undefined : plan?.lotes.map((l) => ({ lote: l.lote, kg: l.kg })),
+          referencia: dryRun ? undefined : plan?.referencia,
+          destino: destino.trim() || undefined,
+          observaciones: observaciones.trim() || undefined,
+          realizaRegistro: usuarioActual(),
+          fecha: fechaSalida,
+          dryRun,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === false) throw new Error(json.error ?? `Error ${res.status}`);
+
+      if (dryRun) {
+        setPlan(json as PlanSalidaBlend);
+        return;
+      }
+      const fallidos = (json.steps ?? []).filter((p: StepResultUI) => !p.ok);
+      await onListo(
+        fallidos.length
+          ? `${json.message} Pasos con problema: ${fallidos
+              .map((p: StepResultUI) => `${p.step} (${p.error})`)
+              .join(' · ')}`
+          : json.message
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  if (!conSaldo.length) {
+    return (
+      <div className="text-sm text-white/70">
+        Ningún lote de Blend tiene producto en bodega, así que no hay de dónde sacar.
+        <div className="mt-4">
+          <BotonAccion onClick={onCancelar}>Cerrar</BotonAccion>
+        </div>
+      </div>
+    );
+  }
+
+  if (plan) {
+    return (
+      <div className="space-y-4 text-sm text-white">
+        <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-2">
+          <p className="font-medium">
+            Esto es lo que se va a escribir: una salida de {kg(plan.kg)} de Blend
+            {plan.lotes.length > 1 ? `, que sale de ${plan.lotes.length} lotes` : ''}
+          </p>
+          <ul className="space-y-1">
+            {plan.lotes.map((l) => (
+              <li key={l.lote} className="text-white/70">
+                <span className="text-white">{l.lote}</span> · {kg(l.kg)} de {kg(l.disponibleAntes)} ·
+                queda en {kg(l.disponibleAntes - l.kg)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-white/70">
+            Destino: {plan.destino} · Referencia:{' '}
+            <span className="font-mono text-xs">{plan.referencia}</span>
+          </p>
+          {plan.yaExistia && (
+            <p className="text-amber-200">⚠️ Esta salida ya está registrada: confirmar no descontará de nuevo.</p>
+          )}
+        </div>
+        {error && <p className="text-red-300">{error}</p>}
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => enviar(false)}
+            disabled={enviando}
+            className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
+          >
+            {enviando ? 'Registrando…' : 'Confirmar salida'}
+          </button>
+          <BotonAccion onClick={() => setPlan(null)}>Volver</BotonAccion>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        enviar(true);
+      }}
+      className="space-y-4 text-sm"
+    >
+      <label className="block">
+        <span className="text-white/70">Motivo</span>
+        <select
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value as MotivoSalidaBlend)}
+          className={CAMPO}
+        >
+          {MOTIVOS_SALIDA_BLEND.map((clave) => (
+            <option key={clave} value={clave}>
+              {MOTIVOS_SALIDA[clave].etiqueta}
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs text-white/50">{MOTIVOS_SALIDA[motivo].descripcion}</span>
+      </label>
+
+      <label className="block">
+        <span className="text-white/70">KG a sacar</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          max={enBodega.toFixed(2)}
+          value={kgTexto}
+          onChange={(e) => setKgTexto(e.target.value)}
+          required
+          className={CAMPO}
+        />
+        <span className="mt-1 block text-xs text-white/50">
+          En bodega hay {kg(enBodega)} de Blend en {conSaldo.length}{' '}
+          {conSaldo.length === 1 ? 'lote' : 'lotes'}.{' '}
+          {kgValidos &&
+            (previa
+              ? `Saldría de ${previa.map((l) => `${l.codigo} (${kg(l.kg)})`).join(', ')}: los lotes más antiguos primero.`
+              : 'No alcanza con lo que hay en bodega.')}
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="text-white/70">Destino</span>
+        <input
+          value={destino}
+          onChange={(e) => setDestino(e.target.value)}
+          placeholder="Laboratorio DataLab, feria, área, quien recibe…"
+          className={CAMPO}
+        />
+        <span className="mt-1 block text-xs text-white/50">
+          Si se deja vacío queda el motivo: la merma no tiene a dónde ir.
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="text-white/70">Fecha</span>
+        <input
+          type="date"
+          value={fechaSalida}
+          onChange={(e) => setFechaSalida(e.target.value)}
+          required
+          className={CAMPO}
+        />
+      </label>
+
+      <label className="block">
+        <span className="text-white/70">Observaciones</span>
+        <textarea
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+          rows={2}
+          className={CAMPO}
+        />
+      </label>
+
+      {error && <p className="text-red-300">{error}</p>}
+
+      <div className="flex flex-wrap gap-3 pt-1">
+        <button
+          type="submit"
+          disabled={enviando || !previa}
           className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
         >
           {enviando ? 'Calculando…' : 'Ver qué se va a escribir'}
@@ -3948,9 +4207,19 @@ function SeccionProducto({
     );
   }
 
+  // Las salidas sin venta se cuentan APARTE: lo despachado es lo que se cuadra con
+  // las ventas, y sumarle muestras y laboratorio lo infla.
+  const kgNoComercial = etiquetas.separarNoComerciales
+    ? resumen.movimientos
+        .filter((m) => m.tipo === 'Salida' && esSalidaNoComercial(m.documento))
+        .reduce((t, m) => t + m.cantidad, 0)
+    : 0;
+
   return (
     <>
-      <section className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <section
+        className={`mt-6 grid grid-cols-2 gap-3 ${etiquetas.separarNoComerciales ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}
+      >
         <Kpi
           label={etiquetas.kpiSaldo}
           valor={resumen.kg === null ? '—' : kg(resumen.kg)}
@@ -3964,9 +4233,16 @@ function SeccionProducto({
         />
         <Kpi
           label={etiquetas.kpiConsumido}
-          valor={kg(resumen.kgConsumido)}
+          valor={kg(resumen.kgConsumido - kgNoComercial)}
           nota={etiquetas.kpiConsumidoNota}
         />
+        {etiquetas.separarNoComerciales && (
+          <Kpi
+            label="Salidas no comerciales"
+            valor={kg(kgNoComercial)}
+            nota="Muestras, laboratorio, merma, traslado"
+          />
+        )}
         <Kpi
           label="Movimientos"
           valor={String(resumen.movimientos.length)}

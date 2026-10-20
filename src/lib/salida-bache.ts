@@ -42,9 +42,16 @@ import {
   contarMovimientosPorDestino,
   crearMovimientoBiocharPuro,
   credencialesBiocharPuro,
+  fetchBachesBiocharCore,
 } from './biochar-inventario-core';
 import { actualizarEstadoBaches, estadoTrasConsumo } from './baches-biochar';
-import { MOTIVOS_SALIDA, marcaSalida, referenciaSalida } from './salida-bache.constants';
+import {
+  MOTIVOS_SALIDA,
+  marcaSalida,
+  referenciaBaseLibre,
+  referenciaSalida,
+  repartirSalidaFIFO,
+} from './salida-bache.constants';
 import type { MotivoSalida, ReceptorEntrega } from './salida-bache.constants';
 import type { StepResult } from '@/types/step-result';
 
@@ -457,15 +464,39 @@ async function escribirSalidaCore(
 }
 
 /**
+ * Saldo de cada bache en el libro mayor del Core, por `Codigo Bache`.
+ *
+ * Es lo que un bache tiene para SACAR, igual que para producir (ver
+ * `runProduccionBlend`): el inventario va en peso de referencia (25 kg × lona) y
+ * la fórmula seca de PiroliApp no. Validar contra la fórmula ofrecía en el
+ * selector los kg del Core y luego rechazaba la salida con "0.00 kg disponibles"
+ * (S-00165, 2026-10-20: 89,77 kg en bodega, 0 en la fórmula).
+ */
+async function leerSaldosCore() {
+  const saldos = await fetchBachesBiocharCore();
+  if (!saldos) {
+    throw new Error('No se pudo leer el saldo de los baches en el Core: no se puede validar la salida.');
+  }
+  return saldos;
+}
+
+/**
  * Registra la salida de un bache por un motivo que no es producción de Blend.
  *
+ * @param saldos Saldo por bache del Core, si el llamador ya lo leyó (la salida
+ *   por total lo lee una vez para todos sus baches).
  * @throws Si el bache no existe o si los KG pedidos exceden el disponible. Son
  *   errores de entrada: se rechazan ANTES de escribir nada, para no dejar la
  *   operación a medias.
  */
-export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBacheResult> {
+export async function runSalidaBache(
+  input: SalidaBacheInput,
+  saldos?: Map<string, number>
+): Promise<SalidaBacheResult> {
   const fecha = input.fecha?.trim() || new Date().toISOString().split('T')[0];
-  const bache = await resolverBache(input.bache);
+  const saldoCore = saldos ?? new Map((await leerSaldosCore()).map((b) => [b.codigo, b.kg]));
+  const resuelto = await resolverBache(input.bache);
+  const bache: BacheResuelto = { ...resuelto, disponible: saldoCore.get(resuelto.codigo) ?? 0 };
   const referencia = referenciaSalida(input.motivo, fecha, bache.codigo, input.referenciaBase);
   // Sin destino explícito queda quien recibe y, si no hay, el motivo: es más honesto
   // que un campo vacío, y la merma no tiene a dónde ir.
@@ -490,10 +521,11 @@ export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBac
       ? kgPedidos
       : bache.disponible;
 
-  // El disponible de ANTES de esta salida: con el detalle ya escrito hay que
-  // sumárselo de vuelta para que el estado se calcule contra el mismo número que la
+  // El disponible de ANTES de esta salida: el saldo del Core baja con su Salida, no
+  // con el detalle, así que solo si esa Salida ya está escrita hay que sumarle de
+  // vuelta lo consumido para calcular el estado contra el mismo número que la
   // primera vez.
-  const disponibleAntes = existente.remisionId ? bache.disponible + kg : bache.disponible;
+  const disponibleAntes = existente.movimientosCore > 0 ? bache.disponible + kg : bache.disponible;
 
   if (!existente.remisionId) {
     if (bache.disponible <= TOLERANCIA_KG) {
@@ -670,4 +702,127 @@ export async function runSalidaBache(input: SalidaBacheInput): Promise<SalidaBac
     },
     steps,
   };
+}
+
+export interface SalidaBiocharInput extends Omit<SalidaBacheInput, 'bache' | 'kg'> {
+  /** KG totales a sacar de la bodega. */
+  kg: number;
+  /**
+   * El reparto por bache que propuso el ensayo. Obligatorio al confirmar: el
+   * reparto FIFO depende del saldo, y el saldo baja con cada salida, así que
+   * recalcularlo en un reintento caería en otros baches y duplicaría la salida.
+   */
+  baches?: Array<{ bache: string; kg: number }>;
+}
+
+export interface SalidaBiocharResult {
+  ok: boolean;
+  dryRun?: boolean;
+  yaExistia: boolean;
+  motivo: MotivoSalida;
+  destino: string;
+  fecha: string;
+  kg: number;
+  /** Lo que hay que reenviar al confirmar para que salgan las mismas referencias. */
+  referenciaBase: string | null;
+  /** Una por bache, en el orden del reparto. */
+  salidas: SalidaBacheResult[];
+  steps: StepResult[];
+}
+
+/**
+ * Salida de biochar pedida como TOTAL, repartida por bache.
+ *
+ * No es una "salida general": cada kg sigue saliendo de un bache, con su propia
+ * referencia, su detalle y su Salida en el Core —un total sin bache sería el
+ * "biochar fantasma" de la auditoría del 2026-07-29—. Lo que cambia es quién elige
+ * los baches: el ensayo los propone FIFO (`repartirSalidaFIFO`) y la confirmación
+ * escribe exactamente ese reparto.
+ *
+ * Todos los baches se ensayan antes de escribir el primero. Si uno falla a mitad
+ * de la escritura, los anteriores ya quedaron; reintentar con el mismo reparto y la
+ * misma `referenciaBase` los reconoce y sigue desde el que faltó.
+ */
+export async function runSalidaBiochar(input: SalidaBiocharInput): Promise<SalidaBiocharResult> {
+  const fecha = input.fecha?.trim() || new Date().toISOString().split('T')[0];
+  const kgTotal = Math.round(Number(input.kg) * 100) / 100;
+  if (!Number.isFinite(kgTotal) || kgTotal <= TOLERANCIA_KG) {
+    throw new Error('Los KG a sacar deben ser un número mayor que cero.');
+  }
+
+  const saldos = await leerSaldosCore();
+  const saldoCore = new Map(saldos.map((b) => [b.codigo, b.kg]));
+
+  let reparto: Array<{ bache: string; kg: number }>;
+  let referenciaBase = input.referenciaBase?.trim() || undefined;
+
+  if (input.baches?.length) {
+    reparto = input.baches.map((b) => ({ bache: String(b.bache ?? '').trim(), kg: Number(b.kg) }));
+    const suma = Math.round(reparto.reduce((t, b) => t + b.kg, 0) * 100) / 100;
+    if (Math.abs(suma - kgTotal) > TOLERANCIA_KG) {
+      throw new Error(`El reparto por bache suma ${suma.toFixed(2)} kg y se pidieron ${kgTotal.toFixed(2)}.`);
+    }
+    if (new Set(reparto.map((b) => b.bache)).size !== reparto.length) {
+      // Dos filas del mismo bache compartirían referencia y la segunda se leería
+      // como reintento de la primera: sus kg se perderían en silencio.
+      throw new Error('Hay un bache repetido en el reparto.');
+    }
+  } else {
+    if (!input.dryRun) {
+      throw new Error('Confirmar una salida necesita el reparto por bache del ensayo.');
+    }
+    const fifo = repartirSalidaFIFO(saldos, kgTotal);
+    if (!fifo) {
+      const hay = saldos.reduce((t, b) => t + Math.max(0, b.kg), 0);
+      throw new Error(`En bodega solo hay ${hay.toFixed(2)} kg de biochar (se pidieron ${kgTotal.toFixed(2)}).`);
+    }
+    reparto = fifo.map((b) => ({ bache: b.codigo, kg: b.kg }));
+
+    if (!referenciaBase) {
+      // El destino de cada Salida del Core ES su referencia: si la de hoy ya existe
+      // para alguno de estos baches, esta es otra salida y no un reintento.
+      const existentes = new Set(saldos.flatMap((b) => b.lotes));
+      referenciaBase = referenciaBaseLibre(
+        input.motivo,
+        fecha,
+        reparto.map((b) => b.bache),
+        (ref) => existentes.has(ref)
+      );
+    }
+  }
+
+  const { baches: _reparto, kg: _total, ...comun } = input;
+  const base = { ...comun, fecha, referenciaBase };
+
+  // Ensayo de TODOS antes de escribir uno: un bache inexistente o sin saldo se
+  // rechaza sin haber movido los demás.
+  const ensayos: SalidaBacheResult[] = [];
+  for (const b of reparto) {
+    ensayos.push(await runSalidaBache({ ...base, bache: b.bache, kg: b.kg, dryRun: true }, saldoCore));
+  }
+
+  const resumen = (salidas: SalidaBacheResult[], ok: boolean): SalidaBiocharResult => ({
+    ok,
+    dryRun: input.dryRun || undefined,
+    yaExistia: salidas.length > 0 && salidas.every((s) => s.yaExistia),
+    motivo: input.motivo,
+    destino: salidas[0]?.destino ?? ensayos[0]?.destino ?? '',
+    fecha,
+    kg: Math.round(salidas.reduce((t, s) => t + s.bache.kg, 0) * 100) / 100,
+    referenciaBase: referenciaBase ?? null,
+    salidas,
+    steps: salidas.flatMap((s) => s.steps.map((p) => ({ ...p, step: `${s.bache.codigo}:${p.step}` }))),
+  });
+
+  if (input.dryRun) return resumen(ensayos, true);
+
+  const salidas: SalidaBacheResult[] = [];
+  for (const b of reparto) {
+    const resultado = await runSalidaBache({ ...base, bache: b.bache, kg: b.kg, dryRun: false }, saldoCore);
+    salidas.push(resultado);
+    // Sin el paso crítico de este bache no se sigue con los demás: el reintento
+    // con el mismo reparto retoma desde aquí.
+    if (!resultado.ok) return resumen(salidas, false);
+  }
+  return resumen(salidas, true);
 }

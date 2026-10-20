@@ -20,7 +20,7 @@ export const MOTIVOS_SALIDA = {
   laboratorio: {
     prefijo: 'LAB',
     etiqueta: 'Laboratorio',
-    descripcion: 'El bache se envió a un laboratorio para análisis.',
+    descripcion: 'Se envió a un laboratorio para análisis.',
   },
   muestra: {
     prefijo: 'MUE',
@@ -50,6 +50,21 @@ export const MOTIVOS_SALIDA = {
 
 export type MotivoSalida = keyof typeof MOTIVOS_SALIDA;
 
+/**
+ * Los motivos por los que se puede sacar Biochar Blend: todos menos la entrega.
+ *
+ * La entrega sin contraprestación sale con acta, y el acta se arma de la remisión
+ * de baches de PiroliApp, donde vive quien recibe —a propósito fuera de los Core,
+ * que comparte todo el ecosistema—. El Blend solo existe en el Core, así que no
+ * tiene dónde guardar la cédula de quien recibe sin publicarla en una base ajena.
+ */
+export const MOTIVOS_SALIDA_BLEND = ['laboratorio', 'muestra', 'merma', 'traslado'] as const satisfies readonly MotivoSalida[];
+export type MotivoSalidaBlend = (typeof MOTIVOS_SALIDA_BLEND)[number];
+
+export function esMotivoSalidaBlend(valor: unknown): valor is MotivoSalidaBlend {
+  return (MOTIVOS_SALIDA_BLEND as readonly unknown[]).includes(valor);
+}
+
 const PREFIJOS_NO_COMERCIALES = Object.values(MOTIVOS_SALIDA).map((m) => m.prefijo).join('|');
 /**
  * `SAL-REMISION-<n>-<bache>`: las salidas de la UI de remisión de baches, anterior
@@ -77,10 +92,10 @@ export function esMotivoSalida(valor: unknown): valor is MotivoSalida {
  * Referencia de la salida: su identidad y su llave de deduplicación.
  *
  * Determinista a propósito (mismo motivo + misma fecha + mismo bache → misma
- * referencia): reintentar no duplica, agrupa. El costo es que dos salidas del mismo
- * bache al laboratorio el mismo día se leen como una; se acepta porque el escenario
- * real es un bigbag que sale una vez, y el riesgo contrario —descontar dos veces
- * 487 kg— es mucho peor.
+ * referencia): reintentar no duplica, agrupa. Dos salidas DISTINTAS del mismo
+ * bache por el mismo motivo el mismo día —lo normal desde que la salida se pide
+ * por total y el reparto FIFO cae siempre en el bache más viejo— no se distinguen
+ * aquí sino con `referenciaBaseSalida(…, n)`, que el ensayo elige libre.
  */
 export function referenciaSalida(
   motivo: MotivoSalida,
@@ -97,6 +112,77 @@ export function referenciaSalida(
 ): string {
   if (referenciaBase?.trim()) return `${referenciaBase.trim()}-${codigoBache}`;
   return `SAL-${MOTIVOS_SALIDA[motivo].prefijo}-${fecha}-${codigoBache}`;
+}
+
+/**
+ * Prefijo de la N-ésima salida del día por un mismo motivo: `SAL-MUE-<fecha>-2`.
+ *
+ * La primera conserva la forma de siempre (sin número) para que las referencias
+ * ya escritas sigan siendo las mismas. El número lo elige el ENSAYO —el primero
+ * cuyo reparto no choque con una salida existente— y la confirmación lo reenvía tal
+ * cual: así un reintento de la confirmación vuelve a dar las mismas referencias y
+ * completa lo que faltó en vez de duplicarlo.
+ */
+export function referenciaBaseSalida(motivo: MotivoSalida, fecha: string, n: number): string | undefined {
+  return n <= 1 ? undefined : `SAL-${MOTIVOS_SALIDA[motivo].prefijo}-${fecha}-${n}`;
+}
+
+/** El primer `n` cuyas referencias no existen todavía para ninguno de los baches. */
+export function referenciaBaseLibre(
+  motivo: MotivoSalida,
+  fecha: string,
+  codigosBache: string[],
+  existe: (referencia: string) => boolean
+): string | undefined {
+  for (let n = 1; n < 1000; n++) {
+    const base = referenciaBaseSalida(motivo, fecha, n);
+    if (!codigosBache.some((codigo) => existe(referenciaSalida(motivo, fecha, codigo, base)))) return base;
+  }
+  throw new Error(`Demasiadas salidas por ${MOTIVOS_SALIDA[motivo].etiqueta} el ${fecha}.`);
+}
+
+/**
+ * Reparte una salida pedida como TOTAL entre los baches, del más antiguo al más
+ * nuevo.
+ *
+ * El operador piensa en "sacar 75 kg de biochar", no en qué lona abrir; pero el
+ * libro mayor necesita el bache de cada kg (`bache_origen_id` sostiene la
+ * contabilidad de carbono), así que el total se convierte en una salida por bache.
+ * FIFO es la misma regla que propone la producción: evita que los baches viejos
+ * queden abiertos para siempre.
+ *
+ * @returns null si el total excede lo que hay.
+ */
+export function repartirSalidaFIFO(
+  baches: Array<{ codigo: string; kg: number }>,
+  kgTotal: number
+): Array<{ codigo: string; kg: number }> | null {
+  return repartirEnOrden([...baches].sort((a, b) => a.codigo.localeCompare(b.codigo)), kgTotal);
+}
+
+/**
+ * Reparte un total tomando las fuentes EN EL ORDEN EN QUE LLEGAN.
+ *
+ * Los lotes de Blend no se ordenan por código como los baches: `BLEND-…` y los
+ * `SAL-<CLIENTE>-…` históricos no comparten formato, así que su antigüedad la da
+ * la fecha de producción, y quien llama ya los trae ordenados por ella.
+ *
+ * @returns null si el total excede lo que hay.
+ */
+export function repartirEnOrden(
+  fuentes: Array<{ codigo: string; kg: number }>,
+  kgTotal: number
+): Array<{ codigo: string; kg: number }> | null {
+  const porAntiguedad = fuentes.filter((b) => b.kg > 0.01);
+  const reparto: Array<{ codigo: string; kg: number }> = [];
+  let restante = Math.round(kgTotal * 100) / 100;
+  for (const b of porAntiguedad) {
+    if (restante <= 0.01) break;
+    const kg = Math.min(b.kg, restante);
+    reparto.push({ codigo: b.codigo, kg: Math.round(kg * 100) / 100 });
+    restante = Math.round((restante - kg) * 100) / 100;
+  }
+  return restante > 0.01 ? null : reparto;
 }
 
 /**
@@ -138,9 +224,9 @@ export const COMPROMISO_ENTREGA_BIOCHAR =
   'quemarlo devuelve ese carbono a la atmósfera como CO₂ y anula el secuestro que ' +
   'respalda esta entrega.';
 
-/** Solo las salidas por `entrega` tienen acta. */
+/** Solo las salidas por `entrega` tienen acta. El `-<n>` es la N-ésima del día. */
 export function esReferenciaEntrega(referencia: string): boolean {
-  return /^SAL-ENT-\d{4}-\d{2}-\d{2}-S-\d{5}$/.test(referencia);
+  return /^SAL-ENT-\d{4}-\d{2}-\d{2}(-\d+)?-S-\d{5}$/.test(referencia);
 }
 
 /** El bache va al final de la referencia (`SAL-ENT-<fecha>-S-00144`). */
