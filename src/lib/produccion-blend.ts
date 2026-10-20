@@ -50,6 +50,7 @@ import { escapeAirtableValue, esRecordId } from './airtable-escape';
 import {
   crearMovimientoBiocharPuro,
   credencialesBiocharPuro,
+  fetchBachesBiocharCore,
 } from './biochar-inventario-core';
 import {
   credencialesAbono,
@@ -529,6 +530,21 @@ export async function runProduccionBlend(input: ProduccionBlendInput): Promise<P
   }
 
   // ── Resolución y validación: todo antes de la primera escritura ──────────────
+  //
+  // Lo que un bache tiene para producir es su saldo en el libro mayor del Core,
+  // en peso de REFERENCIA (25 kg × lona), no la fórmula seca de PiroliApp
+  // (decisión de David, 2026-09-22; aplicada aquí el 2026-10-16). Es el número
+  // que muestra la bodega: validar contra la fórmula rechazaba los migrados V2
+  // —0 kg secos y lonas reales en bodega— y dejaba ~70 kg por bache sin poder
+  // producirse. El detalle de PiroliApp se sigue escribiendo con los mismos kg,
+  // así que su fórmula seca puede quedar por debajo de cero: es la divergencia
+  // conocida entre las dos vistas, no un error de esta función.
+  const saldosCore = await fetchBachesBiocharCore();
+  if (!saldosCore) {
+    throw new Error('No se pudo leer el saldo de los baches en el Core: no se puede validar la producción.');
+  }
+  const saldoCore = new Map(saldosCore.map((b) => [b.codigo, b.kg]));
+
   const resueltos: Array<{ bache: BacheResuelto; kg: number; referencia: string; yaExistia: boolean; disponibleAntes: number }> = [];
   const vistos = new Set<string>();
 
@@ -536,7 +552,8 @@ export async function runProduccionBlend(input: ProduccionBlendInput): Promise<P
     const identificador = String(entrada?.bache ?? '').trim();
     if (!identificador) throw new Error('Hay un bache sin identificar en la lista.');
 
-    const bache = await resolverBache(identificador);
+    const resuelto = await resolverBache(identificador);
+    const bache: BacheResuelto = { ...resuelto, disponible: saldoCore.get(resuelto.codigo) ?? 0 };
     if (vistos.has(bache.id)) {
       // Dos filas del mismo bache compartirían referencia y la segunda se leería como
       // un reintento de la primera: se descontaría una sola vez y los kg del operador
@@ -546,11 +563,15 @@ export async function runProduccionBlend(input: ProduccionBlendInput): Promise<P
     vistos.add(bache.id);
 
     const referencia = referenciaBacheDeLote(lote, bache.codigo);
-    // La idempotencia se consulta ANTES de validar disponibilidad: en cuanto el
-    // detalle está escrito la fórmula del bache ya bajó, así que validar primero
-    // haría que reintentar muriera con "no tiene biochar disponible" en vez de
-    // reconocer lo que ya se escribió.
+    // La idempotencia se consulta ANTES de validar disponibilidad: en un reintento
+    // el saldo ya bajó, así que validar primero haría que muriera con "no tiene
+    // biochar disponible" en vez de reconocer lo que ya se escribió.
     const existente = await detalleExistente(referencia);
+    // El saldo del Core baja con la Salida, no con el detalle: un reintento que se
+    // cortó entre los dos todavía ve el saldo completo.
+    const salidaEnCore = existente
+      ? await existeMovimientoConReferencia(credencialesBiocharPuro(), referencia)
+      : false;
 
     const kgPedidos = Number(entrada?.kg);
     const kg = existente
@@ -577,9 +598,9 @@ export async function runProduccionBlend(input: ProduccionBlendInput): Promise<P
       kg,
       referencia,
       yaExistia: Boolean(existente),
-      // Con el detalle ya escrito hay que sumar de vuelta lo consumido para que el
+      // Con la Salida ya escrita hay que sumar de vuelta lo consumido para que el
       // estado se calcule contra el mismo número que la primera vez.
-      disponibleAntes: existente ? bache.disponible + kg : bache.disponible,
+      disponibleAntes: salidaEnCore ? bache.disponible + kg : bache.disponible,
     });
   }
 

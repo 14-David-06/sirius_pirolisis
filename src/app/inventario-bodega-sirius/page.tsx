@@ -1326,6 +1326,13 @@ function BodegaContent() {
           <ProduccionPorTotales
             biocharDisponible={disponible.kg}
             abonoDisponible={abono?.kg ?? abono?.kgSegunMovimientos ?? 0}
+            baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
+            lotesExistentes={lotesBlend.map((l) => l.lote)}
+            onListo={async (mensaje) => {
+              setModal(null);
+              await tras(mensaje);
+            }}
+            onCancelar={() => setModal(null)}
           />
         </Modal>
       )}
@@ -2003,13 +2010,22 @@ interface PlanProduccion {
 function ProduccionPorTotales({
   biocharDisponible,
   abonoDisponible,
+  baches,
+  lotesExistentes,
+  onListo,
+  onCancelar,
 }: {
   biocharDisponible: number;
   abonoDisponible: number;
+  baches: BacheBodega[];
+  lotesExistentes: string[];
+  onListo: (mensaje: string) => void | Promise<void>;
+  onCancelar: () => void;
 }) {
   const [kgBlendTexto, setKgBlendTexto] = useState('');
   const [formula, setFormula] = useState<{ pctBiochar: number; pctAbono: number } | null>(null);
   const [errorFormula, setErrorFormula] = useState(false);
+  const [continuar, setContinuar] = useState(false);
 
   useEffect(() => {
     let vigente = true;
@@ -2046,7 +2062,22 @@ function ProduccionPorTotales({
   );
   const alcanza = valido && faltaBiochar <= 0.01 && faltaAbono <= 0.01;
 
-  const fila = (nombre: string, necesita: number, hay: number, falta: number) => (
+  // La calculadora sola no escribe nada: producir pasa por el formulario por
+  // bache, que es el que ensaya y deja `bache_origen_id` en cada Salida.
+  if (continuar && alcanza) {
+    return (
+      <FormProduccionBlend
+        baches={baches}
+        abonoDisponible={abonoDisponible}
+        lotesExistentes={lotesExistentes}
+        inicial={{ kgBiochar, kgAbono, kgBlend }}
+        onListo={onListo}
+        onCancelar={() => setContinuar(false)}
+      />
+    );
+  }
+
+  const fila =(nombre: string, necesita: number, hay: number, falta: number) => (
     <div className="flex items-center justify-between gap-3">
       <span className="text-white/70">{nombre}</span>
       <span className={falta > 0.01 ? 'text-red-300' : 'text-white'}>
@@ -2091,8 +2122,44 @@ function ProduccionPorTotales({
             {faltaAbono > 0.01 && ` Faltan ${kg(faltaAbono)} de abono 4G.`}
           </p>
         ))}
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => setContinuar(true)}
+          disabled={!alcanza}
+          className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
+        >
+          Continuar con la producción
+        </button>
+        <BotonAccion onClick={onCancelar}>Cancelar</BotonAccion>
+      </div>
     </div>
   );
+}
+
+/**
+ * Elige baches del más antiguo al más nuevo hasta juntar `objetivo` kg de
+ * biochar. FIFO es la regla de bodega: evita que los baches viejos queden
+ * abiertos para siempre. El último entra parcial para cuadrar al kilo.
+ */
+function seleccionarBachesFIFO(baches: BacheBodega[], objetivo: number) {
+  const porAntiguedad = [...baches].sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const seleccion: Record<string, SeleccionBache> = {};
+  let restante = objetivo;
+  for (const b of porAntiguedad) {
+    if (restante <= 0.01) break;
+    if (b.kg <= restante + 0.01) {
+      // Vacío = el bache completo: así el servicio toma el saldo exacto de la
+      // fórmula y no un número redondeado que dejaría centavos de kg colgando.
+      seleccion[b.codigo] = { marcado: true, kgTexto: '' };
+      restante -= b.kg;
+    } else {
+      seleccion[b.codigo] = { marcado: true, kgTexto: restante.toFixed(2) };
+      restante = 0;
+    }
+  }
+  return { seleccion, restante: Math.max(0, restante) };
 }
 
 /** Un bache marcado para entrar a la producción. `kgTexto` vacío = entra completo. */
@@ -2124,11 +2191,17 @@ function FormProduccionBlend({
   pedido,
   kgYaProducidos = 0,
   lotesExistentes = [],
+  inicial,
   onListo,
   onCancelar,
 }: {
   baches: BacheBodega[];
   abonoDisponible: number;
+  /**
+   * Lo que se calculó en la producción por totales. Los baches se proponen por
+   * FIFO y todo queda editable: el ensayo es el que decide.
+   */
+  inicial?: { kgBiochar: number; kgAbono: number; kgBlend: number };
   /**
    * El pedido para el que se produce. Fija el lote a `BLEND-<fecha>-<pedido>`,
    * que es lo que después hace aparecer el despacho de ESE pedido y le cierra el
@@ -2142,9 +2215,23 @@ function FormProduccionBlend({
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
 }) {
-  const [seleccion, setSeleccion] = useState<Record<string, SeleccionBache>>({});
-  const [kgAbonoTexto, setKgAbonoTexto] = useState('');
-  const [kgBlendTexto, setKgBlendTexto] = useState('');
+  // Si los baches no juntan el biochar pedido, no se precarga el Blend: un total
+  // que no cuadra con lo marcado se registraría como pesado sin serlo.
+  const [arranque] = useState(() => {
+    if (!inicial) return null;
+    const { seleccion: sel, restante } = seleccionarBachesFIFO(baches, inicial.kgBiochar);
+    return {
+      seleccion: sel,
+      kgAbono: inicial.kgAbono.toFixed(2),
+      kgBlend: restante <= 0.01 ? inicial.kgBlend.toFixed(2) : '',
+      restante,
+    };
+  });
+  const [seleccion, setSeleccion] = useState<Record<string, SeleccionBache>>(
+    arranque?.seleccion ?? {}
+  );
+  const [kgAbonoTexto, setKgAbonoTexto] = useState(arranque?.kgAbono ?? '');
+  const [kgBlendTexto, setKgBlendTexto] = useState(arranque?.kgBlend ?? '');
   const [sufijoLote, setSufijoLote] = useState(pedido?.codigo ?? '');
   const [observaciones, setObservaciones] = useState(
     pedido ? `Producción del pedido ${pedido.codigo} (${pedido.clienteNombre}).` : ''
@@ -2184,13 +2271,19 @@ function FormProduccionBlend({
    * la primera y no produciría nada (§5 de CLAUDE.md). Así que, si ese lote ya
    * existe, se pasa al siguiente sufijo — el mismo criterio que usa el despacho.
    */
+  //
+  // Desde la calculadora tampoco hay campo de sufijo, así que la segunda
+  // producción del día sale `BLEND-<fecha>-2`. Solo cuenta un lote que ya tiene
+  // Blend: uno que quedó a medias se reintenta con su mismo código y se completa.
   const sufijoEfectivo = (() => {
     const base = sufijoLote.trim();
-    if (!pedido || !base) return base;
+    if (!pedido && !(arranque && !base)) return base;
     const existentes = new Set(lotesExistentes);
-    if (!existentes.has(`BLEND-${fechaProd}-${base}`)) return base;
+    const lote = (s: string) => (s ? `BLEND-${fechaProd}-${s}` : `BLEND-${fechaProd}`);
+    if (!existentes.has(lote(base))) return base;
     for (let n = 2; n < 100; n += 1) {
-      if (!existentes.has(`BLEND-${fechaProd}-${base}-${n}`)) return `${base}-${n}`;
+      const candidato = base ? `${base}-${n}` : String(n);
+      if (!existentes.has(lote(candidato))) return candidato;
     }
     return base;
   })();
@@ -2294,22 +2387,7 @@ function FormProduccionBlend({
 
   const proponerBiochar = (objetivo: number) => {
     if (razonAbono === null || objetivo <= 0.01) return;
-    const porAntiguedad = [...baches].sort((a, b) => a.codigo.localeCompare(b.codigo));
-
-    const nueva: Record<string, SeleccionBache> = {};
-    let restante = objetivo;
-    for (const b of porAntiguedad) {
-      if (restante <= 0.01) break;
-      if (b.kg <= restante + 0.01) {
-        // Vacío = el bache completo: así el servicio toma el saldo exacto de la
-        // fórmula y no un número redondeado que dejaría centavos de kg colgando.
-        nueva[b.codigo] = { marcado: true, kgTexto: '' };
-        restante -= b.kg;
-      } else {
-        nueva[b.codigo] = { marcado: true, kgTexto: restante.toFixed(2) };
-        restante = 0;
-      }
-    }
+    const { seleccion: nueva, restante } = seleccionarBachesFIFO(baches, objetivo);
 
     setSeleccion(nueva);
     setKgAbonoTexto(((objetivo - restante) * razonAbono).toFixed(2));
@@ -2377,6 +2455,37 @@ function FormProduccionBlend({
     }
   };
 
+  // Desde la producción por totales el operador ya dijo cuánto: no se le muestra
+  // la lista de baches, se ensaya de una vez y lo que ve es el plan a confirmar.
+  const automatico = arranque !== null && arranque.restante <= 0.01;
+  useEffect(() => {
+    if (automatico) enviar(true);
+    // Solo al abrir: el ensayo es el punto de partida, no algo que se repita.
+  }, []);
+
+  if (arranque && !plan) {
+    return (
+      <div className="space-y-4 text-sm text-white/70">
+        {!automatico ? (
+          <p className="text-red-300">
+            Los baches con biochar en bodega no juntan los {kg(inicial?.kgBiochar ?? 0)} que lleva
+            esta producción.
+          </p>
+        ) : error ? (
+          <p className="text-red-300">{error}</p>
+        ) : (
+          <p>Calculando qué se va a escribir…</p>
+        )}
+        <div className="flex flex-wrap gap-3">
+          {automatico && error && (
+            <BotonAccion onClick={() => enviar(true)}>Reintentar</BotonAccion>
+          )}
+          <BotonAccion onClick={onCancelar}>Volver</BotonAccion>
+        </div>
+      </div>
+    );
+  }
+
   if (!baches.length) {
     return (
       <div className="text-sm text-white/70">
@@ -2436,7 +2545,8 @@ function FormProduccionBlend({
           >
             {enviando ? 'Registrando…' : 'Confirmar producción'}
           </button>
-          <BotonAccion onClick={() => setPlan(null)}>Volver</BotonAccion>
+          {/* Sin lista de baches detrás, volver es volver a la calculadora. */}
+          <BotonAccion onClick={arranque ? onCancelar : () => setPlan(null)}>Volver</BotonAccion>
         </div>
       </div>
     );
