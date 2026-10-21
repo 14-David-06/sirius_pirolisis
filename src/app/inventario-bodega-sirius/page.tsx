@@ -35,6 +35,7 @@ import {
   repartirEnOrden,
   repartirSalidaFIFO,
 } from '@/lib/salida-bache.constants';
+import { fechaBogota } from '@/lib/fecha-bogota';
 import {
   CAMPO,
   kg,
@@ -42,7 +43,40 @@ import {
   type BacheNoDisponible,
   type EstadoBodega,
 } from './comunes';
-import type { MotivoSalida, MotivoSalidaBlend, ReceptorEntrega } from '@/lib/salida-bache.constants';
+import {
+  Aviso,
+  AvisoSesionVencida,
+  BotonAccion,
+  CamposTransportista,
+  Chip,
+  EstadoPedidoBadge,
+  Modal,
+  PasosConProblema,
+  SelectorAreaCliente,
+  TRANSPORTISTA_VACIO,
+  fecha,
+  transportistaCompleto,
+  transportistaParaEnviar,
+  useSesionServidor,
+  usuarioActual,
+  type AreaClienteUI,
+  type PedidoBlend,
+  type StepResultUI,
+  type TransportistaUI,
+} from './componentes';
+import {
+  FormDespachoBiochar,
+  ID_PEDIDOS_BIOCHAR,
+  SeccionPedidosBiochar,
+  type PedidoBiocharUI,
+} from './despacho-biochar';
+import { RemisionEmitida, SeccionRemisiones, type RecepcionUI } from './recepcion';
+import type {
+  ClaseSalidaBiochar,
+  MotivoSalida,
+  MotivoSalidaBlend,
+  ReceptorEntrega,
+} from '@/lib/salida-bache.constants';
 
 const FONDO =
   "url('https://res.cloudinary.com/dvnuttrox/image/upload/v1752165981/20032025-DSCF8381_2_1_jzs49t.jpg')";
@@ -74,6 +108,12 @@ interface Movimiento {
   porDespachar?: boolean;
   /** Salida que fue venta. Las demás (laboratorio, muestra, entrega…) no suman al despacho. */
   comercial?: boolean;
+  /**
+   * A qué fue la Salida (`clasificarSalidaBiochar`): venta con remisión, consumo
+   * en Blend o salida sin venta. Lo clasifica el servidor para que la pantalla no
+   * tenga su propia regla.
+   */
+  clase?: ClaseSalidaBiochar | null;
 }
 
 /** Los movimientos del Core traen `cantidad`; los del biochar por bache, `kg`. */
@@ -101,31 +141,6 @@ interface ResumenProd {
   divergencia: number | null;
   porLote: Array<{ lote: string; kg: number }>;
   movimientos: MovimientoProd[];
-}
-
-/**
- * Un pedido de Biochar Blend, pendiente o cerrado. Lo arma `listarPedidosBlend()`
- * cruzando Pedidos Core con las Salidas del libro mayor: acá solo se pinta y se
- * filtra. `pendiente` viene resuelto del servidor —la pantalla no reinterpreta el
- * estado— para que el chip y la fila no puedan contar cosas distintas.
- */
-interface PedidoBlend {
-  recordId: string;
-  codigo: string;
-  estado: string;
-  pendiente: boolean;
-  idCliente: string;
-  clienteNombre: string;
-  /** `AC-XXXX` del área del cliente a la que va, si el pedido la trae. */
-  idAreaCliente: string;
-  fecha: string;
-  kgSolicitados: number;
-  kgDespachados: number;
-  kgPendientes: number;
-  fuenteKg: 'detalle' | 'notas' | 'sin-dato';
-  empaque: string;
-  observaciones: string;
-  remisiones: string[];
 }
 
 /**
@@ -374,57 +389,101 @@ const ETIQUETAS_BLEND: EtiquetasProducto = {
       <code className="text-white/80">BLEND-…</code> que une los movimientos de biochar y de abono— y
       sus salidas, las remisiones. Por eso no hay botón de ingresar: entra solo con{' '}
       <strong>Producción</strong>, que descuenta la materia prima al mismo tiempo —un ingreso suelto
-      sería Blend sin receta—. <strong>Sacar Blend</strong> es para lo que sale sin venta (muestras,
-      laboratorio, merma, traslado) y sale de los lotes más antiguos primero.
+      sería Blend sin receta—. <strong>Sacar sin venta</strong> es para lo que sale sin venta
+      (muestras, laboratorio, merma, traslado), no es una remisión, y sale de los lotes más antiguos
+      primero. La venta se despacha desde su pedido.
     </>
   ),
 };
 type VistaBiochar = 'baches' | 'movimientos';
 type FiltroEstado = EstadoBodega | 'todos';
 type FiltroTipo = 'todos' | 'Entrada' | 'Salida';
-/** En el biochar, `Salida` son solo las comerciales: las otras tienen su propio filtro. */
-type FiltroMovBiochar = FiltroTipo | 'NoComercial';
-
-const esNoComercial = (m: Movimiento) => m.tipo === 'Salida' && !m.comercial;
-type Orden = 'kg-desc' | 'kg-asc' | 'codigo-desc' | 'codigo-asc';
-
-const FORMATO_FECHA: Intl.DateTimeFormatOptions = {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-};
+/**
+ * En el biochar las Salidas se filtran por CLASE: la venta con remisión, el
+ * consumo en Blend y la salida sin venta son tres cosas que no se suman entre sí.
+ */
+type FiltroMovBiochar = 'todos' | 'Entrada' | ClaseSalidaBiochar;
 
 /**
- * Fecha legible.
- *
- * ⚠️ `new Date('2026-09-11')` NO es el 11 de septiembre: es medianoche UTC, y en
- * Bogotá (UTC−5) se imprime como el 10. Así es como los pedidos y los movimientos
- * aparecían un día corridos. Una fecha sin hora es un DÍA DEL CALENDARIO, no un
- * instante, y se arma con sus partes en hora local para que no se convierta nada.
- *
- * Airtable devuelve las dos formas: un campo `date` da `2026-09-11` y un
- * `dateTime` al que se le escribió solo una fecha da `2026-09-11T00:00:00.000Z`
- * —que sigue siendo un día del calendario, no un instante—, así que las dos caen
- * en el mismo camino. Un instante de verdad sí se convierte, y se lee en la zona
- * de la planta y no en la del navegador.
+ * La clase de una Salida. Si el servidor no la trae (una pestaña con la versión
+ * nueva contra una API vieja) se cae a `comercial`, que es la regla anterior: sin
+ * venta o no. Sin ese respaldo toda salida vieja se pintaría como "A Blend".
  */
-const fecha = (iso: string) => {
-  if (!iso) return '—';
-
-  const diaCalendario = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00(?::00(?:\.000)?)?Z?)?$/.exec(iso);
-  if (diaCalendario) {
-    const [, anio, mes, dia] = diaCalendario;
-    return new Date(Number(anio), Number(mes) - 1, Number(dia)).toLocaleDateString(
-      'es-CO',
-      FORMATO_FECHA
-    );
-  }
-
-  return new Date(iso).toLocaleDateString('es-CO', {
-    ...FORMATO_FECHA,
-    timeZone: 'America/Bogota',
-  });
+const claseDe = (m: Movimiento): ClaseSalidaBiochar | null => {
+  if (m.tipo !== 'Salida') return null;
+  return m.clase ?? (m.comercial === false ? 'sin-venta' : 'blend');
 };
+const esNoComercial = (m: Movimiento) => claseDe(m) === 'sin-venta';
+
+/** Cómo se rotula cada clase en la tabla de movimientos y en sus filtros. */
+const CLASES_SALIDA: Record<ClaseSalidaBiochar, { chip: string; filtro: string; tono: string }> = {
+  venta: {
+    chip: 'Remisión',
+    filtro: 'Ventas (remisión)',
+    tono: 'bg-teal-500/15 text-teal-200 ring-teal-400/30',
+  },
+  blend: { chip: 'A Blend', filtro: 'A Blend', tono: 'bg-sky-500/15 text-sky-200 ring-sky-400/30' },
+  'sin-venta': {
+    chip: 'Sin venta',
+    filtro: 'Sin venta',
+    tono: 'bg-violet-500/15 text-violet-200 ring-violet-400/30',
+  },
+};
+
+function ChipClase({ clase }: { clase: ClaseSalidaBiochar }) {
+  const c = CLASES_SALIDA[clase];
+  return (
+    <span className={`ml-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ${c.tono}`}>
+      {c.chip}
+    </span>
+  );
+}
+
+/**
+ * Lo que una pantalla de salida sin venta no debe recibir: una venta. Es solo un
+ * aviso —el destino puede mencionar un pedido por otra razón—, pero hay kg de
+ * "muestra" con destino "PEDIDO …" que debieron ser remisiones.
+ */
+const PARECE_VENTA = /\b(pedido|venta|vend|factur|SIRIUS-PED)/i;
+
+/**
+ * El aviso fijo de los formularios de salida sin venta: lo que se registra aquí
+ * no es una remisión, y la venta tiene su propio camino.
+ */
+function AvisoSinVenta({ onIrAPedidos, producto }: { onIrAPedidos?: () => void; producto: string }) {
+  return (
+    <div className="rounded-xl bg-violet-500/10 ring-1 ring-violet-400/30 p-3 text-sm text-violet-100">
+      <p className="font-medium">Esto NO es una remisión.</p>
+      <p className="mt-1 text-violet-100/80">
+        Es para lo que sale sin venta: laboratorio, muestra, merma, traslado o entrega con acta. Si
+        un cliente compró {producto}, despáchalo desde su pedido: eso emite la remisión y la
+        recepción.
+      </p>
+      {onIrAPedidos && (
+        <button
+          type="button"
+          onClick={onIrAPedidos}
+          className="mt-2 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white ring-1 ring-white/20 hover:bg-white/20"
+        >
+          Ir a pedidos
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** El id del título de los pedidos de Blend: «Ir a pedidos» lleva el foco ahí. */
+const ID_PEDIDOS_BLEND = 'pedidos-blend';
+
+function AvisoPareceVenta({ texto }: { texto: string }) {
+  if (!PARECE_VENTA.test(texto)) return null;
+  return (
+    <p role="status" className="rounded-lg bg-amber-400/10 p-2.5 text-xs text-amber-100 ring-1 ring-amber-300/30">
+      ⚠️ Parece una venta: si hay pedido, despáchalo como remisión desde el pedido.
+    </p>
+  );
+}
+type Orden = 'kg-desc' | 'kg-asc' | 'codigo-desc' | 'codigo-asc';
 
 export default function InventarioBodegaSirius() {
   return (
@@ -474,117 +533,6 @@ function Kpi({
   );
 }
 
-function Chip({
-  activo,
-  onClick,
-  children,
-  clase = 'bg-white/10 text-white/70 ring-white/20',
-}: {
-  activo: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  clase?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={activo}
-      className={`rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition ${
-        activo ? 'bg-[#5A7836] text-white ring-[#5A7836]' : `${clase} hover:brightness-125`
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Aviso({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mt-4 rounded-xl bg-amber-400/10 ring-1 ring-amber-300/30 p-4 text-sm text-amber-100">
-      {children}
-    </div>
-  );
-}
-
-/**
- * Nombre del operador para el campo `responsable` del movimiento.
- *
- * Inventario Production Core no tiene campo de SIRIUS-PER —a diferencia de Insumos
- * Core, que sí lo tenía—, así que el nombre es toda la atribución posible ahí.
- */
-function usuarioActual(): string {
-  try {
-    const sesion = localStorage.getItem('userSession');
-    if (!sesion) return 'Sistema';
-    const datos = JSON.parse(sesion);
-    return datos.user?.Nombre || datos.user?.name || 'Sistema';
-  } catch {
-    return 'Sistema';
-  }
-}
-
-function Modal({
-  titulo,
-  descripcion,
-  onCerrar,
-  children,
-}: {
-  titulo: string;
-  descripcion: string;
-  onCerrar: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 p-4 py-10">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={titulo}
-        className="w-full max-w-lg rounded-2xl bg-slate-900 ring-1 ring-white/15 p-6 shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-white">{titulo}</h2>
-            <p className="mt-1 text-sm text-white/60">{descripcion}</p>
-          </div>
-          <button
-            onClick={onCerrar}
-            aria-label="Cerrar"
-            className="rounded-lg px-2 py-1 text-white/60 ring-1 ring-white/15 hover:bg-white/10 hover:text-white"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="mt-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function BotonAccion({
-  onClick,
-  children,
-  tono = 'neutro',
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  tono?: 'neutro' | 'salida' | 'entrada';
-}) {
-  const tonos = {
-    neutro: 'bg-white/10 ring-white/20 hover:bg-white/20',
-    entrada: 'bg-emerald-500/15 ring-emerald-400/30 text-emerald-100 hover:bg-emerald-500/25',
-    salida: 'bg-orange-500/15 ring-orange-400/30 text-orange-100 hover:bg-orange-500/25',
-  } as const;
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg px-4 py-2 text-sm font-medium text-white ring-1 transition ${tonos[tono]}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function BodegaContent() {
   const [data, setData] = useState<BodegaData | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -617,21 +565,32 @@ function BodegaContent() {
   const [despachando, setDespachando] = useState<PedidoBlend | null>(null);
   /** El pedido para el que se está produciendo, o `null` si no hay ninguno. */
   const [produciendoPara, setProduciendoPara] = useState<PedidoBlend | null>(null);
+  /** Los pedidos de biochar puro: la otra lista de la misma lectura de Pedidos Core. */
+  const [pedidosBiochar, setPedidosBiochar] = useState<PedidoBiocharUI[] | null>(null);
+  /** El pedido de biochar que se está despachando (o completando), o `null`. */
+  const [despachandoBiochar, setDespachandoBiochar] = useState<PedidoBiocharUI | null>(null);
+  /** Mientras un despacho escribe, su diálogo no se cierra: el servidor seguiría solo. */
+  const [modalBloqueado, setModalBloqueado] = useState(false);
+  /** Sube con cada recarga para que el panel de remisiones vuelva a leer. */
+  const [versionRemisiones, setVersionRemisiones] = useState(0);
 
   const cargar = async () => {
     setCargando(true);
     setPedidosCargando(true);
     setError(null);
+    setVersionRemisiones((n) => n + 1);
 
     // En paralelo: el inventario no tiene por qué esperar a cuatro Cores de pedidos.
     const pedidosPromesa = fetch('/api/pirolisis/pedidos', { cache: 'no-store' })
       .then((r) => r.json())
       .then((json) => {
         setPedidos(Array.isArray(json?.pedidos) ? json.pedidos : null);
+        setPedidosBiochar(Array.isArray(json?.pedidosBiochar) ? json.pedidosBiochar : null);
         setLotesBlend(Array.isArray(json?.lotes) ? json.lotes : []);
       })
       .catch(() => {
         setPedidos(null);
+        setPedidosBiochar(null);
         setLotesBlend([]);
       })
       .finally(() => setPedidosCargando(false));
@@ -690,9 +649,8 @@ function BodegaContent() {
   const movimientosFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return (biochar?.movimientos ?? []).filter((m) => {
-      if (filtroTipo === 'NoComercial' && !esNoComercial(m)) return false;
-      if (filtroTipo === 'Salida' && (m.tipo !== 'Salida' || esNoComercial(m))) return false;
       if (filtroTipo === 'Entrada' && m.tipo !== 'Entrada') return false;
+      if (filtroTipo !== 'todos' && filtroTipo !== 'Entrada' && claseDe(m) !== filtroTipo) return false;
       if (!q) return true;
       return (
         m.bache.toLowerCase().includes(q) ||
@@ -727,13 +685,33 @@ function BodegaContent() {
     const comerciales = todas.filter((m) => !esNoComercial(m));
     const noComerciales = todas.filter(esNoComercial);
     const suma = (ms: Movimiento[]) => ms.reduce((t, m) => t + m.kg, 0);
+    const deClase = (c: ClaseSalidaBiochar) => todas.filter((m) => claseDe(m) === c).length;
     return {
       comerciales,
       noComerciales,
       kgComerciales: suma(comerciales),
       kgNoComerciales: suma(noComerciales),
+      porClase: { venta: deClase('venta'), blend: deClase('blend'), 'sin-venta': deClase('sin-venta') },
     };
   }, [biochar]);
+
+  // Para el botón «Despachar pedido» de la tarjeta: sin pedidos pendientes no hay
+  // a dónde llevar, y un botón que no lleva a nada se lee como roto.
+  const hayPedidosBiocharPendientes = (pedidosBiochar ?? []).some(
+    (p) => p.pendiente && (p.kgPendientes > 0.01 || !!p.despachoIncompleto)
+  );
+  /** Lleva a una sección de pedidos (las dos viven en la pestaña del biochar). */
+  const irAPedidos = (id: string) => {
+    setModal(null);
+    setProducto('biochar');
+    // Después del render: con la pestaña de otro producto el título no existe aún.
+    requestAnimationFrame(() => {
+      const titulo = document.getElementById(id);
+      titulo?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      titulo?.focus({ preventScroll: true });
+    });
+  };
+  const irAPedidosBiochar = () => irAPedidos(ID_PEDIDOS_BIOCHAR);
 
   const subtotal = useMemo(() => {
     if (producto !== 'biochar') {
@@ -892,10 +870,28 @@ function BodegaContent() {
                 sería inventario sin bache — biochar sin la trazabilidad que
                 sostiene la contabilidad de carbono. */}
             <div className="flex flex-wrap items-center gap-2 px-4 sm:px-5 pt-4 pb-4 sm:pb-5">
+              {/* Lo comercial y lo no comercial van en botones distintos y con
+                  nombres que no se confunden: la venta emite remisión desde su
+                  pedido; «Sacar sin venta» registra una salida que NO es remisión.
+                  Antes el único botón era «Sacar biochar», y una venta escrita por
+                  ahí no dejaba ni remisión ni recepción. */}
               {p.clave === 'biochar' && (
-                <BotonAccion tono="salida" onClick={() => setModal('salida-biochar')}>
-                  Sacar biochar
-                </BotonAccion>
+                <>
+                  <BotonAccion
+                    tono="primario"
+                    onClick={irAPedidosBiochar}
+                    disabled={!hayPedidosBiocharPendientes}
+                    title={hayPedidosBiocharPendientes ? undefined : 'Sin pedidos de biochar pendientes'}
+                  >
+                    Despachar pedido
+                  </BotonAccion>
+                  <BotonAccion tono="salida" onClick={() => setModal('salida-biochar')}>
+                    Sacar sin venta (no es remisión)
+                  </BotonAccion>
+                  {!pedidosCargando && !hayPedidosBiocharPendientes && (
+                    <span className="w-full text-xs text-white/40">Sin pedidos de biochar pendientes</span>
+                  )}
+                </>
               )}
               {p.clave === 'abono' && (
                 <>
@@ -917,7 +913,7 @@ function BodegaContent() {
                     Producción
                   </BotonAccion>
                   <BotonAccion tono="salida" onClick={() => setModal('salida-blend')}>
-                    Sacar Blend
+                    Sacar sin venta (no es remisión)
                   </BotonAccion>
                 </>
               )}
@@ -948,7 +944,7 @@ function BodegaContent() {
             <Kpi
               label="Salidas comerciales"
               valor={biochar.movimientos ? kg(salidas.kgComerciales) : '—'}
-              nota="Despachos de Blend a clientes"
+              nota="A Blend y despachos con remisión"
             />
             <Kpi
               label="Salidas no comerciales"
@@ -958,11 +954,12 @@ function BodegaContent() {
             />
           </section>
 
-          {/* Sacar biochar vive en la tarjeta del producto (arriba). Acá solo queda
-              el para qué: para producir Blend, el descuento lo hace la producción. */}
+          {/* Los botones viven en la tarjeta del producto (arriba). Acá queda el
+              para qué de cada camino, que es lo que separa una venta de lo demás. */}
           <p className="mt-4 text-xs text-white/50">
-            Sacar biochar es para laboratorio, muestra, merma, traslado o entrega. Para producir
-            Blend, el descuento lo hace la producción.
+            Vender biochar: <strong className="text-white/70">Despachar</strong> en su pedido (emite
+            remisión). Sacar sin venta: laboratorio, muestra, merma, traslado o entrega con acta, que
+            no genera remisión. Producir Blend: lo descuenta la producción.
           </p>
 
           {/* Qué hay (arriba) contra para qué hace falta (acá). El saldo por sí solo
@@ -976,6 +973,16 @@ function BodegaContent() {
             onProducir={setProduciendoPara}
             onDespachar={setDespachando}
           />
+
+          <SeccionPedidosBiochar
+            pedidos={pedidosBiochar}
+            cargando={pedidosCargando}
+            kgBodega={disponible.kg}
+            onDespachar={setDespachandoBiochar}
+            onCompletar={setDespachandoBiochar}
+          />
+
+          <SeccionRemisiones recargar={versionRemisiones} />
 
           {/* La divergencia entre las dos vistas del mismo inventario se muestra, no
               se esconde: significa que un consumo se escribió en una y no en la otra. */}
@@ -1043,13 +1050,12 @@ function BodegaContent() {
                       etiqueta: 'Entradas',
                       n: biochar.movimientos?.filter((m) => m.tipo === 'Entrada').length ?? 0,
                     },
-                    { t: 'Salida', etiqueta: 'Salidas comerciales', n: salidas.comerciales.length },
-                    {
-                      t: 'NoComercial',
-                      etiqueta: 'No comerciales',
-                      n: salidas.noComerciales.length,
-                      clase: 'bg-violet-500/15 text-violet-200 ring-violet-400/30',
-                    },
+                    ...(['venta', 'blend', 'sin-venta'] as const).map((c) => ({
+                      t: c,
+                      etiqueta: CLASES_SALIDA[c].filtro,
+                      n: salidas.porClase[c],
+                      clase: CLASES_SALIDA[c].tono,
+                    })),
                   ] as Array<{ t: FiltroMovBiochar; etiqueta: string; n: number; clase?: string }>
                 ).map(({ t, etiqueta, n, clase }) => (
                   <Chip key={t} activo={filtroTipo === t} onClick={() => setFiltroTipo(t)} clase={clase}>
@@ -1089,7 +1095,8 @@ function BodegaContent() {
               {vista === 'baches'
                 ? `${bachesFiltrados.length} bache(s) · suman ${kg(subtotal)} en bodega`
                 : `${movimientosFiltrados.length} movimiento(s) · efecto neto ${kg(subtotal)}`}
-              {(filtroEstado === 'agotado' || filtroTipo === 'Salida' || filtroTipo === 'NoComercial') &&
+              {(filtroEstado === 'agotado' ||
+                (vista === 'movimientos' && filtroTipo !== 'todos' && filtroTipo !== 'Entrada')) &&
                 ' · histórico, ya no es stock'}
             </p>
           </div>
@@ -1182,11 +1189,7 @@ function BodegaContent() {
                       <td className="px-4 py-3 whitespace-nowrap text-white/70">{fecha(m.fecha)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <TipoBadge tipo={m.tipo} />
-                        {esNoComercial(m) && (
-                          <span className="ml-1.5 rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-medium text-violet-200 ring-1 ring-violet-400/30">
-                            No comercial
-                          </span>
-                        )}
+                        {claseDe(m) && <ChipClase clase={claseDe(m)!} />}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">{kg(m.kg)}</td>
                       <td className="px-4 py-3">{m.bache || '—'}</td>
@@ -1259,25 +1262,31 @@ function BodegaContent() {
 
       {modal === 'salida-biochar' && (
         <Modal
-          titulo="Sacar biochar de bodega"
-          descripcion="Se pide el total y sale de los baches más antiguos primero; cada uno se descuenta en su fórmula, el libro mayor del Core y su Estado Bache."
+          titulo="Salida de biochar sin venta (no es remisión)"
+          descripcion="Laboratorio, muestra, merma, traslado o entrega con acta. No es una remisión: una venta se despacha desde su pedido. Se pide el total y sale de los baches más antiguos primero."
           onCerrar={() => setModal(null)}
         >
           <FormSalidaBiochar
             baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
             onListo={tras}
             onCancelar={() => setModal(null)}
+            onIrAPedidos={irAPedidosBiochar}
           />
         </Modal>
       )}
 
       {modal === 'salida-blend' && (
         <Modal
-          titulo="Sacar Biochar Blend de bodega"
-          descripcion="Para lo que sale sin venta: muestras, laboratorio, merma o traslado. Se pide el total y sale de los lotes más antiguos primero. Los despachos a clientes van por remisión."
+          titulo="Salida de Blend sin venta (no es remisión)"
+          descripcion="Muestras, laboratorio, merma o traslado. No es una remisión: una venta se despacha desde su pedido. Se pide el total y sale de los lotes más antiguos primero."
           onCerrar={() => setModal(null)}
         >
-          <FormSalidaBlend lotes={lotesBlend} onListo={tras} onCancelar={() => setModal(null)} />
+          <FormSalidaBlend
+            lotes={lotesBlend}
+            onListo={tras}
+            onCancelar={() => setModal(null)}
+            onIrAPedidos={() => irAPedidos(ID_PEDIDOS_BLEND)}
+          />
         </Modal>
       )}
 
@@ -1286,15 +1295,40 @@ function BodegaContent() {
           titulo={`Despachar ${despachando.codigo}`}
           descripcion="Entrega el Blend ya producido: emite la remisión con quien se lo lleva y descuenta el libro mayor."
           onCerrar={() => setDespachando(null)}
+          bloqueado={modalBloqueado}
         >
           <FormDespacho
             pedido={despachando}
             lotes={lotesBlend}
             onListo={async (mensaje) => {
+              setModalBloqueado(false);
               setDespachando(null);
               await tras(mensaje);
             }}
             onCancelar={() => setDespachando(null)}
+            onOcupado={setModalBloqueado}
+          />
+        </Modal>
+      )}
+
+      {despachandoBiochar && (
+        <Modal
+          titulo={`Despachar ${despachandoBiochar.codigo} · biochar puro`}
+          descripcion="Emite la remisión con quien se lo lleva y descuenta el biochar de los baches más antiguos (libro mayor y fórmula de cada bache)."
+          onCerrar={() => setDespachandoBiochar(null)}
+          bloqueado={modalBloqueado}
+        >
+          <FormDespachoBiochar
+            pedido={despachandoBiochar}
+            kgBodega={disponible.kg}
+            baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
+            onListo={async (mensaje) => {
+              setModalBloqueado(false);
+              setDespachandoBiochar(null);
+              await tras(mensaje);
+            }}
+            onCancelar={() => setDespachandoBiochar(null)}
+            onOcupado={setModalBloqueado}
           />
         </Modal>
       )}
@@ -1532,12 +1566,6 @@ interface PlanSalida {
   }>;
 }
 
-interface StepResultUI {
-  step: string;
-  ok: boolean;
-  error?: string;
-}
-
 /**
  * Salida de biochar de bodega por un motivo que NO es producción de Blend.
  *
@@ -1555,16 +1583,19 @@ function FormSalidaBiochar({
   baches,
   onListo,
   onCancelar,
+  onIrAPedidos,
 }: {
   baches: BacheBodega[];
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
+  /** Lleva a los pedidos de biochar: el camino correcto si resulta ser una venta. */
+  onIrAPedidos?: () => void;
 }) {
   const [motivo, setMotivo] = useState<MotivoSalida>('laboratorio');
   const [kgTexto, setKgTexto] = useState('');
   const [destino, setDestino] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [fechaSalida, setFechaSalida] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fechaSalida, setFechaSalida] = useState(() => fechaBogota());
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanSalida | null>(null);
@@ -1736,6 +1767,8 @@ function FormSalidaBiochar({
       }}
       className="space-y-4 text-sm"
     >
+      <AvisoSinVenta onIrAPedidos={onIrAPedidos} producto="biochar" />
+
       <label className="block">
         <span className="text-white/70">Motivo</span>
         <select
@@ -1811,6 +1844,8 @@ function FormSalidaBiochar({
         />
       </label>
 
+      <AvisoPareceVenta texto={`${destino} ${observaciones}`} />
+
       {error && <p className="text-red-300">{error}</p>}
 
       <div className="flex flex-wrap gap-3 pt-1">
@@ -1850,16 +1885,19 @@ function FormSalidaBlend({
   lotes,
   onListo,
   onCancelar,
+  onIrAPedidos,
 }: {
   lotes: LoteBlend[];
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
+  /** Lleva a los pedidos de Blend: el camino correcto si resulta ser una venta. */
+  onIrAPedidos?: () => void;
 }) {
   const [motivo, setMotivo] = useState<MotivoSalidaBlend>('muestra');
   const [kgTexto, setKgTexto] = useState('');
   const [destino, setDestino] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [fechaSalida, setFechaSalida] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fechaSalida, setFechaSalida] = useState(() => fechaBogota());
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanSalidaBlend | null>(null);
@@ -1974,6 +2012,8 @@ function FormSalidaBlend({
       }}
       className="space-y-4 text-sm"
     >
+      <AvisoSinVenta onIrAPedidos={onIrAPedidos} producto="Blend" />
+
       <label className="block">
         <span className="text-white/70">Motivo</span>
         <select
@@ -2046,6 +2086,8 @@ function FormSalidaBlend({
         />
       </label>
 
+      <AvisoPareceVenta texto={`${destino} ${observaciones}`} />
+
       {error && <p className="text-red-300">{error}</p>}
 
       <div className="flex flex-wrap gap-3 pt-1">
@@ -2079,7 +2121,7 @@ function FormMovimientoAbono({
   onCancelar: () => void;
 }) {
   const [kgTexto, setKgTexto] = useState('');
-  const [fechaMov, setFechaMov] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fechaMov, setFechaMov] = useState(() => fechaBogota());
   const [lote, setLote] = useState('');
   const [referencia, setReferencia] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -2495,7 +2537,7 @@ function FormProduccionBlend({
   const [observaciones, setObservaciones] = useState(
     pedido ? `Producción del pedido ${pedido.codigo} (${pedido.clienteNombre}).` : ''
   );
-  const [fechaProd, setFechaProd] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fechaProd, setFechaProd] = useState(() => fechaBogota());
   const [razonAbono, setRazonAbono] = useState<number | null>(null);
   const [pctBiochar, setPctBiochar] = useState<number | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -3156,7 +3198,11 @@ function SeccionPedidos({
   return (
     <section className="mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-white/50">
+        <h2
+          id={ID_PEDIDOS_BLEND}
+          tabIndex={-1}
+          className="text-xs font-semibold uppercase tracking-widest text-white/50 focus:outline-none focus-visible:text-white"
+        >
           Pedidos de Biochar Blend
           {lista.length ? ` (${lista.length})` : ''}
         </h2>
@@ -3413,218 +3459,14 @@ function AccionesPedido({
   );
 }
 
-/** Cada estado del Core con su tono. Cualquier otro valor se pinta neutro. */
-function EstadoPedidoBadge({ estado }: { estado: string }) {
-  const tono =
-    estado === 'Enviado Parcial'
-      ? 'bg-orange-500/15 text-orange-200'
-      : estado === 'Procesando'
-        ? 'bg-sky-500/15 text-sky-200'
-        : estado === 'Recibido'
-          ? 'bg-white/10 text-white/80'
-          : estado === 'Enviado'
-            ? 'bg-teal-500/15 text-teal-200'
-            : estado === 'Completado'
-              ? 'bg-emerald-500/15 text-emerald-200'
-              : estado === 'Cancelado'
-                ? 'bg-red-500/15 text-red-200'
-                : 'bg-white/10 text-white/60';
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tono}`}>
-      {estado || '—'}
-    </span>
-  );
-}
-
-/** Una persona del cliente en Sirius Clients Core (ver `/api/clientes/personal`). */
-interface PersonaClienteUI {
-  recordId: string;
-  codigo: string;
-  nombre: string;
-  cedula: string;
-  cargo: string;
-  email: string;
-  telefono: string;
-}
-
-/** Valor del selector para quien recoge sin estar en el personal del cliente. */
-const OTRA_PERSONA = 'OTRA';
-
-/** Marca del 401 de `/api/clientes/personal`: la cookie de sesión venció. */
-const SESION_VENCIDA = 'SESION_VENCIDA';
-
-/** Un área del cliente en Sirius Clients Core (ver `/api/clientes/areas`). */
-interface AreaClienteUI {
-  recordId: string;
-  codigo: string;
-  nombre: string;
-}
-
-/** Valor del selector para registrar un área que el cliente todavía no tiene. */
-const NUEVA_AREA = 'NUEVA';
-
-/**
- * A qué área del cliente va el despacho (Sanidad, Fertilización…).
- *
- * Las áreas viven en Sirius Clients Core por cliente. Se pueden crear desde aquí
- * porque es en el despacho donde se descubre que falta una: mandar al operador a
- * Airtable es como termina escrita en las observaciones, donde nada la lee.
- */
-function SelectorAreaCliente({
-  idCliente,
-  clienteNombre,
-  inicial,
-  valor,
-  onCambio,
-}: {
-  idCliente: string;
-  clienteNombre: string;
-  /** El área que trae el pedido: se propone al cargar, si sigue activa. */
-  inicial: string;
-  valor: string;
-  onCambio: (area: AreaClienteUI | null) => void;
-}) {
-  const [areas, setAreas] = useState<AreaClienteUI[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [creando, setCreando] = useState(false);
-  const [nueva, setNueva] = useState('');
-  const [guardando, setGuardando] = useState(false);
-
-  useEffect(() => {
-    let vigente = true;
-    if (!idCliente) {
-      setAreas([]);
-      return;
-    }
-    fetch(`/api/clientes/areas?cliente=${encodeURIComponent(idCliente)}`)
-      .then(async (res) => {
-        const json = await res.json().catch(() => ({}));
-        if (res.status === 401) throw new Error(SESION_VENCIDA);
-        if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
-        return (json.areas ?? []) as AreaClienteUI[];
-      })
-      .then((lista) => {
-        if (!vigente) return;
-        setAreas(lista);
-        // La del pedido, si la trae y sigue activa; si ya no existe, no se
-        // propone una que el servidor va a rechazar.
-        onCambio(lista.find((a) => a.codigo === inicial) ?? null);
-      })
-      .catch((err) => {
-        if (!vigente) return;
-        setAreas([]);
-        setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => {
-      vigente = false;
-    };
-    // Solo al cambiar de cliente: `inicial` es el punto de partida, no un disparador.
-  }, [idCliente]);
-
-  const crear = async () => {
-    const nombre = nueva.trim();
-    if (!nombre) return;
-    setGuardando(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/clientes/areas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cliente: idCliente, nombre }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (res.status === 401) throw new Error(SESION_VENCIDA);
-      if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
-      const area = json.area as AreaClienteUI;
-      setAreas((prev) => {
-        const lista = (prev ?? []).filter((a) => a.codigo !== area.codigo);
-        return [...lista, area].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-      });
-      onCambio(area);
-      setCreando(false);
-      setNueva('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  return (
-    <div className="block">
-      <span className="text-white/70">Área de {clienteNombre || idCliente} a la que va</span>
-      <select
-        value={creando ? NUEVA_AREA : valor}
-        onChange={(e) => {
-          if (e.target.value === NUEVA_AREA) {
-            setCreando(true);
-            return;
-          }
-          setCreando(false);
-          onCambio(areas?.find((a) => a.codigo === e.target.value) ?? null);
-        }}
-        disabled={areas === null || !idCliente}
-        className={CAMPO}
-      >
-        <option value="">
-          {areas === null ? 'Cargando áreas del cliente…' : 'Sin área (no se indica)'}
-        </option>
-        {(areas ?? []).map((a) => (
-          <option key={a.codigo} value={a.codigo}>
-            {a.nombre} · {a.codigo}
-          </option>
-        ))}
-        {idCliente && <option value={NUEVA_AREA}>+ Registrar un área nueva</option>}
-      </select>
-
-      {creando && (
-        <div className="mt-2 flex gap-2">
-          <input
-            value={nueva}
-            onChange={(e) => setNueva(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter enviaría el formulario del despacho entero.
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                crear();
-              }
-            }}
-            placeholder="Ej: Sanidad, Fertilización…"
-            maxLength={80}
-            className={CAMPO}
-          />
-          <button
-            type="button"
-            onClick={crear}
-            disabled={guardando || !nueva.trim()}
-            className="shrink-0 rounded-lg bg-white/10 px-3 text-xs font-medium text-white ring-1 ring-white/20 hover:bg-white/20 disabled:opacity-50"
-          >
-            {guardando ? 'Guardando…' : 'Registrar'}
-          </button>
-        </div>
-      )}
-
-      {error === SESION_VENCIDA ? (
-        <span className="mt-1 block text-xs text-amber-200">
-          Tu sesión venció y las áreas del cliente no se pueden leer.{' '}
-          <a href="/login" className="underline">
-            Vuelve a iniciar sesión
-          </a>
-          .
-        </span>
-      ) : (
-        error && (
-          <span className="mt-1 block text-xs text-amber-200">
-            No se pudieron leer las áreas de Sirius Clients Core ({error}).
-          </span>
-        )
-      )}
-    </div>
-  );
-}
-
 /** Lo que devuelve el ensayo del despacho: qué se va a escribir, sin escribirlo. */
 interface PlanDespacho {
+  /**
+   * Llave de idempotencia del ensayo (UUID v4). La confirmación la REENVÍA: con
+   * ella, un doble clic o un reintento tras un corte encuentra la remisión ya
+   * emitida en vez de emitir otra.
+   */
+  idDespacho: string;
   pedido: {
     codigo: string;
     cliente: string;
@@ -3680,20 +3522,28 @@ interface PlanDespacho {
  * producción no alcanzó para todo, sale lo producido y el pedido queda
  * `Enviado Parcial`, que es lo que de verdad pasó.
  *
- * Se ensaya primero (`dryRun`) y se confirma después. Una remisión no se puede
- * deshacer: apenas se emite, ya descontó el Blend del libro mayor y tiene
- * consecutivo en Remisiones Core.
+ * Se ensaya primero (`dryRun`) y se confirma después reenviando `idDespacho`. Una
+ * remisión no se puede deshacer: apenas se emite, ya descontó el Blend del libro
+ * mayor y tiene consecutivo en Remisiones Core.
+ *
+ * ═══ LA RECEPCIÓN VA POR ENLACE (2026-10-21) ════════════════════════════════
+ * Al emitir, la remisión trae el enlace con el que quien recibe la confirma con
+ * su cédula; ya no se firma en papel. Por eso el resultado es `RemisionEmitida`:
+ * el QR y el WhatsApp tienen que salir con el camión.
  */
 function FormDespacho({
   pedido,
   lotes,
   onListo,
   onCancelar,
+  onOcupado,
 }: {
   pedido: PedidoBlend;
   lotes: LoteBlend[];
   onListo: (mensaje: string) => void | Promise<void>;
   onCancelar: () => void;
+  /** El diálogo se bloquea mientras se escribe: cerrarlo no detiene al servidor. */
+  onOcupado?: (ocupado: boolean) => void;
 }) {
   const despachables = lotesDespachables(pedido, lotes);
 
@@ -3710,82 +3560,41 @@ function FormDespacho({
   const kgADespachar = Math.round(reparto.reduce((t, l) => t + l.kg, 0) * 100) / 100;
   const esParcial = kgADespachar + 0.01 < pedido.kgPendientes;
 
+  const sesion = useSesionServidor();
+  const [sesionVencida, setSesionVencida] = useState(false);
+  const vencida = sesion === 'vencida' || sesionVencida;
+
   const [responsable, setResponsable] = useState(() => usuarioActual());
-  const [fechaDespacho, setFechaDespacho] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fechaDespacho, setFechaDespacho] = useState(() => fechaBogota());
   const [observaciones, setObservaciones] = useState('');
   const [area, setArea] = useState<AreaClienteUI | null>(null);
+  const [transportista, setTransportista] = useState<TransportistaUI>(TRANSPORTISTA_VACIO);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanDespacho | null>(null);
 
-  // ── Quien se lleva el producto ────────────────────────────────────────────
-  const [conductor, setConductor] = useState('');
-  const [cedula, setCedula] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [emailConductor, setEmailConductor] = useState('');
-
-  // El personal del cliente en Sirius Clients Core. Quien recoge casi siempre es
-  // gente del cliente, ya registrada con su cédula: elegirla evita digitar otra
-  // versión de la misma persona en cada remisión. `null` = todavía cargando.
-  const [personal, setPersonal] = useState<PersonaClienteUI[] | null>(null);
-  const [errorPersonal, setErrorPersonal] = useState<string | null>(null);
-  /** recordId de la persona elegida, `OTRA` para alguien que no está en el Core. */
-  const [personaId, setPersonaId] = useState('');
-  const personaElegida = personal?.find((p) => p.recordId === personaId) ?? null;
+  /** La remisión ya emitida: de acá salen el enlace de recepción y el PDF. */
+  const [emitida, setEmitida] = useState<{
+    codigo: string;
+    mensaje: string;
+    steps: StepResultUI[];
+    recepcion: RecepcionUI | null;
+    kg: number;
+  } | null>(null);
+  /** Un 500: la remisión pudo quedar a medias, y hay que decir qué pasos. */
+  const [fallo, setFallo] = useState<{ mensaje: string; steps: StepResultUI[] } | null>(null);
 
   useEffect(() => {
-    let vigente = true;
-    if (!pedido.idCliente) {
-      setPersonal([]);
-      setPersonaId(OTRA_PERSONA);
-      return;
-    }
-    fetch(`/api/clientes/personal?cliente=${encodeURIComponent(pedido.idCliente)}`)
-      .then(async (res) => {
-        const json = await res.json().catch(() => ({}));
-        // ⚠️ La pantalla se abre con la sesión de localStorage, que no vence, pero
-        // esta API mira la cookie `sirius_session`, que vence a las 24 h. Un 401
-        // aquí casi siempre es eso, y decir "No autorizado" no le dice a nadie qué
-        // hacer.
-        if (res.status === 401) throw new Error(SESION_VENCIDA);
-        if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
-        return (json.personal ?? []) as PersonaClienteUI[];
-      })
-      .then((lista) => {
-        if (!vigente) return;
-        setPersonal(lista);
-        if (!lista.length) setPersonaId(OTRA_PERSONA);
-      })
-      .catch((err) => {
-        if (!vigente) return;
-        setPersonal([]);
-        setPersonaId(OTRA_PERSONA);
-        setErrorPersonal(err instanceof Error ? err.message : String(err));
-      });
-    return () => {
-      vigente = false;
-    };
-  }, [pedido.idCliente]);
-
-  const elegirPersona = (id: string) => {
-    setPersonaId(id);
-    const p = personal?.find((x) => x.recordId === id);
-    setConductor(p?.nombre ?? '');
-    setCedula(p?.cedula ?? '');
-    setTelefono(p?.telefono ?? '');
-    setEmailConductor(p?.email ?? '');
-  };
-
-  /** La remisión ya emitida: de acá sale el PDF que viaja con el pedido. */
-  const [emitida, setEmitida] = useState<{ codigo: string; mensaje: string } | null>(null);
+    onOcupado?.(enviando);
+  }, [enviando]);
 
   // Quien se lleva el producto va identificado: es la mitad de la cadena de
   // custodia. Sin eso, la remisión dice que algo salió de la planta sin decir
-  // con quién. No firma en la app (2026-09-24), y quien recibe tampoco
-  // (2026-10-02): la remisión se firma en papel.
-  const conductorListo = conductor.trim().length > 2 && cedula.trim().length > 3;
+  // con quién.
+  const conductorListo = transportistaCompleto(transportista);
 
-  const listo = reparto.length > 0 && kgADespachar > 0 && !!responsable.trim() && conductorListo;
+  const listo =
+    reparto.length > 0 && kgADespachar > 0 && responsable.trim().length >= 2 && conductorListo && !vencida;
 
   const enviar = async (dryRun: boolean) => {
     setError(null);
@@ -3799,41 +3608,47 @@ function FormDespacho({
           lotes: reparto.map((l) => l.lote),
           kg: kgADespachar,
           responsableEntrega: responsable.trim(),
-          transportista: {
-            nombre: conductor.trim(),
-            cedula: cedula.trim(),
-            telefono: telefono.trim() || undefined,
-            email: emailConductor.trim() || undefined,
-          },
+          transportista: transportistaParaEnviar(transportista),
           observaciones: observaciones.trim() || undefined,
           idAreaCliente: area?.codigo,
           fechaDespacho,
+          // La llave del ensayo: sin ella, confirmar dos veces emitiría dos remisiones.
+          idDespacho: dryRun ? undefined : plan?.idDespacho,
           dryRun,
         }),
       });
-      const json = await res.json();
-      if (!res.ok && res.status !== 207) {
-        throw new Error(json.error ?? `Error ${res.status}`);
+      const json = await res.json().catch(() => ({}));
+      const steps = (Array.isArray(json.steps) ? json.steps : []) as StepResultUI[];
+
+      if (res.status === 401) {
+        setSesionVencida(true);
+        return;
       }
 
       if (dryRun) {
+        if (!res.ok || !json.plan) throw new Error(json.error ?? `Error ${res.status}`);
         setPlan(json.plan as PlanDespacho);
         return;
       }
 
-      // 207: la remisión quedó emitida pero un paso de trazabilidad falló —el
-      // descuento del inventario o el estado del pedido—. Se dice con su detalle
-      // en vez de celebrar un éxito a medias.
-      const fallidos = ((json.steps ?? []) as StepResultUI[]).filter((s) => !s.ok);
-      const mensaje = fallidos.length
-        ? `${json.message} Pasos con problema: ${fallidos
-            .map((s) => `${s.step} (${s.error})`)
-            .join(' · ')}`
-        : json.message;
+      if (res.status === 500) {
+        // El servidor ahora explica el 500 en palabras; antes la pantalla solo
+        // decía "Error 500" y nadie sabía si la remisión existía.
+        setFallo({ mensaje: json.error ?? json.message ?? 'Falló un paso crítico del despacho.', steps });
+        return;
+      }
+      if (!res.ok && res.status !== 207) throw new Error(json.error ?? `Error ${res.status}`);
 
-      // No se cierra al emitir: el papel tiene que salir con el camión, y cerrar
-      // acá dejaba la remisión sin camino a la impresora.
-      setEmitida({ codigo: json.remision?.codigo ?? '', mensaje });
+      // 200 o 207: la remisión quedó emitida. Si un paso best-effort falló —el
+      // inventario, el estado del pedido, el enlace o el PDF—, `RemisionEmitida`
+      // lo muestra separado de lo que no aplicó, en vez de celebrar a medias.
+      setEmitida({
+        codigo: json.remision?.codigo ?? '',
+        mensaje: json.message ?? 'Remisión emitida.',
+        steps,
+        recepcion: json.recepcion ?? null,
+        kg: Number(json.remision?.kg_total) || plan?.kg || kgADespachar,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -3843,33 +3658,46 @@ function FormDespacho({
 
   if (emitida) {
     return (
+      <RemisionEmitida
+        codigo={emitida.codigo}
+        mensaje={emitida.mensaje}
+        steps={emitida.steps}
+        recepcion={emitida.recepcion}
+        producto="blend"
+        kg={emitida.kg}
+        telefonoTransportista={transportista.telefono || null}
+        nombreTransportista={transportista.nombre || null}
+        onCerrar={() => onListo(emitida.mensaje)}
+      />
+    );
+  }
+
+  if (fallo) {
+    return (
       <div className="space-y-4 text-sm text-white">
-        <div className="rounded-xl bg-[#5A7836]/20 ring-1 ring-[#5A7836]/50 p-4">
-          <p className="font-medium">{emitida.mensaje}</p>
+        <div role="alert" className="rounded-xl bg-red-500/10 ring-1 ring-red-400/30 p-4">
+          <p className="font-medium text-red-100">El despacho no se pudo completar</p>
+          <p className="mt-1 text-red-100/80">{fallo.mensaje}</p>
         </div>
-
-        <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-2">
-          <p className="font-medium">Imprime la remisión para que viaje con el pedido</p>
-          <p className="text-white/60 text-xs">
-            Quien recibe la firma en papel, en la finca.
-          </p>
-          {emitida.codigo ? (
-            <a
-              href={`/api/pirolisis/blend/remision/pdf?remision=${encodeURIComponent(emitida.codigo)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429]"
-            >
-              Descargar remisión
-            </a>
-          ) : (
-            <p className="text-xs text-amber-300">
-              La remisión se emitió pero no se pudo leer su código. Búscala en Remisiones Core.
-            </p>
-          )}
+        <PasosConProblema steps={fallo.steps} />
+        <p className="text-xs text-white/50">
+          Reintentar reenvía el mismo plan con la misma clave: si la remisión ya se emitió, no se
+          emite otra.
+        </p>
+        {error && <p className="text-red-300">{error}</p>}
+        <div className="flex flex-wrap gap-3">
+          <BotonAccion
+            tono="primario"
+            onClick={() => {
+              setFallo(null);
+              enviar(false);
+            }}
+            disabled={enviando || vencida}
+          >
+            Reintentar
+          </BotonAccion>
+          <BotonAccion onClick={() => onListo(fallo.mensaje)}>Cerrar</BotonAccion>
         </div>
-
-        <BotonAccion onClick={() => onListo(emitida.mensaje)}>Cerrar</BotonAccion>
       </div>
     );
   }
@@ -3877,6 +3705,7 @@ function FormDespacho({
   if (plan) {
     return (
       <div className="space-y-4 text-sm text-white">
+        {vencida && <AvisoSesionVencida />}
         <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-1.5">
           <p className="font-medium">Esto es lo que se va a escribir:</p>
           <p className="text-white/70">
@@ -3909,13 +3738,18 @@ function FormDespacho({
             </p>
           )}
           <p className="text-white/70">
-            Se lo lleva <span className="text-white">{conductor.trim()}</span> · C.C.{' '}
-            {cedula.trim()}
+            Se lo lleva <span className="text-white">{transportista.nombre.trim()}</span> · C.C.{' '}
+            {transportista.cedula.trim()}
           </p>
           <p className="text-white/70">
             El pedido queda en <span className="text-white">{plan.estadoPedidoResultante}</span> ·
             le faltarían {kg(Math.max(0, plan.pedido.kgPendientes - plan.kg))}
           </p>
+          {plan.idDespacho && (
+            <p className="text-xs text-white/50">
+              Clave del despacho: <span className="font-mono text-white/70">{plan.idDespacho}</span>
+            </p>
+          )}
         </div>
 
         {plan.motivoParcial && <Aviso>⚠️ {plan.motivoParcial}</Aviso>}
@@ -3925,17 +3759,20 @@ function FormDespacho({
           libro mayor y el pedido cambia de estado. Nada de esto se deshace desde acá.
         </p>
 
-        {error && <p className="text-red-300">{error}</p>}
+        {enviando && <p className="text-white/70">Despachando… no cierres esta ventana.</p>}
+        {error && (
+          <p role="alert" className="text-red-300">
+            {error}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => enviar(false)}
-            disabled={enviando}
-            className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
-          >
+          <BotonAccion tono="primario" onClick={() => enviar(false)} disabled={enviando || vencida}>
             {enviando ? 'Despachando…' : 'Confirmar despacho'}
-          </button>
-          <BotonAccion onClick={() => setPlan(null)}>Volver</BotonAccion>
+          </BotonAccion>
+          <BotonAccion onClick={() => setPlan(null)} disabled={enviando}>
+            Volver
+          </BotonAccion>
         </div>
       </div>
     );
@@ -3957,10 +3794,12 @@ function FormDespacho({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        enviar(true);
+        if (listo) enviar(true);
       }}
       className="space-y-4 text-sm"
     >
+      {vencida && <AvisoSesionVencida />}
+
       <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-3 text-xs text-white/60 space-y-0.5">
         <p>
           <span className="text-white/80">{pedido.codigo}</span> · {pedido.clienteNombre}
@@ -4018,104 +3857,12 @@ function FormDespacho({
         onCambio={setArea}
       />
 
-      {/* Quien se lleva el producto: la primera mitad de la cadena de custodia.
-          Se pide acá porque acá está —cargando el camión—. Nadie firma en la
-          app: la remisión se imprime y se firma en papel. */}
-      <div className="rounded-xl bg-white/5 ring-1 ring-white/10 p-4 space-y-3">
-        <p className="text-white/80">Quién se lleva el pedido</p>
-
-        <label className="block">
-          <span className="text-white/70">Personal de {pedido.clienteNombre || pedido.idCliente}</span>
-          <select
-            value={personaId}
-            onChange={(e) => elegirPersona(e.target.value)}
-            disabled={personal === null}
-            className={CAMPO}
-          >
-            <option value="" disabled>
-              {personal === null ? 'Cargando personal del cliente…' : 'Elige quién recoge'}
-            </option>
-            {(personal ?? []).map((p) => (
-              <option key={p.recordId} value={p.recordId}>
-                {p.nombre}
-                {p.cargo ? ` · ${p.cargo}` : ''}
-                {p.cedula ? ` · C.C. ${p.cedula}` : ' · sin cédula en el Core'}
-              </option>
-            ))}
-            <option value={OTRA_PERSONA}>Otra persona (no está en Clients Core)</option>
-          </select>
-          {errorPersonal === SESION_VENCIDA ? (
-            <span className="mt-1 block text-xs text-amber-200">
-              Tu sesión venció y el personal del cliente no se puede leer.{' '}
-              <a href="/login" className="underline">
-                Vuelve a iniciar sesión
-              </a>{' '}
-              para elegirlo de Sirius Clients Core, o digita los datos.
-            </span>
-          ) : errorPersonal ? (
-            <span className="mt-1 block text-xs text-amber-200">
-              No se pudo leer el personal de Sirius Clients Core ({errorPersonal}): digita los datos.
-            </span>
-          ) : (
-            personal !== null &&
-            !personal.length && (
-              <span className="mt-1 block text-xs text-white/50">
-                El cliente no tiene personal activo en Sirius Clients Core: digita los datos.
-              </span>
-            )
-          )}
-        </label>
-
-        {/* Con una persona del Core, nombre y contacto vienen de allá y no se
-            editan aquí: corregirlos en la remisión dejaría dos versiones de la
-            misma persona. La cédula sí se puede completar si el Core no la tiene. */}
-        {personaId && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-white/70">Nombre completo</span>
-              <input
-                value={conductor}
-                onChange={(e) => setConductor(e.target.value)}
-                readOnly={!!personaElegida}
-                className={CAMPO}
-              />
-            </label>
-            <label className="block">
-              <span className="text-white/70">Cédula</span>
-              <input
-                value={cedula}
-                onChange={(e) => setCedula(e.target.value)}
-                readOnly={!!personaElegida?.cedula}
-                className={CAMPO}
-              />
-            </label>
-          </div>
-        )}
-
-        {personaId && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-white/70">Teléfono (opcional)</span>
-              <input
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                readOnly={!!personaElegida?.telefono}
-                className={CAMPO}
-              />
-            </label>
-            <label className="block">
-              <span className="text-white/70">Correo (opcional)</span>
-              <input
-                type="email"
-                value={emailConductor}
-                onChange={(e) => setEmailConductor(e.target.value)}
-                readOnly={!!personaElegida?.email}
-                className={CAMPO}
-              />
-            </label>
-          </div>
-        )}
-      </div>
+      <CamposTransportista
+        idCliente={pedido.idCliente}
+        clienteNombre={pedido.clienteNombre}
+        valor={transportista}
+        onCambio={setTransportista}
+      />
 
       <label className="block">
         <span className="text-white/70">Observaciones</span>
@@ -4123,16 +3870,21 @@ function FormDespacho({
           value={observaciones}
           onChange={(e) => setObservaciones(e.target.value)}
           rows={2}
+          maxLength={500}
           className={CAMPO}
         />
       </label>
 
-      {error && <p className="text-red-300">{error}</p>}
+      {error && (
+        <p role="alert" className="text-red-300">
+          {error}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <button
           type="submit"
-          disabled={enviando || !listo}
+          disabled={enviando || !listo || sesion === 'verificando'}
           className="rounded-lg bg-[#5A7836] px-4 py-2 text-sm font-medium text-white hover:bg-[#4a6429] disabled:opacity-50"
         >
           {enviando ? 'Calculando…' : 'Ver qué se va a escribir'}
@@ -4143,7 +3895,9 @@ function FormDespacho({
       {/* Un botón apagado sin explicación se lee como que la app se rompió. */}
       {!listo && (
         <p className="text-xs text-white/50">
-          {!responsable.trim()
+          {vencida
+            ? 'Tu sesión venció.'
+            : responsable.trim().length < 2
               ? 'Falta quién entrega.'
               : 'Falta el nombre y la cédula de quien se lleva el pedido.'}
         </p>
@@ -4334,8 +4088,20 @@ function SeccionProducto({
             {movimientos.map((m) => (
               <tr key={m.id} className="bg-white/[0.02] hover:bg-white/[0.06]">
                 <td className="px-4 py-3 whitespace-nowrap text-white/70">{fecha(m.fecha)}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 whitespace-nowrap">
                   <TipoBadge tipo={m.tipo} />
+                  {/* Solo el Blend: sus salidas son ventas con remisión o salidas
+                      sin venta, y la tabla tiene que decir cuál es cuál. Los
+                      despachos históricos sin remisión (`SAL-<CLIENTE>-…`) no
+                      llevan chip: rotularlos «Remisión» afirmaría un documento
+                      que no existe. */}
+                  {etiquetas.separarNoComerciales && m.tipo === 'Salida' && (
+                    esSalidaNoComercial(m.documento) || esSalidaNoComercial(m.destino) ? (
+                      <ChipClase clase="sin-venta" />
+                    ) : /SIRIUS-REM-/.test(`${m.documento} ${m.destino}`) ? (
+                      <ChipClase clase="venta" />
+                    ) : null
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{kg(m.cantidad)}</td>
                 <td className="px-4 py-3 text-white/60">{m.destino || '—'}</td>

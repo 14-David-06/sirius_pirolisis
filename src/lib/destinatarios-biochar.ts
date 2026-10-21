@@ -12,6 +12,9 @@
 //     notas y, en sus campos, `ID Pedido` e `ID Cliente`.
 //   · Lote histórico (abril y junio de 2026): NO tiene remisión. El cliente está
 //     en la Salida de Blend reconstruida, `DESP-<lote>-CL-XXXX`. No tuvo pedido.
+//   · Venta de biochar puro (desde 2026-10-21): el destino ES la remisión
+//     `SIRIUS-REM-XXXX`, que en el Core lleva `[bache:…]` en las notas y, en sus
+//     campos, `ID Pedido` e `ID Cliente`.
 //   · Salida de bache (`SAL-…`): su remisión en `Remisiones Baches Pirolisis`,
 //     marcada `[SALIDA:<ref>]`, dice quién recibió. No es un cliente de Clients
 //     Core —una donación o un ensayo no lo son—, así que va el texto tal cual.
@@ -28,6 +31,7 @@ import { escapeAirtableValue } from './airtable-escape';
 import { fetchAll, MOVIMIENTO_PROD_FIELDS } from './inventario-prod-core';
 import { credencialesBlend } from './blend-inventario-core';
 import { lotesDeNotas } from './blend-remisiones-core';
+import { tipoRemision } from './remision-pirolisis.constants';
 import { mapaClientes } from './pedidos-blend-core';
 
 export interface Destinatario {
@@ -47,35 +51,63 @@ const PEDIDO_DE_LOTE = /^BLEND-\d{4}-\d{2}-\d{2}-(SIRIUS-PED-\d+)(?:-\d+)?$/;
 const DESPACHO_HISTORICO = /^DESP-(BLEND-.+)-(CL-\d+)$/;
 const MARCA_SALIDA = /\[SALIDA:([^\]]+)\]/g;
 
-interface DatosLote {
+/** Lo que las remisiones del Core dicen de un destino: a qué pedidos y clientes fue. */
+export interface DatosLote {
   pedidos: Set<string>;
   clientes: Set<string>;
   remisiones: Set<string>;
 }
 
-async function lotesRemitidos(): Promise<Map<string, DatosLote>> {
-  const { remisionesCoreBaseId: base, remisionesCoreToken: token, remisionesCoreRemisionesTable: tabla } =
-    config.airtable;
+/**
+ * Indexa las remisiones del Core por el destino que sus Salidas llevan en
+ * `produccion_destino_id`. PURO, para probarlo sin Airtable.
+ *
+ *   · `[lote:BLEND-…]` → el lote (una remisión de Blend puede llevar varios).
+ *   · `[bache:…]`      → la propia remisión `SIRIUS-REM-XXXX`: en una venta de
+ *                        biochar puro, ese es el destino de cada Salida.
+ *
+ * El `[bache:` solo cuenta en una remisión de pirólisis (`tipoRemision()`: Área
+ * Producción y la marca antes de « — »): la tabla es compartida y una remisión
+ * del laboratorio con esa marca escrita a mano no es una venta de biochar.
+ */
+export function indexarRemisionesPorDestino(
+  registros: Array<{ fields: Record<string, unknown> }>
+): Map<string, DatosLote> {
   const out = new Map<string, DatosLote>();
-  if (!base || !token || !tabla) return out;
+  const agregar = (destino: string, f: Record<string, unknown>) => {
+    const d = out.get(destino) ?? { pedidos: new Set(), clientes: new Set(), remisiones: new Set() };
+    const pedido = String(f['ID Pedido'] ?? '').trim();
+    const cliente = String(f['ID Cliente'] ?? '').trim();
+    const codigo = String(f['ID'] ?? '').trim();
+    if (pedido) d.pedidos.add(pedido);
+    if (cliente) d.clientes.add(cliente);
+    if (codigo) d.remisiones.add(codigo);
+    out.set(destino, d);
+  };
 
-  const registros = await fetchAll(base, tabla, token, {
-    filterByFormula: `FIND('[lote:', {Notas de Remisión}) > 0`,
-  });
   for (const r of registros) {
-    const notas = String(r.fields['Notas de Remisión'] ?? '');
-    for (const { lote } of lotesDeNotas(notas, 0)) {
-      const d = out.get(lote) ?? { pedidos: new Set(), clientes: new Set(), remisiones: new Set() };
-      const pedido = String(r.fields['ID Pedido'] ?? '').trim();
-      const cliente = String(r.fields['ID Cliente'] ?? '').trim();
-      const codigo = String(r.fields['ID'] ?? '').trim();
-      if (pedido) d.pedidos.add(pedido);
-      if (cliente) d.clientes.add(cliente);
-      if (codigo) d.remisiones.add(codigo);
-      out.set(lote, d);
+    const f = r.fields ?? {};
+    const notas = String(f['Notas de Remisión'] ?? '');
+    for (const { lote } of lotesDeNotas(notas, 0)) agregar(lote, f);
+
+    const codigo = String(f['ID'] ?? '').trim();
+    if (codigo && tipoRemision({ areaOrigen: String(f['Area Origen'] ?? ''), notas }) === 'biochar') {
+      agregar(codigo, f);
     }
   }
   return out;
+}
+
+async function remisionesPorDestino(): Promise<Map<string, DatosLote>> {
+  const { remisionesCoreBaseId: base, remisionesCoreToken: token, remisionesCoreRemisionesTable: tabla } =
+    config.airtable;
+  if (!base || !token || !tabla) return new Map();
+
+  const registros = await fetchAll(base, tabla, token, {
+    filterByFormula:
+      `OR(FIND('[lote:', {Notas de Remisión}) > 0, FIND('[bache:', {Notas de Remisión}) > 0)`,
+  });
+  return indexarRemisionesPorDestino(registros);
 }
 
 /** Lote → `CL-XXXX` de los despachos históricos, que no tienen remisión. */
@@ -146,8 +178,8 @@ function mejorEsfuerzo<T>(promesa: Promise<T>, vacio: T, que: string): Promise<T
 }
 
 /**
- * Destinatario de cada destino de Salida (`BLEND-…` o `SAL-…`). Los destinos que
- * no se pueden resolver no aparecen en el mapa.
+ * Destinatario de cada destino de Salida (`BLEND-…`, `SAL-…` o `SIRIUS-REM-…`).
+ * Los destinos que no se pueden resolver no aparecen en el mapa.
  */
 export async function destinatariosDeSalidas(destinos: string[]): Promise<Map<string, Destinatario>> {
   const unicos = [...new Set(destinos.filter(Boolean))];
@@ -156,7 +188,7 @@ export async function destinatariosDeSalidas(destinos: string[]): Promise<Map<st
   ];
 
   const [remitidos, historicos, receptores, clientePorPedido, nombres] = await Promise.all([
-    mejorEsfuerzo(lotesRemitidos(), new Map<string, DatosLote>(), 'Remisiones Core'),
+    mejorEsfuerzo(remisionesPorDestino(), new Map<string, DatosLote>(), 'Remisiones Core'),
     mejorEsfuerzo(despachosHistoricos(), new Map<string, string>(), 'los despachos de Blend'),
     mejorEsfuerzo(receptoresDeSalidas(), new Map<string, string>(), 'las remisiones de baches'),
     mejorEsfuerzo(clientesDePedidos(pedidosDeLotes), new Map<string, string>(), 'Pedidos Core'),
@@ -169,6 +201,20 @@ export async function destinatariosDeSalidas(destinos: string[]): Promise<Map<st
     if (destino.startsWith('SAL-')) {
       const quien = receptores.get(destino);
       if (quien) out.set(destino, { pedido: '', cliente: quien, remisiones: [], porDespachar: false });
+      continue;
+    }
+
+    if (destino.startsWith('SIRIUS-REM-')) {
+      // Venta de biochar puro: la remisión ya despachó, no hay "por despachar".
+      const remision = remitidos.get(destino);
+      if (remision && (remision.clientes.size || remision.pedidos.size)) {
+        out.set(destino, {
+          pedido: [...remision.pedidos].join(', '),
+          cliente: [...remision.clientes].map(nombre).join(', '),
+          remisiones: [destino],
+          porDespachar: false,
+        });
+      }
       continue;
     }
 

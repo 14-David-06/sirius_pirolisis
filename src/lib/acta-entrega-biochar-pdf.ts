@@ -35,6 +35,7 @@ import {
   borderRect,
   formatDateES,
   formatKg,
+  lineaRazonSocial,
   line,
   rect,
   sanitize,
@@ -45,6 +46,9 @@ import {
   wrapText,
 } from './blend-remision-pdf-generator';
 import { COMPROMISO_ENTREGA_BIOCHAR } from './salida-bache.constants';
+// El NIT sale de la configuración, igual que en la remisión: el acta es otro
+// documento de la misma empresa y no puede decir otro NIT.
+import { config } from './config';
 import type { ActaEntrega } from './acta-entrega-biochar';
 
 export interface ActaEntregaPdfData extends ActaEntrega {
@@ -87,10 +91,10 @@ export async function generarActaEntregaPdf(data: ActaEntregaPdfData): Promise<U
     const textX = MARGIN + logoW + 14;
     page.drawText('SIRIUS', { x: textX, y: y + 55, size: 20, font: bold, color: WHITE });
     page.drawText('REGENERATIVE SOLUTIONS', { x: textX, y: y + 38, size: 10, font: regular, color: rgb(0.75, 0.78, 0.82) });
-    page.drawText('S.A.S. ZOMAC  |  NIT: 901.234.567-8', { x: textX, y: y + 22, size: 7.5, font: regular, color: rgb(0.55, 0.58, 0.62) });
+    page.drawText(sanitize(lineaRazonSocial(config.empresa.nit)), { x: textX, y: y + 22, size: 7.5, font: regular, color: rgb(0.55, 0.58, 0.62) });
   } else {
     page.drawText('SIRIUS REGENERATIVE SOLUTIONS', { x: MARGIN, y: y + 52, size: 18, font: bold, color: WHITE });
-    page.drawText('S.A.S. ZOMAC  |  NIT: 901.234.567-8', { x: MARGIN, y: y + 34, size: 8, font: regular, color: rgb(0.55, 0.58, 0.62) });
+    page.drawText(sanitize(lineaRazonSocial(config.empresa.nit)), { x: MARGIN, y: y + 34, size: 8, font: regular, color: rgb(0.55, 0.58, 0.62) });
   }
 
   textRight(page, 'ACTA DE ENTREGA DE BIOCHAR', regular, 7.5, PAGE_WIDTH - MARGIN, y + 68, rgb(0.55, 0.58, 0.62));

@@ -1,47 +1,59 @@
 import { NextResponse } from 'next/server';
-import { listarPedidosBlend } from '@/lib/pedidos-blend-core';
+import { listarPedidosBlend, listarPedidosPirolisis, type PedidoBlend } from '@/lib/pedidos-blend-core';
 import { lotesDisponiblesBlend } from '@/lib/despacho-blend';
+
+export const runtime = 'nodejs';
 
 /**
  * GET /api/pirolisis/pedidos
  *
- * TODOS los pedidos de Biochar Blend según Sirius Pedidos Core, cada uno marcado
- * como pendiente o cerrado. El corte por estado lo hace la pantalla con sus
- * filtros: devolver solo los pendientes dejaba sin forma de consultar lo enviado,
- * lo completado y lo cancelado, que es el historial comercial del producto.
+ * TODOS los pedidos de pirólisis según Sirius Pedidos Core, cada uno marcado
+ * como pendiente o cerrado: `pedidos` (Biochar Blend, 0016) y `pedidosBiochar`
+ * (biochar puro, 0015). Un pedido mixto aparece en las dos listas, cada fila con
+ * SUS kg. El corte por estado lo hace la pantalla con sus filtros.
  *
- * Va en SU PROPIO endpoint y no dentro de `/inventario/bodega-sirius` aunque se
- * pinten en la misma pantalla: son cuatro bases distintas (pedidos, clientes,
- * remisiones e inventario) y meterlas en la misma llamada haría que un Core lento
- * —o caído— demorara o tumbara el inventario, que es lo que la pantalla existe
- * para mostrar. Así la sección de pedidos carga aparte y falla aparte.
+ * Las dos listas salen de UNA lectura de Pedidos Core (`listarPedidosPirolisis`):
+ * leerla una vez por producto duplicaría las requests contra el rate limit de la
+ * base (§3 de CLAUDE.md) y podría mostrar los dos lados de un pedido mixto en
+ * momentos distintos.
  *
- * `pedidos: null` significa "no se pudo saber" (Pedidos Core sin configurar o sin
- * responder), que no es lo mismo que un array vacío: ese afirma que no hay ningún
- * pedido. La pantalla dice cuál de los dos es.
+ * Va en SU PROPIO endpoint y no dentro de `/inventario/bodega-sirius`: son cuatro
+ * bases distintas y un Core lento —o caído— no debe tumbar el inventario.
  *
- * Por eso un fallo también responde 200: la sección es un complemento del
- * inventario, y un 500 aquí solo lograría que la pantalla mostrara un error por
- * algo que no le impide hacer su trabajo.
+ * `null` significa "no se pudo saber" (sin configurar o sin responder), que no es
+ * lo mismo que `[]`: ese afirma que no hay pedidos. Por eso un fallo también
+ * responde 200: la sección es un complemento del inventario.
  *
- * Viene también `lotes`: los lotes de Blend producidos con lo que queda sin
- * despachar en cada uno. Van con los pedidos y no en su propia llamada porque son
- * las dos mitades de la misma decisión —de qué lote sale lo que este pedido
- * necesita—, y el formulario de despacho no puede abrirse sin ellos.
+ * Viene también `lotes`: los lotes de Blend con lo que queda sin despachar, que
+ * el formulario de despacho de Blend necesita para abrirse.
  */
 export async function GET() {
   try {
-    const [pedidos, lotes] = await Promise.all([
-      listarPedidosBlend(),
+    const [pirolisis, lotes] = await Promise.all([
+      listarPedidosPirolisis(),
       lotesDisponiblesBlend().catch((err) => {
         console.error('⚠️ No se pudieron leer los lotes de Blend disponibles:', err);
         return [];
       }),
     ]);
-    return NextResponse.json({ pedidos, lotes }, { status: 200 });
+
+    // Sin el biochar puro configurado no hay lista combinada; el Blend sigue
+    // funcionando solo, como antes de que existiera el despacho de biochar.
+    let pedidos: PedidoBlend[] | null;
+    if (pirolisis) {
+      // La lista de Blend con la forma de siempre: sin los campos del biochar.
+      pedidos = pirolisis.blend.map(({ producto: _p, despachoIncompleto: _d, ...pedido }) => pedido);
+    } else {
+      pedidos = await listarPedidosBlend();
+    }
+
+    return NextResponse.json(
+      { pedidos, pedidosBiochar: pirolisis ? pirolisis.biochar : null, lotes },
+      { status: 200 }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('❌ Error en GET pirolisis/pedidos:', message);
-    return NextResponse.json({ pedidos: null, lotes: [], error: message }, { status: 200 });
+    return NextResponse.json({ pedidos: null, pedidosBiochar: null, lotes: [], error: message }, { status: 200 });
   }
 }

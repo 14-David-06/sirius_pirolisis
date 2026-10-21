@@ -62,8 +62,17 @@ filterByFormula: `{Cedula} = '${escapeAirtableValue(cedula)}'`
 filterByFormula: `{Cedula} = '${cedula}'`
 ```
 
-Crítico en cualquier endpoint **público y sin autenticar**. Hoy no queda ninguno de
-Blend: la firma pública de remisiones se eliminó el 2026-10-02.
+Crítico en cualquier endpoint **público y sin autenticar**. La firma pública de
+remisiones se eliminó el 2026-10-02, pero desde el 2026-10-21 hay tres a propósito:
+`/api/recibir/{consultar,identificar,confirmar}`, la recepción de remisiones por
+enlace (§5). Los protege un token HMAC que se verifica —formato, firma con
+`timingSafeEqual`, vencimiento— **antes de tocar Airtable**; un token malo, una
+remisión inexistente y una ajena responden el mismo 404, para que quien no tiene
+un enlace auténtico no aprenda nada. Detrás de eso siguen valiendo las mismas
+reglas: la cédula se normaliza (`normalizarCedula()`) y se compara en JS, no en
+una fórmula, y todo valor que sí se interpola va con `escapeAirtableValue`. Tienen
+además límite de intentos por IP y por enlace (`atenderPublica()` en
+`recepcion/recepcion.ts`).
 
 Para códigos que vienen de la URL, además validar el formato con
 `assertCodigoSimbolico()`: si no parece un código, rechazar en vez de consultar.
@@ -337,14 +346,137 @@ lee como reintento de la primera; por eso el formulario ofrece el pedido como su
 despacho nunca produce desde la UI. El lote de un pedido no se le despacha a otro
 (`esLoteDeOtroPedido()` en `despacho-blend.ts`).
 
-**La remisión se firma en papel (2026-10-02).** Ni quien se lleva el pedido ni
-quien lo recibe firman en la app: primero salió el trazo del conductor del
-despacho y después la página pública `/pirolisis/blend/firmar/[remisionId]`, que
-era el único endpoint de Blend sin autenticar. Al emitir, el despacho ofrece el
-PDF (`/api/pirolisis/blend/remision/pdf`, con sesión), que se ARMA del Core cada
-vez, igual que el acta de entrega. Consecuencia: nada pasa la remisión a
-`Entregada` ni llena `Fecha Recibido`; si se necesita, es un paso a construir
-aparte, no la firma de vuelta.
+**La recepción se confirma por enlace (2026-10-21).** Del 2026-10-02 a hoy la
+remisión se firmaba solo en papel: primero salió de la app el trazo del conductor
+del despacho y después la página pública `/pirolisis/blend/firmar/[remisionId]`,
+que era el único endpoint de Blend sin autenticar. Nada pasaba la remisión a
+`Entregada` ni llenaba `Fecha Recibido`. Ese paso volvió, pero NO como firma: como
+un enlace que confirma la recepción.
+
+El PDF de la remisión (`/api/pirolisis/blend/remision/pdf`, con sesión) se sigue
+ARMANDO del Core cada vez, igual que el acta de entrega, y el despacho lo ADJUNTA
+a `Documento Remision` (`adjuntarPdfRemision()`, paso `documento`, best-effort →
+207) por `uploadAttachment` y no por URL pública, porque lleva cédulas: sin eso la
+remisión quedaba en la tabla sin documento, como SIRIUS-REM-0202, ya que antes lo
+adjuntaba la firma digital. ⚠️ Lo que se adjunta al Core va SIN QR (decisión de
+David, 2026-10-21): el QR es una llave que confirma la recepción y Remisiones Core
+también la lee DataLab; el QR solo existe en el papel (la descarga con sesión) y en
+el enlace que se comparte. Para las viejas que falten:
+`npx tsx scripts/adjuntar-pdf-remisiones.ts`, que adjunta la versión SIN QR —para
+una por recibir, el enlace se saca de la bodega—. Por estado: `Borrador` da 409
+(no viaja papel de un despacho que el sistema no terminó); `Pendiente` o
+`En Tránsito` llevan el bloque «RECEPCIÓN PENDIENTE» con el QR; `Entregada` lleva
+quién recibió y a qué hora.
+
+- **El token va en el fragmento:** `/recibir#v1.<recId>.<exp>.<mac>`
+  (`recepcion/token.ts`, `enlace.server.ts`). El fragmento no llega a los logs, al
+  `Referer` ni a la vista previa de WhatsApp; la página lo pasa a
+  `sessionStorage` y lo borra de la barra. Vence al terminar el día en Bogotá,
+  `RECEPCION_TTL_DIAS` después de emitido (7 por defecto, recortado a 1…30). No se
+  guarda en ningún lado: es determinista por día, y el PDF adjunto y el que se
+  descarga ese día llevan el mismo QR. La URL base es `RECEPCION_URL_BASE` (o
+  `NEXT_PUBLIC_APP_URL`), https en producción, y **nunca** `VERCEL_URL` ni el Host
+  de la petición: el QR impreso tiene que seguir abriendo semanas después.
+- **Uso único por `Estado`, no por un registro aparte.** El enlace vale mientras la
+  remisión esté en `Pendiente` o `En Tránsito`; al pasar a `Entregada` mueren todos
+  los de esa remisión. Con la misma cédula, un reintento responde 200 `yaRecibida`
+  sin reenviar el correo; con otra, 409. La revocación de emergencia es rotar
+  `RECEPCION_SECRET`.
+- **Se emite en el servidor, en tres sitios:** el paso `enlace` de los dos
+  despachos (en producción, si falta configuración, `ok:false` → 207; fuera,
+  `skipped`), el PDF por recibir y `POST /api/pirolisis/remisiones/[codigo]/enlace`
+  (con sesión, 30 cada 15 min por usuario), que devuelve el QR y el texto listo
+  para WhatsApp (`mensajeWhatsAppRecepcion()`, sin cédulas). **En producción emitir
+  exige la sesión firmada** (`sesionFirmada()`, §7): con la cookie sin firma
+  cualquiera fabrica una sesión, y los códigos de remisión son consecutivos.
+- **Identidad solo por cédula, dentro del alcance del cliente** (`identidad.ts`):
+  las Personas de esta remisión, las de otras remisiones del mismo `ID Cliente`
+  (también las de DataLab: es la misma gente) y el Personal Cliente activo. Nunca
+  en toda la tabla: la página es pública, y buscar en todo `Personas` la volvería
+  un oráculo cédula→nombre del ecosistema, que es el defecto de la firma pública
+  del laboratorio. A quien consulta se le muestran nombre y correo enmascarados,
+  nunca la cédula. Si la coincidencia no es un Receptor, se crea una COPIA
+  Receptor en `Personas`; «No soy yo» registra una persona nueva y lo deja en
+  `ID Origen`. **Personal Cliente no se escribe nunca**: Clients Core es solo de
+  lectura para esta app, y escribirle desde una página pública es el defecto del
+  laboratorio.
+- **La prueba de la autorización va ANTES que el dato.** Cuando entra un dato
+  personal nuevo (una persona o un correo agregado), primero se inserta la fila en
+  la tabla de PiroliApp `Autorizaciones Datos Personales` (Ley 1581 de 2012;
+  Decreto 1377 de 2013, art. 8: hay que poder probar la autorización) y después se
+  escribe la persona. Vive en PiroliApp y no en un Core porque es evidencia de esta
+  app; se accede por NOMBRE de campo, es de solo inserción y la revocación se marca
+  a mano. Sin la tabla configurada, ese camino responde 503 sin escribir nada; el
+  de una persona conocida que ya tiene correo sigue funcionando. El texto legal
+  está versionado en `recepcion/textos.ts`: cambiarlo es una versión nueva, no
+  una edición, porque no puede cambiar lo que alguien ya aceptó.
+- **La recepción es UN PATCH** —`Estado` `Entregada`, `Fecha Recibido` en Bogotá,
+  `Personas` previas ∪ receptor, marca `[recibida:<ISO>]`— que se relee después:
+  si la marca no es la propia, otra confirmación ganó y esta responde 409 sin
+  correo. `Fecha Recibido` es `date` y no guarda la hora; la marca sí.
+- **El correo sale al CONFIRMAR, al receptor, con copia a adm@ y david@**
+  (`RECEPCION_CORREO_CC`; decisión de David). Responder a adm@. Lleva el PDF ya
+  recibido, que también reemplaza al adjunto en el Core como `<REM>-recibida.pdf`.
+  **Nunca** va a los contactos del cliente ni a una dirección que llegue en el
+  body: la página es pública, y un destinatario elegible haría del correo de Sirius
+  un relé. Si el receptor no tiene correo, sale solo a la copia, con una franja que
+  lo dice. Solo cuando salió de verdad se escribe `[correo:<ISO>]`; sin esa marca
+  la remisión aparece en el panel de la bodega como incompleta, con [Reenviar]
+  (3 por hora por remisión). Documento y correo son best-effort: lo que importa,
+  la recepción, ya quedó.
+- **El papel queda como respaldo.** El bloque del QR trae líneas para firmar: si
+  quien recibe no tiene señal ni celular, se firma como antes, y la remisión se
+  cierra a mano.
+
+**El biochar puro también se vende: despacho por pedido (2026-10-21).** Hasta hoy
+el biochar puro solo salía SIN venta (`runSalidaBiochar()`); un pedido de Pedidos
+Core con línea `SIRIUS-PRODUCT-0015` no tenía cómo despacharse, y la venta se
+terminaba registrando como «muestra» o «laboratorio» con destino de un pedido.
+Ahora `Despachar` en «Pedidos de biochar» de la bodega llama a
+`despacharPedidoBiochar()` (`despacho-biochar.ts`,
+`/api/pirolisis/pedidos/despachar-biochar`, con sesión). El operador digita el
+TOTAL y el ensayo lo reparte FIFO por bache sobre lo DESPACHABLE: el saldo del
+Core menos lo ya prometido en remisiones no canceladas cuya Salida todavía no
+existe. Igual que en la salida, la confirmación reenvía el reparto tal cual.
+
+- **El `Borrador` es el ancla.** Sin transacciones entre cuatro bases, el orden
+  sostiene una invariante: **toda remisión de biochar activa (Pendiente, En
+  Tránsito, Entregada) tiene su inventario escrito en las dos vistas.** Primero la
+  remisión nace en `Borrador` con su `Productos Remitidos` (una fila 0015 por el
+  total) y su plan en las marcas; después la parte local y las Salidas del Core
+  (críticas); solo entonces `activar` la pasa a `En Tránsito` (con cédula de
+  transportista) o `Pendiente`. Estado de los baches, verificación de saldo,
+  estado del pedido, enlace y documento son best-effort. Si algo crítico falla
+  queda un Borrador VISIBLE que bloquea el pedido y que el PDF y el enlace
+  rechazan; `/despachar-biochar/completar` lo termina, o lo anula si todavía no se
+  escribió inventario. ⚠️ `Borrador` ya existía en `Remisiones.Estado` y lo usa
+  DataLab; las de PiroliApp se distinguen por `Area Origen = Producción` más las
+  marcas (`tipoRemision()`).
+- **Idempotencia:** el ensayo genera en el SERVIDOR un `idDespacho` (UUID) que va
+  a la remisión como `[desp:<uuid>]`. Confirmar dos veces encuentra la remisión y
+  completa lo que falte (`yaExistia`); si dos instancias crearon dos, gana la de
+  menor `numeracion` y la otra se descarta. El Blend usa la misma marca.
+- **Las marcas son la trazabilidad:** `[bache:S-XXXXX=kg]` una por bache, antes del
+  primer ` — ` de `Notas de Remisión` (lo de después es texto del operador y nunca
+  se lee como marca: si se leyera, un `[bache:…]` escrito a mano entraría a la
+  contabilidad de carbono). El contrato vive en `remision-pirolisis.constants.ts`.
+  Lo despachado y el estado del pedido (`actualizarEstadoPedidoPirolisis()`, que
+  nunca pisa `Completado` ni `Cancelado`) se derivan de lo remitido, no del
+  rollup.
+- **Una Salida 0015 POR BACHE en Inventario Production Core**, con
+  `bache_origen_id` = el bache, `produccion_destino_id` = `SIRIUS-REM-XXXX` y
+  `documento_referencia` = `DESP-<REM>-<S-XXXXX>` como llave, vinculada a
+  `Stock_Actual` en el POST.
+- **Una sola remisión LOCAL por despacho** en `Remisiones Baches Pirolisis`
+  (`[DESPACHO:<REM>]`, `consumo-local-bache.ts`) con un detalle por bache: eUse
+  cuenta cada fila como un VIAJE, y un despacho de cinco baches es un camión. Por
+  lo mismo `Cliente` lleva el nombre EXACTO del cliente en Clients Core, que es
+  por donde eUse lo cruza (y lanza si no cruza).
+- **Lo no comercial sigue siendo `SAL-…` sin remisión**, con acta si es `entrega`.
+  La bodega lo hace visible: el botón dice «Sacar sin venta (no es remisión)», y
+  cada Salida se clasifica `venta` / `blend` / `sin-venta` por su destino
+  (`clasificarSalidaBiochar()`): `SIRIUS-REM-…` es venta, los `SAL-` de motivo son
+  sin venta.
 
 **Se despacha el PEDIDO, no un lote (2026-09-24).** Un pedido producido en varias
 tandas (SIRIUS-PED-0093: 1.446,98 + 585,23 kg) sale completo en UNA remisión con
@@ -455,7 +587,53 @@ idempotentes, y validan todo antes de escribir. Nunca un script que muta producc
 sin poder ensayarlo.
 
 **Antes de escribir a Airtable, verificar el esquema real** (opciones de los selects,
-tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
+tipos de campo, nombres). Asumir es como se llega a un 422 en producción. Para las
+remisiones comerciales lo hace `scripts/esquema-remisiones-pirolisis.mjs`, que
+también crea la tabla de autorizaciones.
+
+**Los secretos se leen perezosos, en un `*.server.ts`.** `config.ts` también entra
+en páginas de cliente, así que ahí va solo lo que no es secreto
+(`config.recepcion`, `config.empresa`). `SESSION_SECRET*` se lee en
+`sesion-config.server.ts`, `RECEPCION_SECRET*` en `recepcion/enlace.server.ts` y
+las credenciales de Azure en `correo/graph.server.ts`, todos con
+`import 'server-only'` y en cada llamada, no al importar: así un test fija la
+variable antes de usarla, y un despliegue sin las de Azure no tumba las rutas que
+importan el módulo —solo falla el paso `correo`, con un 207 que nombra la
+variable—. Ese es el defecto del laboratorio, que arma su cliente de correo al
+cargar el módulo. Los mensajes nombran la variable que falta, **nunca su valor**.
+
+**La sesión va firmada cuando hay `SESSION_SECRET` (2026-10-21).** Hasta hoy la
+cookie era `base64(JSON)`: cualquiera podía escribirse la sesión de otro, y «con
+sesión» valía lo mismo que «público». Con `SESSION_SECRET` (≥ 32 caracteres) va
+`s1.<b64url>.<HMAC>` (`sesion-firma.ts`), el servidor exige las 24 h de vigencia y
+rechaza la cookie sin firma —cada usuario inicia sesión una vez tras el
+despliegue—; la rotación pasa el valor viejo a `SESSION_SECRET_ANTERIOR`. **Sin la
+variable, la sesión funciona exactamente como antes, sin firma**, con un único
+`console.error` por proceso: un despliegue sin ella no puede dejar a la planta sin
+login. El costo es que en ese modo la sesión no autentica, y por eso lo sensible
+pregunta antes `sesionFirmada()`: en producción, emitir enlaces de recepción.
+
+**El correo sale por Microsoft Graph, no por SMTP** (`src/lib/correo/`). Se usa la
+app de Azure de DataLab (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+`AZURE_CLIENT_SECRET`) con client-credentials por `fetch`, sin dependencias nuevas,
+y se envía desde `OUTLOOK_SENDER_EMAIL` (sirius.notify@). `nodemailer` y `SMTP_*`
+quedan sin uso. Los logs solo llevan `{etiqueta, modo, destinatarios: n, status,
+requestId, intentos}`: nunca direcciones, asunto, cuerpo ni token. Tres modos
+(`resolverModoCorreo()`), para que ningún entorno de prueba le escriba a un
+cliente:
+- `enviar`: solo con `VERCEL_ENV=production` (Preview corre con
+  `NODE_ENV=production`, así que `NODE_ENV` no sirve para decidirlo). Un
+  `CORREO_MODO=enviar` fuera de producción se ignora.
+- `redirigir`: todo va a `CORREO_REDIRIGIR_A`, que tiene que ser UNA dirección
+  `@siriusregenerative.com`; el asunto lleva `[PRUEBA]` y una franja con los
+  destinatarios originales enmascarados.
+- `simular`: no sale a la red; con `CORREO_GUARDAR_EN` (nunca en producción) deja
+  `.html`, `.pdf` y `.json` para revisarlos.
+Fuera de producción el defecto es `redirigir` si hay destino válido y, si no,
+`simular`. Para probar las credenciales: `npx tsx scripts/probar-correo.ts --para
+david@siriusregenerative.com [--apply]`, que solo acepta el dominio propio. Para
+recorrer la recepción sin Airtable ni correo: `RECEPCION_FIXTURES=1` (ignorado en
+producción) y `scripts/ensayar-recepcion.ts`.
 
 ---
 
@@ -544,3 +722,44 @@ tipos de campo, nombres). Asumir es como se llega a un 422 en producción.
   VINCULADOS. El código que escribe hoy sí los vincula; falta reparar esos históricos.
 - Captura de pedidos por IA/voz (equivalente a `/api/pedidos-ia` del laboratorio) no
   existe para Blend.
+- **Pendientes de la recepción por enlace y el despacho de biochar (2026-10-21):**
+  - **La cookie va sin firma mientras falte `SESSION_SECRET` en Vercel.** Hasta
+    entonces «con sesión» no autentica y, en producción, no se emiten enlaces de
+    recepción (el paso `enlace` da 207 y `/enlace` responde 503). Cargarla —una
+    distinta para Production y Preview— y avisar que todos vuelven a iniciar
+    sesión. Las variables de Azure también faltan en Vercel Production.
+  - **La tabla `Autorizaciones Datos Personales` no existe todavía.** La crea
+    `node scripts/esquema-remisiones-pirolisis.mjs --crear-autorizaciones --apply`,
+    que imprime el valor de `AIRTABLE_AUTORIZACIONES_DATOS_TABLE_ID`. Sin ella, la
+    recepción de alguien nuevo (o de un correo nuevo) responde 503.
+  - **El límite de intentos y el candado viven en memoria, por instancia**
+    (`rate-limit.ts`, `candado.ts`): dos funciones de Vercel no los comparten. Por
+    eso los flujos además releen y verifican después de escribir. Alcanza para
+    este volumen; con más tráfico, un almacén compartido.
+  - **Páginas y API heredadas que siguen públicas:** `/entrega-remision`,
+    `/recepcion-remision` y `/api/remisiones-baches/*` salvo `biochar-aplicado`.
+    No se tocaron; se recomienda retirarlas.
+  - **Tres field IDs viejos en `config.ts`** de `Remisiones Baches Pirolisis`
+    (`AIRTABLE_REMISIONES_QR_DOCUMENTO_FIELD_ID`, `…_FIRMA_ENTREGA_…`,
+    `…_FIRMA_RECIBE_…`): nadie los lee ni escribe, pero `validateEnvVars` los
+    exige. La limpieza empieza por `config.ts`, no por la variable.
+  - **El NIT está por confirmar.** El encabezado traía uno de relleno que no
+    coincidía con el de Clients Core; ahora sale de `EMPRESA_NIT` y, vacía, el
+    documento no imprime NIT. Confirmarlo antes de que los correos salgan a
+    terceros en producción.
+  - **Coordinar con DataLab:** su firma pública de remisiones no filtra
+    `Area Origen` y acepta cualquier estado menos `Entregada`; tiene que rechazar
+    `Producción`. Nuestro flujo ve `Entregada` y se detiene, pero su página podría
+    cerrar una remisión nuestra. También comparten el secreto de Azure, que ya
+    venció una vez.
+  - **Los contactos de Pablo (pablofelipe@) en Clients Core se inactivaron el
+    2026-10-21**, porque le llegaban las remisiones del laboratorio. Nuestro correo
+    nunca va a contactos del cliente, pero el Personal Cliente activo sí entra en
+    la búsqueda de identidad de la recepción.
+  - `consumo-local-bache.ts` solo lo usa el despacho de biochar; la salida
+    (`salida-bache.ts`) y la producción (`produccion-blend.ts`) siguen con su
+    propia escritura del detalle local, y su fecha por defecto sigue siendo UTC
+    (`toISOString()`): después de las 19:00 en Bogotá ya es mañana. El despacho
+    usa `fechaBogota()`.
+  - eUse no cuenta los despachos de Blend: no escriben fila en
+    `Remisiones Baches Pirolisis`, que es lo que eUse lee como viaje.

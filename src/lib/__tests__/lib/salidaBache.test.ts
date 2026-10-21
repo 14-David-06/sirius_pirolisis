@@ -1,5 +1,6 @@
 import {
   bacheDeReferencia,
+  clasificarSalidaBiochar,
   esMotivoSalida,
   esMotivoSalidaBlend,
   esReferenciaEntrega,
@@ -140,5 +141,34 @@ describe('esMotivoSalidaBlend', () => {
   it('no ofrece la entrega: sin acta no hay dónde guardar quién recibe', () => {
     expect(esMotivoSalidaBlend('muestra')).toBe(true);
     expect(esMotivoSalidaBlend('entrega')).toBe(false);
+  });
+});
+
+/**
+ * La venta y la salida sin venta no pueden confundirse en la pantalla: una venta
+ * registrada como salida no deja remisión, ni pedido, ni recepción.
+ */
+describe('clasificarSalidaBiochar', () => {
+  it('una remisión del Core es venta, por destino o por documento', () => {
+    expect(clasificarSalidaBiochar('SIRIUS-REM-0231')).toBe('venta');
+    expect(clasificarSalidaBiochar('DESP-SIRIUS-REM-0231-S-00140')).toBe('venta');
+  });
+
+  it('las salidas por motivo y las remisiones de baches viejas son sin venta', () => {
+    expect(clasificarSalidaBiochar('SAL-MUE-2026-10-20-S-00140')).toBe('sin-venta');
+    expect(clasificarSalidaBiochar('SAL-LAB-2026-10-20-2')).toBe('sin-venta');
+    expect(clasificarSalidaBiochar('SAL-ENT-2026-09-28-S-00150')).toBe('sin-venta');
+    expect(clasificarSalidaBiochar('SAL-REMISION-3-S-00101')).toBe('sin-venta');
+  });
+
+  it('los lotes de Blend y los despachos históricos a un cliente son Blend', () => {
+    expect(clasificarSalidaBiochar('BLEND-2026-10-06-SIRIUS-PED-0901')).toBe('blend');
+    expect(clasificarSalidaBiochar('SAL-CLIENTEFALSO-2026-04-30')).toBe('blend');
+  });
+
+  it('no se deja engañar por un código de remisión en medio del texto', () => {
+    expect(clasificarSalidaBiochar('SAL-MUE-SIRIUS-REM-0231')).toBe('sin-venta');
+    expect(clasificarSalidaBiochar('XSIRIUS-REM-0231')).toBe('blend');
+    expect(clasificarSalidaBiochar('')).toBe('blend');
   });
 });

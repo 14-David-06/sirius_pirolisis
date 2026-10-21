@@ -1,6 +1,7 @@
 // src/lib/blend-remisiones-core.ts
 //
-// Remisiones de Biochar Blend, con Sirius Remisiones Core como DUEÑO del registro.
+// Remisiones de pirólisis —Biochar Blend y, desde el 2026-10-21, Biochar puro—
+// con Sirius Remisiones Core como DUEÑO del registro.
 //
 // ═══ POR QUÉ ESTE MÓDULO ══════════════════════════════════════════════════════
 // Antes la remisión vivía en la tabla local `blend_remisiones` de PiroliApp y
@@ -8,9 +9,15 @@
 // prueba), así que la propiedad se invierte: el Core es el registro y no hay copia
 // local. Mismo modelo que usa el laboratorio.
 //
+// El acceso GENÉRICO al Core (configuración, personas, estado, documento,
+// lecturas crudas) se mudó a `remisiones-core.ts` y se reexporta desde aquí con
+// los mismos nombres. Aquí queda lo que es del producto: el mapeo con derivados
+// (`RemisionBlend`), la emisión del despacho de Blend y su Salida de inventario.
+//
 // ═══ DÓNDE VIVE CADA COSA ═════════════════════════════════════════════════════
 //   Sirius Remisiones Core  `Remisiones`         → el documento (SIRIUS-REM-XXXX)
-//                           `Productos Remitidos`→ una fila: Biochar Blend + KG
+//                           `Productos Remitidos`→ una fila por lote (Blend) o por
+//                                                  el total (biochar)
 //                           `Personas`           → transportista y receptor
 //   Sirius Inventario Prod. `Movimientos_Inventario` → la Salida del producto
 //   Sirius Pedidos Core     `Pedidos`            → el estado del pedido
@@ -21,10 +28,10 @@
 // baches, y NO se le agregan: es una base compartida con el laboratorio y meterle
 // campos de un solo producto la ensucia para todos.
 //
-// No hace falta: todo eso es DERIVABLE del código de lote, que va en las notas.
+// No hace falta: todo eso es DERIVABLE de las marcas de las notas.
 //   - composición  → proporción real del lote (o la fórmula de `config.blend`)
 //   - CO₂          → kg de biochar × `config.carbon.factorSecuestroCo2`
-//   - baches       → las Salidas de biochar del lote en Sirius Insumos Core
+//   - baches       → Blend: las Salidas de biochar del lote; biochar: `[bache:S=kg]`
 // Guardarlo sería duplicar un dato que ya existe y que puede divergir.
 
 import { config } from './config';
@@ -35,30 +42,58 @@ import {
   getProduccionPorLote,
   type BacheDeLote,
 } from './blend-produccion-core';
+import { fechaBogota } from './fecha-bogota';
+import {
+  NOMBRE_PRODUCTO,
+  bachesDeNotas,
+  correoDeNotas,
+  esIdDespacho,
+  idDespachoDeNotas,
+  kgRemitidoDeRemision,
+  marcaDespacho,
+  recibidaDeNotas,
+  remisionCrudaDeRegistro,
+  tipoRemision,
+  type BacheDeRemision,
+  type ProductoPirolisis,
+} from './remision-pirolisis.constants';
+import {
+  AT,
+  ESTADO_REMISION,
+  TIPO_PERSONA,
+  atAllRemisiones,
+  atRemisiones,
+  buscarOCrearPersona,
+  descartarRemision,
+  emitirDocumentoRemision,
+  listarRemisionesCrudas,
+  nombreCliente,
+  personasDeRemision,
+  remisionesCoreConfig,
+  vincularPersonas,
+  type PersonaRemision,
+  type RegistroAirtable,
+} from './remisiones-core';
+import { actualizarEstadoPedidoPirolisis } from './pedidos-pirolisis-estado';
+import type { StepResult } from '@/types/step-result';
 
-const AT = 'https://api.airtable.com/v0';
-
-/** Estados de `Remisiones.Estado` en el Core. Mandar otro valor devuelve 422. */
-export const ESTADO_REMISION = {
-  borrador: 'Borrador',
-  pendiente: 'Pendiente',
-  enTransito: 'En Tránsito',
-  entregada: 'Entregada',
-  cancelada: 'Cancelada',
-} as const;
-
-/** `Personas.Tipo de Usuario` en el Core. */
-export const TIPO_PERSONA = {
-  transportista: 'Transportista',
-  receptor: 'Receptor',
-} as const;
-
-/** El Blend sale de la planta de pirólisis → área "Producción". */
-const AREA_ORIGEN = 'Producción';
+// Lo genérico vive en `remisiones-core.ts`; se reexporta para que ningún
+// importador existente (rutas, despacho, scripts) tenga que cambiar.
+export {
+  ESTADO_REMISION,
+  TIPO_PERSONA,
+  adjuntarDocumento,
+  buscarOCrearPersona,
+  cambiarEstado,
+  nombreCliente,
+  vincularPersonas,
+} from './remisiones-core';
+export type { PersonaRemision } from './remisiones-core';
+export type { StepResult } from '@/types/step-result';
 
 /** Marca que identifica una remisión de Blend y su lote dentro de las notas. */
-const MARCA_LOTE = /\[lote:([A-Za-z0-9\-_]+)\]/;
 const MARCA_LOTE_G = /\[lote:([A-Za-z0-9\-_]+)\]/g;
+const MARCA_LOTE = /\[lote:([A-Za-z0-9\-_]+)\]/;
 
 /**
  * KG que salen de cada lote cuando la remisión cubre VARIOS: `[kg-lote:<lote>=<kg>]`.
@@ -82,16 +117,6 @@ export interface ComposicionBlend {
   biologicos: number;
 }
 
-export interface PersonaRemision {
-  recordId: string;
-  codigo: string;
-  nombre: string;
-  tipo: string;
-  cedula: string;
-  email: string;
-  telefono: string;
-}
-
 export interface RemisionBlend {
   recordId: string;
   /** `SIRIUS-REM-XXXX`. */
@@ -109,7 +134,7 @@ export interface RemisionBlend {
   areaClienteNombre: string;
   /** `BLEND-…`: la llave al lote producido. Con varios lotes, separados por coma. */
   lote: string;
-  /** De qué lote sale cada kg. Uno solo en la remisión normal. */
+  /** De qué lote sale cada kg. Uno solo en la remisión normal; vacío en biochar. */
   lotes: LoteDeRemision[];
   kgTotal: number;
   fechaRemision: string;
@@ -119,16 +144,33 @@ export interface RemisionBlend {
   documentoUrl: string;
   notas: string;
   personas: PersonaRemision[];
+  /**
+   * De qué producto es. `ajena` = no la emitió PiroliApp (DataLab, o una prueba
+   * vieja como `[blend:TEST-DIAG]`): se muestra pero no se le deriva nada.
+   */
+  tipo: ProductoPirolisis | 'ajena';
+  /** `SIRIUS-PRODUCT-…` del producto remitido, o vacío si es ajena. */
+  productoId: string;
+  /** Como lo imprime el documento: `Biochar Blend`, `Biochar`. */
+  productoNombre: string;
+  /** Llave `[desp:<uuid>]` del despacho que la creó, si la tiene. */
+  idDespacho: string | null;
+  /** Biochar puro: de qué bache sale cada kg (`[bache:S=kg]`). Vacío en Blend. */
+  bachesRemitidos: BacheDeRemision[];
+  /** Instante ISO de la confirmación por enlace (`[recibida:]`), con hora. */
+  recibidaEn: string | null;
+  /** Instante ISO en que el comprobante salió por correo (`[correo:]`). */
+  correoEnviadoEn: string | null;
+  /** Nombres de archivo de `Documento Remision`. */
+  documentos: string[];
   // ── Derivados (no viven en el Core) ──
   composicion: ComposicionBlend;
   co2SecuestradoKg: number;
   baches: BacheDeLote[];
 }
 
-interface AirtableRecord {
-  id: string;
-  fields: Record<string, unknown>;
-}
+/** El mismo tipo con un nombre que no miente: ya no es solo de Blend. */
+export type RemisionPirolisis = RemisionBlend;
 
 function toNumber(value: unknown): number {
   const n = typeof value === 'object' && value !== null ? NaN : Number(value);
@@ -136,56 +178,6 @@ function toNumber(value: unknown): number {
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
-
-function coreConfig() {
-  const baseId = config.airtable.remisionesCoreBaseId;
-  const token = config.airtable.remisionesCoreToken;
-  const remisionesTable = config.airtable.remisionesCoreRemisionesTable;
-  const productosTable = config.airtable.remisionesCoreProductosTable;
-  const personasTable = config.airtable.remisionesCorePersonasTable;
-
-  if (!baseId || !token || !remisionesTable) {
-    throw new Error(
-      'Configuración de Sirius Remisiones Core incompleta: faltan ' +
-        'AIRTABLE_BASE_ID_SIRIUS_REMISIONES_CORE, AIRTABLE_API_KEY_SIRIUS_REMISIONES_CORE ' +
-        'o AIRTABLE_TABLE_REMISIONES'
-    );
-  }
-  return { baseId, token, remisionesTable, productosTable, personasTable };
-}
-
-function headers(token: string) {
-  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-}
-
-async function at(url: string, token: string, init: RequestInit = {}) {
-  const res = await fetch(url, { ...init, headers: headers(token) });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(`Airtable ${init.method ?? 'GET'} ${res.status}: ${JSON.stringify(data)}`);
-  }
-  return data;
-}
-
-async function atAll(
-  baseId: string,
-  table: string,
-  token: string,
-  params: Record<string, string> = {}
-): Promise<AirtableRecord[]> {
-  const out: AirtableRecord[] = [];
-  let offset: string | undefined;
-  do {
-    const url = new URL(`${AT}/${baseId}/${table}`);
-    url.searchParams.set('pageSize', '100');
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    if (offset) url.searchParams.set('offset', offset);
-    const data = await at(url.toString(), token);
-    out.push(...((data.records ?? []) as AirtableRecord[]));
-    offset = data.offset;
-  } while (offset);
-  return out;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Derivados
@@ -247,65 +239,18 @@ export function lotesDeNotas(notas: string, kgTotal: number): LoteDeRemision[] {
 // Lectura
 // ─────────────────────────────────────────────────────────────────────────────
 
+const SIN_COMPOSICION: ComposicionBlend = { biochar: 0, abono: 0, agua: 0, biologicos: 0 };
+
 /**
- * Nombre comercial de un cliente a partir de su código `CL-XXXX`.
- * Devuelve el propio código si no se puede resolver: es mejor mostrar `CL-0003`
- * que una cadena vacía en el PDF de una remisión.
+ * Composición y baches de una remisión de Blend, desde sus lotes. Es la ÚNICA
+ * parte del mapeo que lee el inventario, y solo corre para el Blend: una de
+ * biochar ya trae sus baches en las marcas y una ajena no tiene lotes nuestros
+ * (aunque alguien haya escrito `[lote:` en sus notas).
  */
-export async function nombreCliente(idCliente: string): Promise<string> {
-  const { clientesBaseId, clientesTableId, clientesToken } = config.airtable;
-  if (!idCliente || !clientesBaseId || !clientesTableId || !clientesToken) return idCliente;
-
-  try {
-    // En Clients Core el campo primario `ID` es la fórmula CL-XXXX y el nombre
-    // comercial vive en `Cliente`.
-    const params = new URLSearchParams({
-      filterByFormula: `{ID} = '${escapeAirtableValue(idCliente)}'`,
-      maxRecords: '1',
-    });
-    const data = await at(
-      `${AT}/${clientesBaseId}/${clientesTableId}?${params.toString()}`,
-      clientesToken
-    );
-    const nombre = data.records?.[0]?.fields?.['Cliente'];
-    if (typeof nombre === 'string' && nombre.trim()) return nombre.trim();
-  } catch (err) {
-    console.warn(`⚠️ No se pudo resolver el nombre del cliente ${idCliente}:`, err);
-  }
-  return idCliente;
-}
-
-async function personasDeRemision(recordIds: string[]): Promise<PersonaRemision[]> {
-  const { baseId, token, personasTable } = coreConfig();
-  if (!personasTable || !recordIds.length) return [];
-
-  const personas: PersonaRemision[] = [];
-  for (const id of recordIds) {
-    try {
-      const data = await at(`${AT}/${baseId}/${personasTable}/${id}`, token);
-      personas.push({
-        recordId: data.id,
-        codigo: String(data.fields?.['Codigo Persona Remision'] ?? ''),
-        nombre: String(data.fields?.['Nombre Completo'] ?? ''),
-        tipo: String(data.fields?.['Tipo de Usuario'] ?? ''),
-        cedula: String(data.fields?.['Cedula'] ?? ''),
-        email: String(data.fields?.['Correo Electrónico'] ?? ''),
-        telefono: String(data.fields?.['Teléfono'] ?? ''),
-      });
-    } catch (err) {
-      console.warn(`⚠️ No se pudo leer la persona ${id}:`, err);
-    }
-  }
-  return personas;
-}
-
-/** Normaliza un registro del Core a `RemisionBlend`, resolviendo los derivados. */
-async function mapRemision(rec: AirtableRecord): Promise<RemisionBlend> {
-  const notas = String(rec.fields['Notas de Remisión'] ?? '');
-  const kgTotal = toNumber(rec.fields['Total Cantidad Remitida']);
-  const lotes = lotesDeNotas(notas, kgTotal);
-  const idCliente = String(rec.fields['ID Cliente'] ?? '');
-
+async function derivadosBlend(
+  lotes: LoteDeRemision[],
+  kgTotal: number
+): Promise<{ composicion: ComposicionBlend; baches: BacheDeLote[] }> {
   // Proporción real de biochar de cada lote y sus baches. Con varios lotes, el
   // biochar de la remisión es lo que aporta cada uno con SU proporción: un
   // promedio simple le daría a la tanda chica el mismo peso que a la grande.
@@ -332,15 +277,37 @@ async function mapRemision(rec: AirtableRecord): Promise<RemisionBlend> {
   const proporcionBiochar =
     todosConProporcion && kgTotal > 0 ? kgBiocharReal / kgTotal : undefined;
 
-  const composicion = composicionDeDespacho(kgTotal, proporcionBiochar);
-  const personasIds = Array.isArray(rec.fields['Personas'])
-    ? (rec.fields['Personas'] as string[])
-    : [];
+  return { composicion: composicionDeDespacho(kgTotal, proporcionBiochar), baches };
+}
 
-  const idAreaCliente = String(rec.fields['ID Area Cliente'] ?? '').trim();
+/** Normaliza un registro del Core a `RemisionBlend`, resolviendo los derivados. */
+async function mapRemision(rec: RegistroAirtable): Promise<RemisionBlend> {
+  const cruda = remisionCrudaDeRegistro(rec);
+  const tipo = tipoRemision(cruda) ?? 'ajena';
+  const notas = cruda.notas;
+
+  let kgTotal = cruda.kgRollup;
+  let lotes: LoteDeRemision[] = [];
+  let bachesRemitidos: BacheDeRemision[] = [];
+  let composicion = SIN_COMPOSICION;
+  let baches: BacheDeLote[] = [];
+
+  if (tipo === 'blend') {
+    lotes = lotesDeNotas(notas, kgTotal);
+    ({ composicion, baches } = await derivadosBlend(lotes, kgTotal));
+  } else if (tipo === 'biochar') {
+    // Los kg salen de las marcas, no del rollup: el Core lo muestra sin decimales
+    // y las marcas son lo que se descontó del inventario, bache por bache.
+    bachesRemitidos = bachesDeNotas(notas);
+    kgTotal = kgRemitidoDeRemision(cruda)?.kg ?? kgTotal;
+    composicion = { ...SIN_COMPOSICION, biochar: r2(kgTotal) };
+    baches = bachesRemitidos.map((b) => ({ codigo: b.bache, kg: b.kg, bacheId: '' }));
+  }
+
+  const idAreaCliente = cruda.idAreaCliente;
   const [clienteNombre, personas, area] = await Promise.all([
-    nombreCliente(idCliente),
-    personasDeRemision(personasIds),
+    nombreCliente(cruda.idCliente),
+    personasDeRemision(cruda.personasIds),
     idAreaCliente
       ? obtenerAreaCliente(idAreaCliente).catch((err) => {
           console.warn(`⚠️ No se pudo resolver el área ${idAreaCliente}:`, err);
@@ -349,12 +316,19 @@ async function mapRemision(rec: AirtableRecord): Promise<RemisionBlend> {
       : Promise.resolve(null),
   ]);
 
+  const productoId =
+    tipo === 'blend'
+      ? config.airtable.inventarioProdCoreBiocharBlendProductId ?? ''
+      : tipo === 'biochar'
+        ? config.airtable.inventarioProdCoreBiocharPuroProductId ?? ''
+        : '';
+
   return {
     recordId: rec.id,
-    codigo: String(rec.fields['ID'] ?? ''),
-    estado: String(rec.fields['Estado'] ?? ''),
-    idPedido: String(rec.fields['ID Pedido'] ?? ''),
-    idCliente,
+    codigo: cruda.codigo,
+    estado: cruda.estado,
+    idPedido: cruda.idPedido,
+    idCliente: cruda.idCliente,
     clienteNombre,
     idAreaCliente,
     areaClienteNombre: area?.nombre || idAreaCliente,
@@ -362,12 +336,20 @@ async function mapRemision(rec: AirtableRecord): Promise<RemisionBlend> {
     lotes,
     kgTotal,
     fechaRemision: String(rec.fields['Fecha de Remisión'] ?? '').slice(0, 10),
-    fechaDespacho: String(rec.fields['Fecha Pedido Despachado'] ?? '').slice(0, 10),
-    fechaRecibido: String(rec.fields['Fecha Recibido'] ?? '').slice(0, 10),
+    fechaDespacho: cruda.fechaDespacho,
+    fechaRecibido: cruda.fechaRecibido,
     responsableEntrega: String(rec.fields['Responsable Entrega'] ?? ''),
     documentoUrl: String(rec.fields['URL Remision Generada'] ?? ''),
     notas,
     personas,
+    tipo,
+    productoId,
+    productoNombre: tipo === 'ajena' ? '' : NOMBRE_PRODUCTO[tipo],
+    idDespacho: idDespachoDeNotas(notas),
+    bachesRemitidos,
+    recibidaEn: recibidaDeNotas(notas),
+    correoEnviadoEn: correoDeNotas(notas),
+    documentos: cruda.documentos,
     composicion,
     co2SecuestradoKg: co2Secuestrado(composicion.biochar),
     baches,
@@ -379,14 +361,17 @@ async function mapRemision(rec: AirtableRecord): Promise<RemisionBlend> {
  * (`SIRIUS-REM-XXXX`). Es el patrón del laboratorio: las APIs aceptan las dos
  * formas indistintamente, porque los enlaces que se comparten con el cliente
  * llevan el código y los internos llevan el record ID.
+ *
+ * Devuelve también las AJENAS (`tipo: 'ajena'`): decidir si se muestran es de
+ * quien llama (el PDF de PiroliApp las rechaza con 404).
  */
 export async function resolverRemision(idOrCodigo: string): Promise<RemisionBlend | null> {
-  const { baseId, token, remisionesTable } = coreConfig();
+  const { baseId, token, remisionesTable } = remisionesCoreConfig();
 
   if (esRecordId(idOrCodigo)) {
     try {
-      const data = await at(`${AT}/${baseId}/${remisionesTable}/${idOrCodigo}`, token);
-      return await mapRemision(data as AirtableRecord);
+      const data = await atRemisiones(`${AT}/${baseId}/${remisionesTable}/${idOrCodigo}`, token);
+      return await mapRemision(data as RegistroAirtable);
     } catch {
       return null;
     }
@@ -396,9 +381,9 @@ export async function resolverRemision(idOrCodigo: string): Promise<RemisionBlen
     filterByFormula: `{ID} = '${escapeAirtableValue(idOrCodigo)}'`,
     maxRecords: '1',
   });
-  const data = await at(`${AT}/${baseId}/${remisionesTable}?${params.toString()}`, token);
+  const data = await atRemisiones(`${AT}/${baseId}/${remisionesTable}?${params.toString()}`, token);
   const rec = data.records?.[0];
-  return rec ? await mapRemision(rec as AirtableRecord) : null;
+  return rec ? await mapRemision(rec as RegistroAirtable) : null;
 }
 
 /**
@@ -406,15 +391,16 @@ export async function resolverRemision(idOrCodigo: string): Promise<RemisionBlen
  *
  * El filtro por producto se hace en JS y no en la fórmula: `Productos Remitidos`
  * es un link y en una fórmula se evalúa como el texto del campo primario, no como
- * el ID del producto. Filtrar por la marca `[lote:…]` de las notas es lo que
- * distingue una remisión de Blend de una del laboratorio en la misma tabla.
+ * el ID del producto. Lo que distingue una de Blend de una del laboratorio en la
+ * misma tabla es `tipoRemision()`: `Area Origen = Producción` Y la marca
+ * `[lote:…]` antes de « — ».
  */
 export async function listarRemisiones(filtros: {
   estado?: string;
   pedido?: string;
   cliente?: string;
 } = {}): Promise<RemisionBlend[]> {
-  const { baseId, token, remisionesTable } = coreConfig();
+  const { baseId, token, remisionesTable } = remisionesCoreConfig();
 
   const condiciones: string[] = [];
   if (filtros.estado) condiciones.push(`{Estado} = '${escapeAirtableValue(filtros.estado)}'`);
@@ -425,13 +411,11 @@ export async function listarRemisiones(filtros: {
   if (condiciones.length === 1) params.filterByFormula = condiciones[0];
   else if (condiciones.length > 1) params.filterByFormula = `AND(${condiciones.join(', ')})`;
 
-  const registros = await atAll(baseId, remisionesTable, token, params);
+  const registros = await atAllRemisiones(baseId, remisionesTable, token, params);
 
   // Solo las de Blend, y en serie por remisión para no disparar 4 requests por
   // cada una en paralelo contra el rate limit de Airtable (5 req/s por base).
-  const soloBlend = registros.filter((r) =>
-    MARCA_LOTE.test(String(r.fields['Notas de Remisión'] ?? ''))
-  );
+  const soloBlend = registros.filter((r) => tipoRemision(remisionCrudaDeRegistro(r)) === 'blend');
 
   const out: RemisionBlend[] = [];
   for (const rec of soloBlend) out.push(await mapRemision(rec));
@@ -440,87 +424,8 @@ export async function listarRemisiones(filtros: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Personas (upsert por cédula + tipo)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Busca una persona por cédula y tipo, o la crea. Devuelve su record ID.
- *
- * La cédula viene de un formulario PÚBLICO, así que va escapada: es el caso que
- * motiva `escapeAirtableValue`.
- */
-export async function buscarOCrearPersona(persona: {
-  nombre: string;
-  cedula: string;
-  tipo: string;
-  email?: string;
-  telefono?: string;
-  direccion?: string;
-}): Promise<string | null> {
-  const { baseId, token, personasTable } = coreConfig();
-  if (!personasTable) {
-    console.warn('⚠️ AIRTABLE_TABLE_PERSONAS_REMISION no configurado: persona no registrada');
-    return null;
-  }
-  if (!persona.cedula) return null;
-
-  const params = new URLSearchParams({
-    filterByFormula: `AND({Cedula} = '${escapeAirtableValue(persona.cedula)}', {Tipo de Usuario} = '${escapeAirtableValue(persona.tipo)}')`,
-    maxRecords: '1',
-  });
-  const existente = await at(`${AT}/${baseId}/${personasTable}?${params.toString()}`, token);
-  if (existente.records?.length) return existente.records[0].id as string;
-
-  const fields: Record<string, unknown> = {
-    'Nombre Completo': persona.nombre,
-    Cedula: persona.cedula,
-    'Tipo de Usuario': persona.tipo,
-    'Base Origen': 'PiroliApp (Pirolisis)',
-  };
-  if (persona.email) fields['Correo Electrónico'] = persona.email;
-  if (persona.telefono) fields['Teléfono'] = persona.telefono;
-  if (persona.direccion) fields['Dirección'] = persona.direccion;
-
-  const creada = await at(`${AT}/${baseId}/${personasTable}`, token, {
-    method: 'POST',
-    body: JSON.stringify({ records: [{ fields }] }),
-  });
-  return (creada.records?.[0]?.id as string) ?? null;
-}
-
-/** Añade personas al link de la remisión SIN borrar las ya vinculadas. */
-export async function vincularPersonas(
-  remisionRecordId: string,
-  personaIds: string[]
-): Promise<void> {
-  const { baseId, token, remisionesTable } = coreConfig();
-  if (!personaIds.length) return;
-
-  // El PATCH de un campo link REEMPLAZA el array: hay que releer y concatenar o se
-  // pierde la persona que ya estaba vinculada.
-  const actual = await at(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token);
-  const previas: string[] = Array.isArray(actual.fields?.['Personas'])
-    ? (actual.fields['Personas'] as string[])
-    : [];
-  const union = [...new Set([...previas, ...personaIds])];
-
-  await at(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token, {
-    method: 'PATCH',
-    body: JSON.stringify({ fields: { Personas: union } }),
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Escritura
 // ─────────────────────────────────────────────────────────────────────────────
-
-export interface StepResult {
-  step: string;
-  ok: boolean;
-  skipped?: boolean;
-  detail?: unknown;
-  error?: string;
-}
 
 export interface CrearRemisionInput {
   /** `SIRIUS-PED-XXXX` del pedido que se está despachando. */
@@ -542,12 +447,22 @@ export interface CrearRemisionInput {
   /** Transportista: si viene con cédula se registra en `Personas`. */
   transportista?: { nombre: string; cedula: string; telefono?: string; email?: string };
   observaciones?: string;
+  /** `YYYY-MM-DD`. Por defecto, hoy en Bogotá. */
   fechaDespacho?: string;
+  /**
+   * Llave de idempotencia del despacho (UUID v4 que genera el ensayo). Va en las
+   * notas como `[desp:<uuid>]`; si ya hay una remisión con ella, no se crea otra.
+   */
+  idDespacho?: string;
+  /** Kg pedidos de Blend cuando el pedido no tiene líneas en Pedidos Core. */
+  kgSolicitadosRespaldo?: number;
 }
 
 export interface CrearRemisionResult {
   ok: boolean;
   remision: RemisionBlend | null;
+  /** La llave `idDespacho` ya tenía remisión: no se escribió nada. */
+  yaExistia?: boolean;
   steps: StepResult[];
 }
 
@@ -560,98 +475,131 @@ export interface CrearRemisionResult {
  * laboratorio: se devuelven en `steps` para que la ruta responda 207 y quede
  * registrado qué quedó a medias. No hay transacciones entre bases de Airtable;
  * lo único honesto es reportar.
+ *
+ * Las escrituras exactas están fijadas por `crearRemisionCaracterizacion.test.ts`.
  */
 export async function crearRemision(input: CrearRemisionInput): Promise<CrearRemisionResult> {
-  const { baseId, token, remisionesTable, productosTable } = coreConfig();
   const steps: StepResult[] = [];
+  const invalido = (error: string): CrearRemisionResult => ({
+    ok: false,
+    remision: null,
+    steps: [{ step: 'validacion', ok: false, error }],
+  });
 
-  if (!(input.kg > 0)) {
-    return {
-      ok: false,
-      remision: null,
-      steps: [{ step: 'validacion', ok: false, error: 'Los KG a despachar deben ser mayores que 0' }],
-    };
+  if (!(input.kg > 0)) return invalido('Los KG a despachar deben ser mayores que 0');
+  if (input.idDespacho !== undefined && !esIdDespacho(input.idDespacho)) {
+    return invalido('La llave del despacho no es un UUID v4');
   }
 
   const reparto = input.reparto?.length ? input.reparto : [{ lote: input.lote, kg: input.kg }];
   const sumaReparto = r2(reparto.reduce((t, l) => t + l.kg, 0));
   if (Math.abs(sumaReparto - r2(input.kg)) > 0.01 || reparto.some((l) => !(l.kg > 0))) {
-    return {
-      ok: false,
-      remision: null,
-      steps: [
-        {
-          step: 'validacion',
-          ok: false,
-          error: `El reparto por lote suma ${sumaReparto} kg y el despacho es de ${input.kg} kg.`,
-        },
-      ],
-    };
+    return invalido(`El reparto por lote suma ${sumaReparto} kg y el despacho es de ${input.kg} kg.`);
   }
   const multilote = reparto.length > 1;
+  const fechaDespacho = input.fechaDespacho || fechaBogota();
 
-  // 1. El documento. El lote va en las notas: es la llave a la producción y lo que
-  //    identifica esta remisión como de Blend dentro de una tabla compartida.
+  // 0. Idempotencia: un reintento de la misma confirmación (doble clic, red que
+  //    cortó la respuesta) encuentra su remisión y no emite otra.
+  if (input.idDespacho) {
+    try {
+      const previas = await listarRemisionesCrudas({ marcaDespacho: input.idDespacho });
+      if (previas.length) {
+        const remision = await resolverRemision(previas[0].recordId);
+        return {
+          ok: true,
+          yaExistia: true,
+          remision,
+          steps: [
+            { step: 'remision', ok: true, skipped: true, detail: { codigo: previas[0].codigo } },
+            // La Salida es best-effort: si falló en el intento original, el
+            // reintento es lo que la completa (idempotente por documento_referencia).
+            ...(remision ? await completarSalidasRemisionBlend(remision, input) : []),
+          ],
+        };
+      }
+    } catch (err) {
+      // Sin poder comprobarlo no se emite: crear a ciegas es justo el duplicado
+      // que la llave existe para evitar.
+      return {
+        ok: false,
+        remision: null,
+        steps: [{ step: 'remision', ok: false, error: err instanceof Error ? err.message : String(err) }],
+      };
+    }
+  }
+
+  // 1-2. El documento y su producto remitido (críticos). El lote va en las notas:
+  //      es la llave a la producción y lo que identifica esta remisión como de
+  //      Blend dentro de una tabla compartida.
   const notas =
     reparto.map((l) => `[lote:${l.lote}]`).join(' ') +
     (multilote ? ' ' + reparto.map((l) => `[kg-lote:${l.lote}=${r2(l.kg)}]`).join(' ') : '') +
-    ' Biochar Blend' +
+    (input.idDespacho ? ` ${marcaDespacho(input.idDespacho)}` : '') +
+    ` ${NOMBRE_PRODUCTO.blend}` +
     (input.observaciones ? ` — ${input.observaciones}` : '');
 
-  const remisionFields: Record<string, unknown> = {
-    'Area Origen': AREA_ORIGEN,
-    Estado: input.transportista?.cedula ? ESTADO_REMISION.enTransito : ESTADO_REMISION.pendiente,
-    'Notas de Remisión': notas,
-    'ID Cliente': input.idCliente,
-    'ID Pedido': input.idPedido,
-    ...(input.idAreaCliente ? { 'ID Area Cliente': input.idAreaCliente } : {}),
-    'Responsable Entrega': input.responsableEntrega,
-    'Fecha Pedido Despachado': input.fechaDespacho || new Date().toISOString().split('T')[0],
-  };
+  // Una fila de producto por lote: es el renglón del documento que dice de dónde
+  // salió cada kg, y `Total Cantidad Remitida` las suma.
+  const emitido = await emitirDocumentoRemision({
+    estado: input.transportista?.cedula ? ESTADO_REMISION.enTransito : ESTADO_REMISION.pendiente,
+    notas,
+    productos: reparto.map((l) => ({
+      productoId: config.airtable.inventarioProdCoreBiocharBlendProductId ?? '',
+      kg: l.kg,
+      notas: `Lote ${l.lote}`,
+    })),
+    idCliente: input.idCliente,
+    idPedido: input.idPedido,
+    idAreaCliente: input.idAreaCliente,
+    responsableEntrega: input.responsableEntrega,
+    fechaDespacho,
+  });
+  steps.push(...emitido.steps);
+  if (!emitido.ok || !emitido.remisionRecordId) return { ok: false, remision: null, steps };
+  const remisionRecordId = emitido.remisionRecordId;
 
-  let remisionRecordId: string;
-  try {
-    const creada = await at(`${AT}/${baseId}/${remisionesTable}`, token, {
-      method: 'POST',
-      body: JSON.stringify({ records: [{ fields: remisionFields }] }),
-    });
-    remisionRecordId = creada.records?.[0]?.id as string;
-    steps.push({ step: 'remision', ok: true, detail: { remisionRecordId } });
-  } catch (err) {
-    steps.push({ step: 'remision', ok: false, error: err instanceof Error ? err.message : String(err) });
-    return { ok: false, remision: null, steps };
-  }
-
-  // 2. El producto remitido. Sin esta fila `Total Cantidad Remitida` queda en 0, que
-  //    es el campo del que sale la cantidad en todo lo demás → es crítico, y si
-  //    falla se borra la remisión para no dejar un documento por 0 kg.
-  if (!productosTable) {
-    steps.push({ step: 'producto_remitido', ok: false, error: 'AIRTABLE_TABLE_PRODUCTOS_REMITIDOS no configurado' });
-    await at(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token, { method: 'DELETE' }).catch(() => {});
-    return { ok: false, remision: null, steps };
-  }
-  // Una fila por lote: es el renglón del documento que dice de dónde salió cada
-  // kg, y `Total Cantidad Remitida` las suma.
-  try {
-    await at(`${AT}/${baseId}/${productosTable}`, token, {
-      method: 'POST',
-      body: JSON.stringify({
-        records: reparto.map((l) => ({
-          fields: {
-            'ID Producto': config.airtable.inventarioProdCoreBiocharBlendProductId,
-            Cantidad: r2(l.kg),
-            Unidad: 'Kg',
-            'Remisión vinculada': [remisionRecordId],
-            Notas: `Lote ${l.lote}`,
-          },
-        })),
-      }),
-    });
-    steps.push({ step: 'producto_remitido', ok: true });
-  } catch (err) {
-    steps.push({ step: 'producto_remitido', ok: false, error: err instanceof Error ? err.message : String(err) });
-    await at(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token, { method: 'DELETE' }).catch(() => {});
-    return { ok: false, remision: null, steps };
+  // 2b. Chequeo de líder: dos instancias (el candado del despacho es por
+  //     instancia) pueden pasar el paso 0 a la vez y emitir las dos con la misma
+  //     llave. Gana la de menor numeración; la propia se descarta antes de que
+  //     tenga Salidas, y la de inventario la escribe quien emitió la líder.
+  //     Sin poder releer no se sabe quién ganó: no se escribe la Salida (un
+  //     reintento con la misma llave la completa por el camino `yaExistia`).
+  let liderVerificado = true;
+  if (input.idDespacho) {
+    try {
+      const conLlave = await listarRemisionesCrudas({ marcaDespacho: input.idDespacho });
+      const lider = conLlave[0];
+      if (lider && lider.recordId !== remisionRecordId) {
+        const descartada = conLlave.find((r) => r.recordId === remisionRecordId)?.codigo ?? remisionRecordId;
+        try {
+          await descartarRemision(remisionRecordId, emitido.productoIds);
+          steps.push({
+            step: 'lider',
+            ok: true,
+            detail: { codigo: lider.codigo, descartada, motivo: 'Otra petición emitió primero con la misma llave' },
+          });
+        } catch (err) {
+          steps.push({
+            step: 'lider',
+            ok: false,
+            error: `Otra petición emitió ${lider.codigo} con la misma llave y no se pudo descartar ${descartada}: ` +
+              (err instanceof Error ? err.message : String(err)),
+          });
+        }
+        const remisionLider = await resolverRemision(lider.recordId).catch(() => null);
+        return { ok: true, yaExistia: true, remision: remisionLider, steps };
+      }
+    } catch (err) {
+      liderVerificado = false;
+      steps.push({
+        step: 'lider',
+        ok: false,
+        error: `No se pudo verificar la llave del despacho; la Salida queda para el reintento: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
   }
 
   // 3. Transportista (best-effort).
@@ -678,18 +626,20 @@ export async function crearRemision(input: CrearRemisionInput): Promise<CrearRem
   //    (`lotesDisponiblesBlend()`), y una sola que nombrara dos lotes se le
   //    cargaría entera a uno de ellos.
   const codigoRemision = remision?.codigo ?? remisionRecordId;
-  for (const l of reparto) {
+  for (const l of liderVerificado ? reparto : []) {
     const paso = await registrarSalidaInventario(
-      { ...input, lote: l.lote, kg: l.kg },
+      { ...input, fechaDespacho, lote: l.lote, kg: l.kg },
       codigoRemision,
       multilote ? `DESP-${codigoRemision}-${l.lote}` : `DESP-${codigoRemision}`
     );
     steps.push(multilote ? { ...paso, step: `inventario:${l.lote}` } : paso);
   }
 
-  // 6. Estado del pedido (best-effort).
+  // 6. Estado del pedido (best-effort), por lo remitido y por producto.
   steps.push(
-    await actualizarEstadoPedido(input.idPedido, reparto.map((l) => l.lote).join(', '), input.kg)
+    await actualizarEstadoPedidoPirolisis(input.idPedido, {
+      kgSolicitadosBlendRespaldo: input.kgSolicitadosRespaldo,
+    })
   );
 
   const criticos = steps.filter((s) => ['remision', 'producto_remitido'].includes(s.step));
@@ -697,11 +647,57 @@ export async function crearRemision(input: CrearRemisionInput): Promise<CrearRem
 }
 
 /**
+ * Vuelve a registrar las Salidas de una remisión de Blend ya emitida, para el
+ * reintento con la misma llave (`yaExistia`): si el paso `inventario` falló en el
+ * intento original, aquí se completa. Idempotente por `documento_referencia`, con
+ * las mismas llaves que `crearRemision()`; si ya están, cada paso sale `skipped`.
+ *
+ * Los lotes y los kg salen de la REMISIÓN (sus marcas), no de la petición: es lo
+ * que se emitió. Una anulada no recibe Salidas.
+ *
+ * ⚠️ Riesgo residual: si la instancia que emitió la remisión sigue escribiendo su
+ * Salida en este mismo momento, los dos chequeos de duplicado pueden pasar a la
+ * vez. El candado `despacho-blend` lo evita dentro de una instancia; entre
+ * instancias la ventana es la del GET de duplicado al POST.
+ */
+export async function completarSalidasRemisionBlend(
+  remision: RemisionBlend,
+  respaldo: { responsableEntrega: string; fechaDespacho?: string; idPedido: string; idCliente: string }
+): Promise<StepResult[]> {
+  if (remision.estado === ESTADO_REMISION.cancelada) {
+    return [{ step: 'inventario', ok: true, skipped: true, detail: { motivo: `${remision.codigo} está anulada` } }];
+  }
+  const lotes = remision.lotes.length ? remision.lotes : remision.lote ? [{ lote: remision.lote, kg: remision.kgTotal }] : [];
+  if (!lotes.length) {
+    return [{ step: 'inventario', ok: false, error: `La remisión ${remision.codigo} no tiene lotes en sus marcas` }];
+  }
+  const multilote = lotes.length > 1;
+  const datos = {
+    idPedido: remision.idPedido || respaldo.idPedido,
+    idCliente: remision.idCliente || respaldo.idCliente,
+    responsableEntrega: remision.responsableEntrega || respaldo.responsableEntrega,
+    fechaDespacho: remision.fechaDespacho || respaldo.fechaDespacho || fechaBogota(),
+  };
+  const out: StepResult[] = [];
+  for (const l of lotes) {
+    const paso = await registrarSalidaInventario(
+      { ...datos, lote: l.lote, kg: l.kg },
+      remision.codigo,
+      multilote ? `DESP-${remision.codigo}-${l.lote}` : `DESP-${remision.codigo}`
+    );
+    out.push(multilote ? { ...paso, step: `inventario:${l.lote}` } : paso);
+  }
+  return out;
+}
+
+/**
  * Salida del producto terminado en Sirius Inventario Production Core.
  * `ubicacion_origen_id` = la remisión, `ubicacion_destino_id` = el cliente.
  */
 async function registrarSalidaInventario(
-  input: CrearRemisionInput,
+  input: Pick<CrearRemisionInput, 'idPedido' | 'idCliente' | 'lote' | 'kg' | 'responsableEntrega'> & {
+    fechaDespacho: string;
+  },
   codigoRemision: string,
   doc: string
 ): Promise<StepResult> {
@@ -721,7 +717,7 @@ async function registrarSalidaInventario(
       filterByFormula: `{documento_referencia} = '${escapeAirtableValue(doc)}'`,
       maxRecords: '1',
     });
-    const dup = await at(`${AT}/${base}/${movimientos}?${dupParams.toString()}`, token);
+    const dup = await atRemisiones(`${AT}/${base}/${movimientos}?${dupParams.toString()}`, token);
     if (dup.records?.length) {
       return { step: 'inventario', ok: true, skipped: true, detail: { doc, yaExistia: true } };
     }
@@ -732,7 +728,7 @@ async function registrarSalidaInventario(
         filterByFormula: `{producto_id} = '${escapeAirtableValue(producto)}'`,
         maxRecords: '1',
       });
-      const s = await at(`${AT}/${base}/${stockTable}?${q.toString()}`, token);
+      const s = await atRemisiones(`${AT}/${base}/${stockTable}?${q.toString()}`, token);
       stockRecordId = s.records?.[0]?.id ?? null;
     }
 
@@ -746,82 +742,18 @@ async function registrarSalidaInventario(
       motivo: 'Despacho Remisión',
       documento_referencia: doc,
       responsable: input.responsableEntrega,
-      fecha_movimiento: `${input.fechaDespacho || new Date().toISOString().split('T')[0]}T12:00:00.000Z`,
+      fecha_movimiento: `${input.fechaDespacho}T12:00:00.000Z`,
       observaciones: `Despacho de Biochar Blend del lote ${input.lote} al pedido ${input.idPedido}.`,
     };
     if (stockRecordId) fields.Stock_Actual = [stockRecordId];
 
-    const res = await at(`${AT}/${base}/${movimientos}`, token, {
+    const res = await atRemisiones(`${AT}/${base}/${movimientos}`, token, {
       method: 'POST',
       body: JSON.stringify({ records: [{ fields }] }),
     });
     return { step: 'inventario', ok: true, detail: { movimientoId: res.records?.[0]?.id, doc } };
   } catch (err) {
     return { step: 'inventario', ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-/**
- * Pasa el pedido a `Enviado` o `Enviado Parcial` según si lo despachado cubre lo
- * solicitado. Lo despachado se deriva del libro mayor (suma de Salidas del
- * pedido), no de un contador: varias remisiones por pedido son el caso normal.
- */
-async function actualizarEstadoPedido(
-  idPedido: string,
-  lote: string,
-  kgDespachadosAhora: number
-): Promise<StepResult> {
-  const base = config.airtable.pedidosCoreBaseId;
-  const token = config.airtable.pedidosCoreToken;
-  const pedidosTable = config.airtable.pedidosCorePedidosTable;
-  const detallesTable = config.airtable.pedidosCoreDetallesTable;
-  const producto = config.airtable.inventarioProdCoreBiocharBlendProductId;
-
-  if (!base || !token || !pedidosTable || !detallesTable || !producto) {
-    return { step: 'estado_pedido', ok: false, skipped: true, error: 'Pedidos Core no configurado' };
-  }
-
-  try {
-    const params = new URLSearchParams({
-      filterByFormula: `{ID Pedido Core} = '${escapeAirtableValue(idPedido)}'`,
-      maxRecords: '1',
-    });
-    const data = await at(`${AT}/${base}/${pedidosTable}?${params.toString()}`, token);
-    const pedido = data.records?.[0];
-    if (!pedido) {
-      return { step: 'estado_pedido', ok: false, error: `Pedido ${idPedido} no encontrado en Pedidos Core` };
-    }
-
-    // KG solicitados: del Detalle del producto Biochar Blend.
-    const dParams = new URLSearchParams({
-      filterByFormula: `{ID Producto Core} = '${escapeAirtableValue(producto)}'`,
-      pageSize: '100',
-    });
-    const dData = await at(`${AT}/${base}/${detallesTable}?${dParams.toString()}`, token);
-    const detalle = (dData.records ?? []).find((d: AirtableRecord) =>
-      ((d.fields?.['Pedido'] as string[] | undefined) ?? []).includes(pedido.id)
-    );
-    const kgSolicitados = toNumber(detalle?.fields?.['Cantidad Pedido']);
-
-    // KG ya despachados: suma de Salidas del producto atribuidas a este pedido.
-    const despachado = await kgDespachadosDePedido(idPedido);
-    const total = r2(despachado + (despachado >= kgDespachadosAhora ? 0 : kgDespachadosAhora));
-
-    const completo = kgSolicitados > 0 && total + 0.01 >= kgSolicitados;
-    const estado = completo ? 'Enviado' : 'Enviado Parcial';
-
-    await at(`${AT}/${base}/${pedidosTable}/${pedido.id}`, token, {
-      method: 'PATCH',
-      body: JSON.stringify({ fields: { Estado: estado } }),
-    });
-
-    return {
-      step: 'estado_pedido',
-      ok: true,
-      detail: { estado, kgSolicitados, kgDespachados: total, lote },
-    };
-  } catch (err) {
-    return { step: 'estado_pedido', ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -847,26 +779,13 @@ export async function kgDespachadosDePedido(idPedido: string): Promise<number> {
     filterByFormula: `AND({tipo_movimiento} = 'Salida', {product_id} = '${escapeAirtableValue(producto)}')`,
     pageSize: '100',
   });
-  const salidas = await atAll(base, movimientos, token, Object.fromEntries(params));
+  const salidas = await atAllRemisiones(base, movimientos, token, Object.fromEntries(params));
 
   const total = salidas
     .filter((m) => codigos.has(String(m.fields['ubicacion_origen_id'] ?? '')))
     .reduce((t, m) => t + toNumber(m.fields['cantidad']), 0);
 
   return r2(total);
-}
-
-/** Cambia el estado de una remisión, validando contra los valores del Core. */
-export async function cambiarEstado(remisionRecordId: string, estado: string): Promise<void> {
-  const valores = Object.values(ESTADO_REMISION) as string[];
-  if (!valores.includes(estado)) {
-    throw new Error(`Estado "${estado}" no válido. Opciones: ${valores.join(', ')}`);
-  }
-  const { baseId, token, remisionesTable } = coreConfig();
-  await at(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token, {
-    method: 'PATCH',
-    body: JSON.stringify({ fields: { Estado: estado } }),
-  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -885,6 +804,9 @@ export function serializarRemision(r: RemisionBlend) {
     id: r.recordId,
     codigo: r.codigo,
     estado: r.estado,
+    tipo: r.tipo,
+    producto_id: r.productoId,
+    producto: r.productoNombre,
     id_pedido: r.idPedido,
     id_cliente: r.idCliente,
     cliente: r.clienteNombre,
@@ -892,12 +814,17 @@ export function serializarRemision(r: RemisionBlend) {
     area_cliente: r.areaClienteNombre,
     lote: r.lote,
     lotes: r.lotes,
+    baches_remitidos: r.bachesRemitidos,
     kg_total: r.kgTotal,
     fecha_remision: r.fechaRemision,
     fecha_despacho: r.fechaDespacho,
     fecha_recibido: r.fechaRecibido,
     responsable_entrega: r.responsableEntrega,
     documento_url: r.documentoUrl,
+    documentos: r.documentos,
+    id_despacho: r.idDespacho,
+    recibida_en: r.recibidaEn,
+    correo_enviado_en: r.correoEnviadoEn,
     observaciones: r.notas,
     personas: r.personas,
     // Derivados de la fórmula y del lote, no campos almacenados.

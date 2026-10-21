@@ -167,9 +167,19 @@ export async function getStockDeProducto(cred: CredencialesProducto | null): Pro
   return record ? toNumber(record.fields?.[STOCK_PROD_FIELDS.stockActual]) : null;
 }
 
-/** Record ID de la fila de `Stock_Actual` del producto, o null. */
-export async function findStockRecordId(cred: CredencialesProducto | null): Promise<string | null> {
-  if (!cred || !cred.stock) return null;
+/**
+ * Record ID de la fila de `Stock_Actual` del producto, o null si no existe.
+ * LANZA si la lectura falla: quien escribe necesita distinguir "no hay fila" de
+ * "Airtable no respondió".
+ */
+async function leerStockRecordId(cred: CredencialesProducto): Promise<string | null> {
+  const { ok, data } = await consultarFilaStock(cred);
+  if (!ok) throw new Error(`Error al leer la fila de stock de ${cred.producto}: ${JSON.stringify(data)}`);
+  return data.records?.[0]?.id ?? null;
+}
+
+async function consultarFilaStock(cred: CredencialesProducto) {
+  if (!cred.stock) return { ok: true, status: 200, data: {} as Record<string, any> };
 
   const url = new URL(`${AT}/${cred.base}/${cred.stock}`);
   url.searchParams.set(
@@ -177,8 +187,18 @@ export async function findStockRecordId(cred: CredencialesProducto | null): Prom
     `{${STOCK_PROD_FIELDS.productoId}} = '${escapeAirtableValue(cred.producto)}'`
   );
   url.searchParams.set('maxRecords', '1');
+  return atFetch(url.toString(), { headers: headers(cred.token) });
+}
 
-  const { ok, data } = await atFetch(url.toString(), { headers: headers(cred.token) });
+/**
+ * Record ID de la fila de `Stock_Actual` del producto, o null.
+ *
+ * Una respuesta de error da null (el movimiento suelto se crea sin vincular y lo
+ * reporta `vinculadoAlStock`), pero un fallo de red se propaga, como siempre.
+ */
+export async function findStockRecordId(cred: CredencialesProducto | null): Promise<string | null> {
+  if (!cred) return null;
+  const { ok, data } = await consultarFilaStock(cred);
   return ok ? (data.records?.[0]?.id ?? null) : null;
 }
 
@@ -220,7 +240,13 @@ export async function fetchMovimientosDeProducto(
     filterByFormula: `{${f.productoId}} = '${escapeAirtableValue(cred.producto)}'`,
   });
 
-  return registros.map((m) => ({
+  return registros.map(movimientoProductoDeRegistro);
+}
+
+/** Un registro de `Movimientos_Inventario` (por nombre de campo) como movimiento. */
+export function movimientoProductoDeRegistro(m: AirtableRecord): MovimientoProducto {
+  const f = MOVIMIENTO_PROD_FIELDS;
+  return {
     id: m.id,
     codigo: String(m.fields['id_movimiento'] ?? m.id),
     tipo: String(m.fields[f.tipoMovimiento] ?? ''),
@@ -233,7 +259,7 @@ export async function fetchMovimientosDeProducto(
     fecha: String(m.fields[f.fechaMovimiento] ?? m.fields[f.fechaRegistro] ?? ''),
     motivo: String(m.fields[f.motivo] ?? ''),
     observaciones: String(m.fields[f.observaciones] ?? ''),
-  }));
+  };
 }
 
 /** ¿Existe ya un movimiento con esta llave de idempotencia? */
@@ -371,6 +397,13 @@ export interface MovimientoProductoInput {
   observaciones?: string;
   /** A dónde fue (receptor, laboratorio, área). */
   ubicacionDestino?: string;
+  /**
+   * De qué documento sale. En los despachos es la remisión `SIRIUS-REM-XXXX`: es
+   * la junta con la que lo despachado se atribuye al pedido
+   * (`clasificarPedidos()`), así que sin él la Salida existe pero el pedido no se
+   * entera.
+   */
+  ubicacionOrigen?: string;
 }
 
 export interface MovimientoCreado {
@@ -378,6 +411,36 @@ export interface MovimientoCreado {
   cantidad: number;
   /** false si el movimiento quedó sin vincular al stock (el saldo no lo cuenta). */
   vinculadoAlStock: boolean;
+}
+
+const SIN_CONFIGURACION =
+  'El producto no está configurado en Sirius Inventario Production Core: falta su ' +
+  'product_id, AIRTABLE_BASE_SIRIUS_INVENTARIO o ' +
+  'AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS.';
+
+/** Los campos de un movimiento, por NOMBRE, como los espera el POST. */
+function camposMovimiento(cred: CredencialesProducto, input: MovimientoProductoInput): Record<string, unknown> {
+  const f = MOVIMIENTO_PROD_FIELDS;
+  const fields: Record<string, unknown> = {
+    [f.productoId]: cred.producto,
+    [f.tipoMovimiento]: input.tipo,
+    [f.cantidad]: r2(input.cantidad),
+    [f.unidadMedida]: input.unidad ?? 'kg',
+    [f.motivo]: input.motivo,
+    [f.documentoReferencia]: input.documentoReferencia,
+    // Mediodía UTC y no la hora de la digitación: la fecha que importa es el día en
+    // que el material se movió físicamente, y un `T00:00` se corre de día al
+    // renderizarse en la zona de Colombia.
+    [f.fechaMovimiento]: `${input.fecha}T12:00:00.000Z`,
+  };
+
+  if (input.bacheOrigen) fields[f.bacheOrigen] = input.bacheOrigen;
+  if (input.produccionDestino) fields[f.produccionDestino] = input.produccionDestino;
+  if (input.responsable) fields[f.responsable] = input.responsable;
+  if (input.observaciones) fields[f.observaciones] = input.observaciones;
+  if (input.ubicacionDestino) fields[f.ubicacionDestino] = input.ubicacionDestino;
+  if (input.ubicacionOrigen) fields[f.ubicacionOrigen] = input.ubicacionOrigen;
+  return fields;
 }
 
 /**
@@ -397,35 +460,11 @@ export async function crearMovimientoProducto(
   cred: CredencialesProducto | null,
   input: MovimientoProductoInput
 ): Promise<MovimientoCreado> {
-  if (!cred) {
-    throw new Error(
-      'El producto no está configurado en Sirius Inventario Production Core: falta su ' +
-        'product_id, AIRTABLE_BASE_SIRIUS_INVENTARIO o ' +
-        'AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS.'
-    );
-  }
+  if (!cred) throw new Error(SIN_CONFIGURACION);
 
   const f = MOVIMIENTO_PROD_FIELDS;
-  const cantidad = r2(input.cantidad);
-
-  const fields: Record<string, unknown> = {
-    [f.productoId]: cred.producto,
-    [f.tipoMovimiento]: input.tipo,
-    [f.cantidad]: cantidad,
-    [f.unidadMedida]: input.unidad ?? 'kg',
-    [f.motivo]: input.motivo,
-    [f.documentoReferencia]: input.documentoReferencia,
-    // Mediodía UTC y no la hora de la digitación: la fecha que importa es el día en
-    // que el material se movió físicamente, y un `T00:00` se corre de día al
-    // renderizarse en la zona de Colombia.
-    [f.fechaMovimiento]: `${input.fecha}T12:00:00.000Z`,
-  };
-
-  if (input.bacheOrigen) fields[f.bacheOrigen] = input.bacheOrigen;
-  if (input.produccionDestino) fields[f.produccionDestino] = input.produccionDestino;
-  if (input.responsable) fields[f.responsable] = input.responsable;
-  if (input.observaciones) fields[f.observaciones] = input.observaciones;
-  if (input.ubicacionDestino) fields[f.ubicacionDestino] = input.ubicacionDestino;
+  const fields = camposMovimiento(cred, input);
+  const cantidad = fields[f.cantidad] as number;
 
   const stockRecordId = await findStockRecordId(cred);
   if (stockRecordId) fields[f.stockActual] = [stockRecordId];
@@ -443,6 +482,131 @@ export async function crearMovimientoProducto(
     cantidad,
     vinculadoAlStock: Boolean(stockRecordId),
   };
+}
+
+/** Airtable acepta como máximo 10 registros por POST. */
+const LOTE_POST = 10;
+
+/** Lo que pasó con cada movimiento de un `crearMovimientosProducto`. */
+export interface ResultadoMovimientoLote {
+  documentoReferencia: string;
+  /** Record ID del movimiento creado. Ausente si no se escribió. */
+  movimientoId?: string;
+  /** Por qué no se escribió: su lote falló, o uno anterior y ya no se intentó. */
+  error?: string;
+}
+
+/**
+ * Crea VARIOS movimientos del producto, en POST de 10, todos vinculados a
+ * `Stock_Actual` en el mismo POST.
+ *
+ * Es la escritura de un despacho que sale de N baches: un POST por bache son N
+ * requests contra el rate limit (5 req/s por base), y uno de 10 es atómico del lado
+ * de Airtable —entran los 10 o ninguno—.
+ *
+ * A diferencia de `crearMovimientoProducto`, LANZA ANTES DE ESCRIBIR si no hay fila
+ * de `Stock_Actual`: un movimiento sin vincular es invisible para el saldo (así se
+ * quedó la fila del Blend en 0 kg con 15.528 de entradas), y en un despacho
+ * comercial eso dejaría vendido un biochar que el inventario sigue mostrando.
+ *
+ * Se DETIENE en el primer lote que falla: seguir escribiendo después de un fallo
+ * deja huecos en medio del reparto, y el reintento —que vuelve a pedir solo las
+ * referencias que faltan (`documentosPorDestino`)— es más simple con un prefijo
+ * escrito y un resto pendiente.
+ *
+ * @returns un resultado por entrada, en el mismo orden, por `documentoReferencia`.
+ * @throws si falta configuración, si no hay fila de stock o si no se pudo leer.
+ */
+export async function crearMovimientosProducto(
+  cred: CredencialesProducto | null,
+  inputs: MovimientoProductoInput[]
+): Promise<ResultadoMovimientoLote[]> {
+  if (!cred) throw new Error(SIN_CONFIGURACION);
+  if (!inputs.length) return [];
+
+  const stockRecordId = await leerStockRecordId(cred);
+  if (!stockRecordId) {
+    throw new Error(
+      `No hay fila de Stock_Actual para ${cred.producto} (o falta ` +
+        'AIRTABLE_TABLE_SIRIUS_INVENTARIO_STOCK): no se escribe un movimiento que el ' +
+        'saldo no contaría.'
+    );
+  }
+
+  const f = MOVIMIENTO_PROD_FIELDS;
+  const resultados: ResultadoMovimientoLote[] = inputs.map((i) => ({
+    documentoReferencia: i.documentoReferencia,
+  }));
+  let fallo: string | null = null;
+
+  for (let inicio = 0; inicio < inputs.length; inicio += LOTE_POST) {
+    const lote = inputs.slice(inicio, inicio + LOTE_POST);
+    if (fallo !== null) {
+      for (let j = 0; j < lote.length; j++) resultados[inicio + j].error = `No se intentó: ${fallo}`;
+      continue;
+    }
+
+    const records = lote.map((input) => ({
+      fields: { ...camposMovimiento(cred, input), [f.stockActual]: [stockRecordId] },
+    }));
+
+    try {
+      const { ok, data } = await atFetch(`${AT}/${cred.base}/${cred.movimientos}`, {
+        method: 'POST',
+        headers: headers(cred.token),
+        body: JSON.stringify({ records }),
+      });
+      if (!ok) throw new Error(`Error creando movimientos de ${cred.producto}: ${JSON.stringify(data)}`);
+
+      const creados = (data.records ?? []) as AirtableRecord[];
+      lote.forEach((input, j) => {
+        // Airtable responde en el mismo orden; se cruza por la referencia cuando
+        // viene, para no atribuir un record ID al movimiento equivocado.
+        const creado =
+          creados.find((c) => c.fields?.[f.documentoReferencia] === input.documentoReferencia) ??
+          creados[j];
+        if (creado?.id) resultados[inicio + j].movimientoId = creado.id;
+        else resultados[inicio + j].error = 'Airtable no devolvió el movimiento creado';
+      });
+    } catch (err) {
+      // Un error de red no prueba que no se escribió: el reintento debe releer las
+      // referencias antes de volver a escribir, no confiar en este error.
+      const mensaje = err instanceof Error ? err.message : String(err);
+      fallo = mensaje;
+      for (let j = 0; j < lote.length; j++) resultados[inicio + j].error = mensaje;
+    }
+  }
+
+  return resultados;
+}
+
+/**
+ * Las `documento_referencia` de los movimientos del producto que van a un destino
+ * (`produccion_destino_id`): un lote `BLEND-…`, una salida `SAL-…` o una remisión
+ * `SIRIUS-REM-XXXX`.
+ *
+ * Es la consulta de idempotencia de una escritura por lotes: una sola lectura para
+ * saber cuáles de las N referencias ya existen, en vez de una por referencia.
+ *
+ * @throws si falta configuración o la lectura falla. Ante la duda NO se asume que
+ *   no existe nada: eso duplicaría el despacho entero.
+ */
+export async function documentosPorDestino(
+  cred: CredencialesProducto | null,
+  produccionDestino: string
+): Promise<Set<string>> {
+  if (!cred) throw new Error(SIN_CONFIGURACION);
+  if (!produccionDestino) throw new Error('Falta el destino de los movimientos');
+
+  const f = MOVIMIENTO_PROD_FIELDS;
+  const registros = await fetchAll(cred.base, cred.movimientos, cred.token, {
+    filterByFormula:
+      `AND({${f.productoId}} = '${escapeAirtableValue(cred.producto)}',` +
+      `{${f.produccionDestino}} = '${escapeAirtableValue(produccionDestino)}')`,
+    'fields[]': f.documentoReferencia,
+  });
+
+  return new Set(registros.map((r) => String(r.fields[f.documentoReferencia] ?? '')).filter(Boolean));
 }
 
 export { AT as AIRTABLE_API };

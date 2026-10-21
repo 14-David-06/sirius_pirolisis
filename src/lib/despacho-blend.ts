@@ -59,17 +59,26 @@
 // descuenta por el MAYOR de los dos, que es la lectura conservadora — ver
 // `lotesDisponiblesBlend()`.
 
+import { randomUUID } from 'crypto';
 import { config } from './config';
 import { assertCodigoSimbolico, escapeAirtableValue } from './airtable-escape';
+import { fechaBogota } from './fecha-bogota';
 import { fetchAll, toNumber, r2 } from './inventario-prod-core';
 import { credencialesBlend, resumenBlend } from './blend-inventario-core';
 import {
+  completarSalidasRemisionBlend,
   crearRemision,
   lotesDeNotas,
+  resolverRemision,
   ESTADO_REMISION,
   type LoteDeRemision,
   type RemisionBlend,
 } from './blend-remisiones-core';
+import { listarRemisionesCrudas } from './remisiones-core';
+import { conCandado } from './candado';
+import { esEstadoRecibible } from './remision-pirolisis.constants';
+import { pasoEnlaceRecepcion } from './recepcion/enlace.server';
+import { adjuntarPdfRemision } from './blend-remision-pdf';
 import { listarPedidosBlend, type PedidoBlend } from './pedidos-blend-core';
 import { listarAreasCliente } from './areas-cliente-core';
 import { runProduccionBlend, loteDeProduccion } from './produccion-blend';
@@ -284,14 +293,16 @@ export interface DespachoBlendInput {
   baches?: ConsumoBacheElegido[];
   responsableEntrega: string;
   /**
-   * ⚠️ La UI de bodega todavía no lo pide, así que hoy llega siempre vacío y la
-   * remisión sale `Pendiente`. El campo se mantiene porque `crearRemision()` lo
-   * usa para pasarla a `En Tránsito`, y quitarlo obligaría a reconstruirlo cuando
-   * el transporte entre al flujo.
+   * El usuario de la sesión (`Nombre Apellido`). Queda como quien registró la
+   * producción cuando el despacho tiene que producir; sin él, `responsableEntrega`.
    */
+  realizaRegistro?: string;
   /**
-   * Quien se lleva el producto. Nadie firma en la app: la remisión se imprime y
-   * se firma en papel (2026-10-02).
+   * Quien se lleva el producto: el formulario de despacho lo pide (personal del
+   * cliente o un conductor). Con cédula se registra en `Personas` y la remisión
+   * sale `En Tránsito`; sin él sale `Pendiente`. Nadie firma en la app: la
+   * remisión se imprime y se firma en papel (2026-10-02), y quien recibe la
+   * confirma con el enlace de recepción.
    */
   transportista?: {
     nombre: string;
@@ -307,8 +318,15 @@ export interface DespachoBlendInput {
    * de otra empresa.
    */
   idAreaCliente?: string;
-  /** `YYYY-MM-DD`. */
+  /** `YYYY-MM-DD`. Por defecto, hoy en Bogotá. */
   fechaDespacho?: string;
+  /**
+   * Llave de idempotencia del ensayo (`plan.idDespacho`, UUID v4). Confirmar dos
+   * veces con la misma llave devuelve la remisión ya emitida (`yaExistia`) en vez
+   * de emitir otra: un doble clic o una respuesta que se cortó no duplican el
+   * despacho.
+   */
+  idDespacho?: string;
 }
 
 /** Lo que se produciría para poder despachar, si hace falta producir. */
@@ -319,6 +337,8 @@ export interface PlanProduccionDespacho extends PlanProduccion {
 
 /** Lo que se va a escribir, para confirmarlo antes de escribirlo. */
 export interface PlanDespacho {
+  /** Llave del despacho: el ensayo la genera y la confirmación la reenvía. */
+  idDespacho: string;
   pedido: {
     codigo: string;
     cliente: string;
@@ -353,6 +373,10 @@ export interface DespachoBlendResult {
   plan: PlanDespacho;
   /** Solo en un despacho real; en `dryRun` no hay remisión. */
   remision?: RemisionBlend | null;
+  /** La llave ya tenía remisión: no se escribió nada nuevo. */
+  yaExistia?: boolean;
+  /** Enlace de recepción vigente, si la remisión está por recibir y está configurado. */
+  enlace?: { url: string; venceEl: string } | null;
   steps?: StepResult[];
 }
 
@@ -439,10 +463,26 @@ function loteParaProducir(fecha: string, idPedido: string, lotes: LoteBlendDispo
  * la mitad sirve; uno que no sale porque faltaban 40 kg de abono, no.
  *
  * Lanza `DespachoInvalido` cuando nada de lo anterior es posible, sin escribir.
+ *
+ * ═══ UNO A LA VEZ ═══════════════════════════════════════════════════════════
+ * La confirmación corre bajo `conCandado('despacho-blend')`: dentro de una
+ * instancia, el segundo despacho (o el doble clic con la misma llave) lee lo que
+ * escribió el primero, incluida su remisión. Entre instancias lo cubre el chequeo
+ * de líder de `crearRemision()`; la producción, que va antes de la remisión,
+ * queda fuera de ese chequeo (riesgo residual: dos instancias con la misma llave
+ * y sin lote existente podrían producir las dos). Puede lanzar `CandadoOcupado`.
  */
 export async function despacharPedidoBlend(
   input: DespachoBlendInput,
   { dryRun = false }: { dryRun?: boolean } = {}
+): Promise<DespachoBlendResult> {
+  if (dryRun) return despacharPedidoBlendSinCandado(input, true);
+  return conCandado('despacho-blend', () => despacharPedidoBlendSinCandado(input, false));
+}
+
+async function despacharPedidoBlendSinCandado(
+  input: DespachoBlendInput,
+  dryRun: boolean
 ): Promise<DespachoBlendResult> {
   if (!input.responsableEntrega?.trim()) {
     throw new DespachoInvalido('Falta quién entrega.');
@@ -467,6 +507,18 @@ export async function despacharPedidoBlend(
   if (!pedido) {
     throw new DespachoInvalido(`El pedido ${input.idPedido} no existe en Sirius Pedidos Core.`);
   }
+
+  // La llave se mira ANTES de validar: tras un despacho exitoso el pedido ya no
+  // debe esos kg, y el reintento moriría en «solo le faltan 0 kg» en vez de
+  // reconocer la remisión que él mismo emitió.
+  if (!dryRun && input.idDespacho) {
+    const previo = await despachoYaEmitido(input.idDespacho, pedido, lotes, resumen.kgSegunMovimientos, {
+      responsableEntrega: input.responsableEntrega.trim(),
+      fechaDespacho: input.fechaDespacho?.trim() || undefined,
+    });
+    if (previo) return previo;
+  }
+
   if (!pedido.pendiente) {
     throw new DespachoInvalido(
       `El pedido ${pedido.codigo} está en "${pedido.estado}": ya no está pendiente de despacho.`
@@ -495,7 +547,8 @@ export async function despacharPedidoBlend(
     );
   }
 
-  const fecha = input.fechaDespacho?.trim() || new Date().toISOString().split('T')[0];
+  // En Bogotá: después de las 19:00 la fecha UTC ya es mañana.
+  const fecha = input.fechaDespacho?.trim() || fechaBogota();
 
   // ── De dónde sale el producto ───────────────────────────────────────────────
   let lote: LoteBlendDisponible | null = null;
@@ -602,6 +655,9 @@ export async function despacharPedidoBlend(
   const cubre = kg + TOLERANCIA_KG >= pedido.kgPendientes;
 
   const plan: PlanDespacho = {
+    // El ensayo genera la llave; la confirmación usa la que le reenvían, o una
+    // nueva si el llamador no la trae (la API vieja), para que la remisión la lleve.
+    idDespacho: input.idDespacho ?? randomUUID(),
     pedido: {
       codigo: pedido.codigo,
       cliente: pedido.clienteNombre,
@@ -637,7 +693,7 @@ export async function despacharPedidoBlend(
       kgBlend: produccion.kgBlend,
       sufijoLote: produccion.lote.replace(/^BLEND-\d{4}-\d{2}-\d{2}-?/, '') || undefined,
       fecha,
-      realizaRegistro: input.responsableEntrega.trim(),
+      realizaRegistro: input.realizaRegistro?.trim() || input.responsableEntrega.trim(),
       observaciones: `Producción para despachar el pedido ${pedido.codigo}.`,
     });
 
@@ -677,17 +733,121 @@ export async function despacharPedidoBlend(
     transportista: input.transportista,
     observaciones: input.observaciones,
     fechaDespacho: fecha,
+    idDespacho: plan.idDespacho,
+    kgSolicitadosRespaldo: pedido.fuenteKg === 'notas' ? pedido.kgSolicitados : undefined,
   });
   steps.push(...resultado.steps);
 
-  return { ok: resultado.ok, plan, remision: resultado.remision, steps };
+  // Otra petición con la misma llave ganó entre la validación y la emisión: no se
+  // escribió nada y su documento ya lo adjuntó ella.
+  if (resultado.yaExistia) {
+    const enlace = resultado.remision ? enlaceSiPorRecibir(resultado.remision, steps) : null;
+    return { ok: true, plan, remision: resultado.remision, yaExistia: true, enlace, steps };
+  }
+
+  // 3. Enlace de recepción y el PDF en el registro del Core (best-effort: la
+  //    remisión ya existe y ambos se pueden volver a emitir). Al Core va SIN QR
+  //    (decisión de David, 2026-10-21): el QR es una llave para confirmar la
+  //    recepción y Remisiones Core la lee también DataLab. El QR viaja solo en el
+  //    papel (descarga con sesión) y en el enlace que se comparte.
+  let enlace: { url: string; venceEl: string } | null = null;
+  if (resultado.ok && resultado.remision) {
+    enlace = enlaceSiPorRecibir(resultado.remision, steps);
+    steps.push(await adjuntarPdfRemision(resultado.remision));
+  }
+
+  return { ok: resultado.ok, plan, remision: resultado.remision, enlace, steps };
+}
+
+/** Paso `enlace` si la remisión espera a quien la recibe; lo agrega a `steps`. */
+function enlaceSiPorRecibir(
+  remision: RemisionBlend,
+  steps: StepResult[]
+): { url: string; venceEl: string } | null {
+  if (!esEstadoRecibible(remision.estado)) {
+    steps.push({ step: 'enlace', ok: true, skipped: true, detail: { estado: remision.estado } });
+    return null;
+  }
+  const { paso, enlace } = pasoEnlaceRecepcion(remision.recordId);
+  steps.push(paso);
+  return enlace ? { url: enlace.url, venceEl: enlace.venceEl } : null;
+}
+
+/**
+ * Si la llave ya tiene remisión, el resultado de ese despacho sin escribir nada;
+ * si no, null. El plan describe lo que se emitió (sus lotes y sus kg), no lo que
+ * se pediría hoy.
+ */
+async function despachoYaEmitido(
+  idDespacho: string,
+  pedido: PedidoBlend,
+  lotes: LoteBlendDisponible[],
+  blendDisponible: number,
+  respaldo: { responsableEntrega: string; fechaDespacho?: string }
+): Promise<DespachoBlendResult | null> {
+  const previas = await listarRemisionesCrudas({ marcaDespacho: idDespacho });
+  if (!previas.length) return null;
+  if (previas[0].idPedido !== pedido.codigo) {
+    throw new DespachoInvalido(`La llave del despacho pertenece a otro pedido (${previas[0].idPedido}).`);
+  }
+  const remision = await resolverRemision(previas[0].recordId);
+  if (!remision) throw new Error(`No se pudo leer la remisión ${previas[0].codigo} del despacho.`);
+
+  const disponibles = r2(
+    remision.lotes.reduce((t, l) => t + (lotes.find((x) => x.lote === l.lote)?.kgDisponibles ?? 0), 0)
+  );
+  const steps: StepResult[] = [
+    { step: 'remision', ok: true, skipped: true, detail: { codigo: remision.codigo, motivo: 'La llave ya tenía remisión' } },
+    // Si la Salida falló en el intento original (es best-effort), el reintento la
+    // completa. Idempotente por documento_referencia: si ya está, sale `skipped`.
+    ...(await completarSalidasRemisionBlend(remision, {
+      responsableEntrega: respaldo.responsableEntrega,
+      fechaDespacho: respaldo.fechaDespacho,
+      idPedido: pedido.codigo,
+      idCliente: pedido.idCliente,
+    })),
+  ];
+  const enlace = enlaceSiPorRecibir(remision, steps);
+  return {
+    ok: true,
+    yaExistia: true,
+    remision,
+    enlace,
+    steps,
+    plan: {
+      idDespacho,
+      pedido: {
+        codigo: pedido.codigo,
+        cliente: pedido.clienteNombre,
+        idCliente: pedido.idCliente,
+        kgSolicitados: pedido.kgSolicitados,
+        kgDespachados: pedido.kgDespachados,
+        kgPendientes: pedido.kgPendientes,
+      },
+      areaCliente: remision.idAreaCliente
+        ? { codigo: remision.idAreaCliente, nombre: remision.areaClienteNombre }
+        : null,
+      kg: remision.kgTotal,
+      lote: remision.lote,
+      reparto: remision.lotes,
+      origen: 'lote-existente',
+      produccion: null,
+      // Ya despachado: lo de antes y lo de después es lo que hay hoy.
+      loteDisponibleAntes: disponibles,
+      loteDisponibleDespues: disponibles,
+      blendDisponibleAntes: blendDisponible,
+      blendDisponibleDespues: blendDisponible,
+      estadoPedidoResultante: pedido.pendiente ? 'Enviado Parcial' : 'Enviado',
+    },
+  };
 }
 
 /**
  * Valida que el área exista y sea del cliente del pedido. Va antes de escribir
- * nada: un área equivocada no se nota hasta que el documento llega impreso.
+ * nada: un área equivocada no se nota hasta que el documento llega impreso. La
+ * usa también el despacho de biochar puro: es la misma regla para los dos.
  */
-async function resolverAreaDespacho(
+export async function resolverAreaDespacho(
   codigo: string | undefined,
   idCliente: string
 ): Promise<{ codigo: string; nombre: string } | null> {

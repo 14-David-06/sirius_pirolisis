@@ -1,8 +1,11 @@
 // src/lib/pedidos-blend-core.ts
 //
-// Los pedidos de Biochar Blend que TODAVÍA DEBEN ALGO, leídos de Sirius Pedidos
-// Core. Es solo lectura: PiroliApp no es el dueño del pedido —lo crea el CRM— y
-// aquí no hay UI para agendarlo ni para remisionarlo (§8 de CLAUDE.md).
+// Los pedidos de pirólisis —Biochar Blend (0016) y, desde el 2026-10-21, biochar
+// puro (0015)— leídos de Sirius Pedidos Core. Es solo lectura: PiroliApp no es el
+// dueño del pedido —lo crea el CRM— y aquí no hay UI para agendarlo.
+//
+// El nombre del archivo quedó del Blend porque `listarPedidosBlend()` tiene varios
+// consumidores; la clasificación de los dos productos es `clasificarPedidos()`.
 //
 // ═══ PARA QUÉ ═════════════════════════════════════════════════════════════════
 // La pantalla de bodega responde "qué hay"; el pedido pendiente responde "para
@@ -42,6 +45,14 @@ import {
   type AirtableRecord,
 } from './inventario-prod-core';
 import { credencialesBlend } from './blend-inventario-core';
+import {
+  kgRemitidoDeRemision,
+  remisionCrudaDeRegistro,
+  tipoRemision,
+  type ProductoPirolisis,
+  type RemisionCruda,
+} from './remision-pirolisis.constants';
+import { ESTADO_REMISION } from './remisiones-core';
 
 /** `Pedidos.Estado` que todavía deben kg. Los demás valores cierran el pedido. */
 export const ESTADOS_PEDIDO_PENDIENTE = ['Recibido', 'Procesando', 'Enviado Parcial'] as const;
@@ -89,7 +100,6 @@ interface PedidosCoreConfig {
   token: string;
   pedidos: string;
   detalles: string;
-  producto: string;
 }
 
 function pedidosCoreConfig(): PedidosCoreConfig | null {
@@ -97,9 +107,8 @@ function pedidosCoreConfig(): PedidosCoreConfig | null {
   const token = config.airtable.pedidosCoreToken;
   const pedidos = config.airtable.pedidosCorePedidosTable;
   const detalles = config.airtable.pedidosCoreDetallesTable;
-  const producto = config.airtable.inventarioProdCoreBiocharBlendProductId;
-  if (!base || !token || !pedidos || !detalles || !producto) return null;
-  return { base, token, pedidos, detalles, producto };
+  if (!base || !token || !pedidos || !detalles) return null;
+  return { base, token, pedidos, detalles };
 }
 
 /**
@@ -158,114 +167,157 @@ export async function mapaClientes(): Promise<Record<string, string>> {
   }
 }
 
-/**
- * KG de Blend ya despachados por pedido, y las remisiones que los despacharon.
- *
- * La junta es el código de la remisión: el Core la guarda con su `ID Pedido`, y la
- * Salida de Blend lo lleva en `ubicacion_origen_id`. Best-effort: si alguna de las
- * dos bases falla se devuelve vacío y el pedido se muestra con 0 despachado, que
- * es preferible a esconder el pedido entero.
- */
-async function despachadoPorPedido(): Promise<{
-  kg: Record<string, number>;
-  remisiones: Record<string, string[]>;
-}> {
-  const vacio = { kg: {} as Record<string, number>, remisiones: {} as Record<string, string[]> };
+export interface PedidoPirolisis extends PedidoBlend {
+  /** De qué producto es ESTA fila. Un pedido mixto aparece una vez en cada lista. */
+  producto: ProductoPirolisis;
+  /**
+   * `SIRIUS-REM-XXXX` de un despacho de biochar que quedó en `Borrador` (escrito a
+   * medias). Mientras exista, el pedido no admite otro despacho: hay que
+   * completarlo o anularlo. Siempre null en el Blend, cuyo despacho no se ancla en
+   * un Borrador.
+   */
+  despachoIncompleto: string | null;
+}
 
-  const baseRem = config.airtable.remisionesCoreBaseId;
-  const tokenRem = config.airtable.remisionesCoreToken;
-  const tablaRem = config.airtable.remisionesCoreRemisionesTable;
-  const cred = credencialesBlend();
-  if (!baseRem || !tokenRem || !tablaRem || !cred) return vacio;
-
-  try {
-    // Se lee la tabla completa y se cruza en JS en vez de una consulta por pedido:
-    // son dos requests contra dos bases, no 2×N contra el rate limit.
-    const [remisiones, movimientos] = await Promise.all([
-      fetchAll(baseRem, tablaRem, tokenRem),
-      fetchAll(cred.base, cred.movimientos, cred.token, {
-        filterByFormula: `AND({${MOVIMIENTO_PROD_FIELDS.tipoMovimiento}} = 'Salida', {${
-          MOVIMIENTO_PROD_FIELDS.productoId
-        }} = '${escapeAirtableValue(cred.producto)}')`,
-      }),
-    ]);
-
-    const pedidoDeRemision: Record<string, string> = {};
-    const porPedido: Record<string, string[]> = {};
-    for (const r of remisiones) {
-      const codigo = String(r.fields['ID'] ?? '');
-      const pedido = String(r.fields['ID Pedido'] ?? '');
-      if (!codigo || !pedido) continue;
-      pedidoDeRemision[codigo] = pedido;
-      (porPedido[pedido] ??= []).push(codigo);
-    }
-
-    const kg: Record<string, number> = {};
-    for (const m of movimientos) {
-      const origen = String(m.fields[MOVIMIENTO_PROD_FIELDS.ubicacionOrigen] ?? '');
-      const pedido = pedidoDeRemision[origen];
-      if (!pedido) continue;
-      kg[pedido] = r2((kg[pedido] ?? 0) + toNumber(m.fields[MOVIMIENTO_PROD_FIELDS.cantidad]));
-    }
-
-    return { kg, remisiones: porPedido };
-  } catch (err) {
-    console.warn('⚠️ No se pudo derivar lo despachado por pedido:', err);
-    return vacio;
-  }
+export interface PedidosPirolisis {
+  blend: PedidoPirolisis[];
+  biochar: PedidoPirolisis[];
 }
 
 /**
- * TODOS los pedidos de Biochar Blend, del más antiguo al más reciente (lo que
- * lleva más tiempo esperando va primero), cada uno marcado como pendiente o no.
- *
- * Devuelve `null` si Pedidos Core no está configurado: `null` es "no se sabe" y la
- * pantalla lo dice, mientras que `[]` afirmaría que no hay pedidos.
+ * Primero lo que todavía se debe, y dentro de eso lo más viejo —que es lo que
+ * lleva más tiempo esperando producción—. Los cerrados van después y al revés:
+ * como historial, lo último que pasó es lo que se busca.
  */
-export async function listarPedidosBlend(): Promise<PedidoBlend[] | null> {
-  const cfg = pedidosCoreConfig();
-  if (!cfg) return null;
-
-  // 1. Los detalles del producto Blend, indexados por el pedido al que apuntan.
-  //    Un pedido puede traer varias líneas del mismo producto: se suman.
-  const detalles = await fetchAll(cfg.base, cfg.detalles, cfg.token, {
-    filterByFormula: `{ID Producto Core} = '${escapeAirtableValue(cfg.producto)}'`,
+function ordenarPedidos<T extends PedidoBlend>(lista: T[]): T[] {
+  return lista.sort((a, b) => {
+    if (a.pendiente !== b.pendiente) return a.pendiente ? -1 : 1;
+    const fa = a.fecha || '9999';
+    const fb = b.fecha || '9999';
+    return a.pendiente ? fa.localeCompare(fb) : fb.localeCompare(fa);
   });
-  const kgDetallePorPedido: Record<string, number> = {};
-  for (const d of detalles) {
+}
+
+/**
+ * Clasifica los pedidos de Pedidos Core en Blend (0016) y biochar puro (0015), con
+ * lo solicitado y lo despachado de cada uno. PURO: recibe lo leído y no lee nada,
+ * para que el despacho de biochar y la pantalla de bodega crucen las MISMAS tablas
+ * leídas una sola vez (rate limit, §3 de CLAUDE.md), y para poder probarlo.
+ *
+ * ═══ QUÉ VA A CADA LISTA ═════════════════════════════════════════════════════
+ * Blend: un pedido con línea 0016, o nacido en PiroliApp SIN línea 0015. El
+ * respaldo por `Origen del Pedido` existe porque en el Core hay detalles de Blend
+ * que perdieron su link al pedido al editarlos; un pedido que ya tiene su línea de
+ * biochar no es ese caso, y meterlo en Blend lo ofrecería para producir Blend.
+ * Biochar: un pedido con línea 0015. Para el biochar las notas NO son respaldo de
+ * kg: el formato `KG: …` de las notas es del Blend viejo, y un pedido de biochar sin
+ * línea queda `sin-dato`, que la pantalla dice, en vez de inventar cuánto se pidió.
+ * Un pedido mixto aparece en las dos, cada fila con SUS kg.
+ *
+ * ═══ LO DESPACHADO ═══════════════════════════════════════════════════════════
+ * Blend: igual que siempre, las Salidas de Blend del libro mayor atribuidas a las
+ * remisiones del pedido por `ubicacion_origen_id`.
+ * Biochar: la suma de las marcas `[bache:…=kg]` de sus remisiones de biochar no
+ * canceladas, Borrador incluido. El Borrador cuenta porque es un despacho en
+ * curso: si no contara, la pantalla ofrecería despachar otra vez lo mismo. No se
+ * leen las Salidas del biochar porque el despacho no activa la remisión sin
+ * escribirlas: en una remisión activa, las marcas y el libro dicen lo mismo.
+ *
+ * @param salidasBlend las Salidas de Blend del libro mayor (registros por nombre).
+ * @param remisiones TODAS las del Core, en el orden en que se leyeron: la lista de
+ *   remisiones del Blend nombra cualquier remisión del pedido —también las del
+ *   laboratorio—, como siempre lo hizo.
+ */
+export function clasificarPedidos(a: {
+  pedidos: AirtableRecord[];
+  detalles: AirtableRecord[];
+  remisiones: RemisionCruda[];
+  salidasBlend: AirtableRecord[];
+  clientes: Record<string, string>;
+  productos: { blend: string; biochar: string };
+}): PedidosPirolisis {
+  const { blend: idBlend, biochar: idBiochar } = a.productos;
+
+  // 1. Lo solicitado por pedido y producto. Un pedido puede traer varias líneas
+  //    del mismo producto: se suman. `undefined` = el pedido no tiene esa línea.
+  const kgBlendPorPedido: Record<string, number> = {};
+  const kgBiocharPorPedido: Record<string, number> = {};
+  for (const d of a.detalles) {
+    const producto = String(d.fields['ID Producto Core'] ?? '');
+    const destino =
+      idBlend && producto === idBlend
+        ? kgBlendPorPedido
+        : idBiochar && producto === idBiochar
+          ? kgBiocharPorPedido
+          : null;
+    if (!destino) continue;
     const links = (d.fields['Pedido'] as string[] | undefined) ?? [];
     for (const recId of links) {
-      kgDetallePorPedido[recId] = (kgDetallePorPedido[recId] ?? 0) + toNumber(d.fields['Cantidad Pedido']);
+      destino[recId] = (destino[recId] ?? 0) + toNumber(d.fields['Cantidad Pedido']);
     }
   }
 
-  // 2. Un pedido es de pirólisis si tiene un detalle de Blend O si nació aquí.
-  //    ⚠️ No basta con seguir el link del detalle: en el Core hay detalles de Blend
-  //    SIN link al pedido (se perdió al editarlos), y filtrar solo por él dejaba la
-  //    lista vacía.
-  const pedidos = await fetchAll(cfg.base, cfg.pedidos, cfg.token);
-  const deBlend = pedidos.filter(
-    (p) =>
-      kgDetallePorPedido[p.id] !== undefined ||
-      String(p.fields['Origen del Pedido'] ?? '') === ORIGEN_PIROLISIS
-  );
+  // 2. Lo despachado de Blend: Salida → remisión → pedido.
+  const pedidoDeRemision: Record<string, string> = {};
+  const remisionesPorPedido: Record<string, string[]> = {};
+  for (const r of a.remisiones) {
+    if (!r.codigo || !r.idPedido) continue;
+    pedidoDeRemision[r.codigo] = r.idPedido;
+    (remisionesPorPedido[r.idPedido] ??= []).push(r.codigo);
+  }
+  const kgBlendDespachado: Record<string, number> = {};
+  for (const m of a.salidasBlend) {
+    // Quien llama ya filtra; esto solo evita que una Entrada o un movimiento de
+    // otro producto se cuele si algún día se le pasa la tabla completa.
+    const tipo = m.fields[MOVIMIENTO_PROD_FIELDS.tipoMovimiento];
+    const producto = m.fields[MOVIMIENTO_PROD_FIELDS.productoId];
+    if (tipo !== undefined && tipo !== 'Salida') continue;
+    if (producto !== undefined && producto !== idBlend) continue;
+    const pedido = pedidoDeRemision[String(m.fields[MOVIMIENTO_PROD_FIELDS.ubicacionOrigen] ?? '')];
+    if (!pedido) continue;
+    kgBlendDespachado[pedido] = r2(
+      (kgBlendDespachado[pedido] ?? 0) + toNumber(m.fields[MOVIMIENTO_PROD_FIELDS.cantidad])
+    );
+  }
 
-  if (!deBlend.length) return [];
+  // 3. Lo despachado de biochar: las marcas de sus remisiones, por numeración.
+  const kgBiocharDespachado: Record<string, number> = {};
+  const remisionesBiochar: Record<string, RemisionCruda[]> = {};
+  for (const r of [...a.remisiones].sort((x, y) => x.numeracion - y.numeracion)) {
+    if (!r.idPedido || tipoRemision(r) !== 'biochar') continue;
+    (remisionesBiochar[r.idPedido] ??= []).push(r);
+    if (r.estado === ESTADO_REMISION.cancelada) continue;
+    const kr = kgRemitidoDeRemision(r);
+    if (!kr) continue;
+    kgBiocharDespachado[r.idPedido] = r2((kgBiocharDespachado[r.idPedido] ?? 0) + kr.kg);
+  }
 
-  const [clientes, despachado] = await Promise.all([mapaClientes(), despachadoPorPedido()]);
-
-  const lista = deBlend.map((p: AirtableRecord) => {
+  const armar = (p: AirtableRecord, producto: ProductoPirolisis): PedidoPirolisis => {
     const codigo = String(p.fields['ID Pedido Core'] ?? '');
     const estado = String(p.fields['Estado'] ?? '');
     const idCliente = String(p.fields['ID Cliente Core'] ?? '');
     const notas = parseNotas(String(p.fields['Notas'] ?? ''));
 
-    const kgDetalle = kgDetallePorPedido[p.id] ?? 0;
-    const kgSolicitados = kgDetalle > 0 ? kgDetalle : notas.kg;
-    const fuenteKg: PedidoBlend['fuenteKg'] =
-      kgDetalle > 0 ? 'detalle' : notas.kg > 0 ? 'notas' : 'sin-dato';
+    let kgSolicitados: number;
+    let fuenteKg: PedidoBlend['fuenteKg'];
+    let kgDespachados: number;
+    let remisiones: string[];
+    let despachoIncompleto: string | null = null;
 
-    const kgDespachados = despachado.kg[codigo] ?? 0;
+    if (producto === 'blend') {
+      const kgDetalle = kgBlendPorPedido[p.id] ?? 0;
+      kgSolicitados = kgDetalle > 0 ? kgDetalle : notas.kg;
+      fuenteKg = kgDetalle > 0 ? 'detalle' : notas.kg > 0 ? 'notas' : 'sin-dato';
+      kgDespachados = kgBlendDespachado[codigo] ?? 0;
+      remisiones = remisionesPorPedido[codigo] ?? [];
+    } else {
+      kgSolicitados = kgBiocharPorPedido[p.id] ?? 0;
+      fuenteKg = kgSolicitados > 0 ? 'detalle' : 'sin-dato';
+      kgDespachados = kgBiocharDespachado[codigo] ?? 0;
+      const propias = remisionesBiochar[codigo] ?? [];
+      remisiones = propias.map((r) => r.codigo);
+      despachoIncompleto = propias.find((r) => r.estado === ESTADO_REMISION.borrador)?.codigo ?? null;
+    }
 
     return {
       recordId: p.id,
@@ -273,7 +325,7 @@ export async function listarPedidosBlend(): Promise<PedidoBlend[] | null> {
       estado,
       pendiente: (ESTADOS_PEDIDO_PENDIENTE as readonly string[]).includes(estado),
       idCliente,
-      clienteNombre: clientes[idCliente] || idCliente || '—',
+      clienteNombre: a.clientes[idCliente] || idCliente || '—',
       idAreaCliente: String(p.fields['ID Area Cliente'] ?? '').trim(),
       fecha: String(p.fields['Fecha de Pedido'] ?? '').slice(0, 10),
       kgSolicitados: r2(kgSolicitados),
@@ -282,17 +334,117 @@ export async function listarPedidosBlend(): Promise<PedidoBlend[] | null> {
       fuenteKg,
       empaque: notas.empaque,
       observaciones: notas.observaciones,
-      remisiones: despachado.remisiones[codigo] ?? [],
+      remisiones,
+      producto,
+      despachoIncompleto,
     };
-  });
+  };
 
-  // Primero lo que todavía se debe, y dentro de eso lo más viejo —que es lo que
-  // lleva más tiempo esperando producción—. Los cerrados van después y al revés:
-  // como historial, lo último que pasó es lo que se busca.
-  return lista.sort((a, b) => {
-    if (a.pendiente !== b.pendiente) return a.pendiente ? -1 : 1;
-    const fa = a.fecha || '9999';
-    const fb = b.fecha || '9999';
-    return a.pendiente ? fa.localeCompare(fb) : fb.localeCompare(fa);
-  });
+  const blend: PedidoPirolisis[] = [];
+  const biochar: PedidoPirolisis[] = [];
+  for (const p of a.pedidos) {
+    const tieneBlend = kgBlendPorPedido[p.id] !== undefined;
+    const tieneBiochar = kgBiocharPorPedido[p.id] !== undefined;
+    const nacioAqui = String(p.fields['Origen del Pedido'] ?? '') === ORIGEN_PIROLISIS;
+    if (tieneBlend || (nacioAqui && !tieneBiochar)) blend.push(armar(p, 'blend'));
+    if (tieneBiochar) biochar.push(armar(p, 'biochar'));
+  }
+
+  return { blend: ordenarPedidos(blend), biochar: ordenarPedidos(biochar) };
+}
+
+/**
+ * Las remisiones del Core (todas, en el orden de lectura) y las Salidas de Blend.
+ *
+ * Best-effort y en bloque, como siempre fue lo despachado: si cualquiera de las
+ * dos bases falla se devuelven las dos vacías y los pedidos salen con 0
+ * despachado, que es preferible a esconderlos. Se leen las tablas completas y se
+ * cruza en JS: dos requests contra dos bases, no 2×N contra el rate limit.
+ */
+async function leerDespachado(): Promise<{ remisiones: RemisionCruda[]; salidasBlend: AirtableRecord[] }> {
+  const vacio = { remisiones: [] as RemisionCruda[], salidasBlend: [] as AirtableRecord[] };
+
+  const baseRem = config.airtable.remisionesCoreBaseId;
+  const tokenRem = config.airtable.remisionesCoreToken;
+  const tablaRem = config.airtable.remisionesCoreRemisionesTable;
+  const cred = credencialesBlend();
+  if (!baseRem || !tokenRem || !tablaRem || !cred) return vacio;
+
+  try {
+    // Sin ordenar por `numeracion` (que es lo que hace `listarRemisionesCrudas`):
+    // la lista de remisiones del Blend siempre salió en el orden de lectura.
+    const [remisiones, salidasBlend] = await Promise.all([
+      fetchAll(baseRem, tablaRem, tokenRem),
+      fetchAll(cred.base, cred.movimientos, cred.token, {
+        filterByFormula: `AND({${MOVIMIENTO_PROD_FIELDS.tipoMovimiento}} = 'Salida', {${
+          MOVIMIENTO_PROD_FIELDS.productoId
+        }} = '${escapeAirtableValue(cred.producto)}')`,
+      }),
+    ]);
+    return { remisiones: remisiones.map(remisionCrudaDeRegistro), salidasBlend };
+  } catch (err) {
+    console.warn('⚠️ No se pudo derivar lo despachado por pedido:', err);
+    return vacio;
+  }
+}
+
+async function leerPedidosPirolisis(
+  cfg: PedidosCoreConfig,
+  productos: { blend: string; biochar: string }
+): Promise<PedidosPirolisis> {
+  // Los detalles de los dos productos en UNA lectura: el pedido mixto necesita las
+  // dos líneas, y leer por producto duplicaría las requests contra la misma base.
+  const condiciones = [productos.blend, productos.biochar]
+    .filter(Boolean)
+    .map((id) => `{ID Producto Core} = '${escapeAirtableValue(id)}'`);
+  const [detalles, pedidos] = await Promise.all([
+    fetchAll(cfg.base, cfg.detalles, cfg.token, {
+      filterByFormula: condiciones.length === 1 ? condiciones[0] : `OR(${condiciones.join(', ')})`,
+    }),
+    fetchAll(cfg.base, cfg.pedidos, cfg.token),
+  ]);
+
+  // Sin pedidos de pirólisis no se leen ni los clientes ni lo despachado.
+  const previa = clasificarPedidos({ pedidos, detalles, remisiones: [], salidasBlend: [], clientes: {}, productos });
+  if (!previa.blend.length && !previa.biochar.length) return previa;
+
+  const [clientes, despachado] = await Promise.all([mapaClientes(), leerDespachado()]);
+  return clasificarPedidos({ pedidos, detalles, ...despachado, clientes, productos });
+}
+
+/**
+ * TODOS los pedidos de pirólisis, separados en Blend y biochar puro, cada uno
+ * marcado como pendiente o no (ver `clasificarPedidos`).
+ *
+ * Devuelve `null` si Pedidos Core o alguno de los dos productos no está
+ * configurado: `null` es "no se sabe" y la pantalla lo dice, mientras que listas
+ * vacías afirmarían que no hay pedidos. LANZA si Pedidos Core no responde.
+ */
+export async function listarPedidosPirolisis(): Promise<PedidosPirolisis | null> {
+  const cfg = pedidosCoreConfig();
+  const blend = config.airtable.inventarioProdCoreBiocharBlendProductId;
+  const biochar = config.airtable.inventarioProdCoreBiocharPuroProductId;
+  if (!cfg || !blend || !biochar) return null;
+  return leerPedidosPirolisis(cfg, { blend, biochar });
+}
+
+/**
+ * TODOS los pedidos de Biochar Blend, del más antiguo al más reciente (lo que
+ * lleva más tiempo esperando va primero), cada uno marcado como pendiente o no.
+ *
+ * Es la lista `blend` de `listarPedidosPirolisis()` con la forma de siempre: sin
+ * `producto` ni `despachoIncompleto`, que sus consumidores no esperan. Solo exige
+ * el Blend configurado: sin el id del biochar sigue funcionando como antes.
+ *
+ * Devuelve `null` si Pedidos Core no está configurado: `null` es "no se sabe" y la
+ * pantalla lo dice, mientras que `[]` afirmaría que no hay pedidos.
+ */
+export async function listarPedidosBlend(): Promise<PedidoBlend[] | null> {
+  const cfg = pedidosCoreConfig();
+  const blend = config.airtable.inventarioProdCoreBiocharBlendProductId;
+  if (!cfg || !blend) return null;
+
+  const biochar = config.airtable.inventarioProdCoreBiocharPuroProductId ?? '';
+  const { blend: lista } = await leerPedidosPirolisis(cfg, { blend, biochar });
+  return lista.map(({ producto: _producto, despachoIncompleto: _incompleto, ...pedido }) => pedido);
 }

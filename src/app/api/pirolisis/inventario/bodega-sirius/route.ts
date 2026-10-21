@@ -8,7 +8,7 @@ import {
 import { resumenAbono } from '@/lib/abono-inventario-core';
 import { resumenBlend } from '@/lib/blend-inventario-core';
 import { destinatariosDeSalidas } from '@/lib/destinatarios-biochar';
-import { esSalidaNoComercial } from '@/lib/salida-bache.constants';
+import { clasificarSalidaBiochar, esSalidaNoComercial } from '@/lib/salida-bache.constants';
 
 /**
  * GET /api/pirolisis/inventario/bodega-sirius
@@ -115,6 +115,11 @@ export async function GET() {
               remisiones: d?.remisiones ?? [],
               porDespachar: d?.porDespachar ?? false,
               comercial: m.tipo === 'Salida' && !esSalidaNoComercial(m.destino || m.documento),
+              // Venta con remisión, consumo en Blend o salida sin venta. Se clasifica
+              // aquí, con la misma función que el resto del servidor, para que la
+              // pantalla no tenga una regla propia que pueda divergir. `comercial`
+              // se conserva para las pestañas abiertas con la versión anterior.
+              clase: m.tipo === 'Salida' ? clasificarSalidaBiochar(m.destino || m.documento) : null,
             };
           })
       : null;

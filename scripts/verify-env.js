@@ -104,7 +104,37 @@ function checkVariables() {
     'AIRTABLE_INVENTARIO_PRESENTACION_INSUMO_FIELD_ID',
     'AIRTABLE_INVENTARIO_CANTIDAD_PRESENTACION_INSUMO_FIELD_ID',
     'AIRTABLE_INVENTARIO_FICHA_SEGURIDAD_FIELD_ID',
-    'NEXT_PUBLIC_APP_URL'
+    'NEXT_PUBLIC_APP_URL',
+
+    // Sesión firmada: sin SESSION_SECRET la cookie funciona como antes, sin firma,
+    // y en producción no se emiten enlaces de recepción.
+    'SESSION_SECRET',
+    'SESSION_SECRET_ANTERIOR',
+
+    // Recepción de remisiones por enlace (CLAUDE.md §5). Sin RECEPCION_SECRET no
+    // se emiten enlaces; RECEPCION_URL_BASE cae en NEXT_PUBLIC_APP_URL.
+    'RECEPCION_SECRET',
+    'RECEPCION_SECRET_ANTERIOR',
+    'RECEPCION_URL_BASE',
+    'RECEPCION_TTL_DIAS',
+    'RECEPCION_CORREO_CC',
+    'RECEPCION_CORREO_RESPONDER_A',
+    'RECEPCION_CONTACTO_DATOS',
+    'RECEPCION_FIXTURES',
+    // Sin ella, la recepción con datos personales nuevos responde 503.
+    'AIRTABLE_AUTORIZACIONES_DATOS_TABLE_ID',
+    // Vacío = el documento no imprime NIT.
+    'EMPRESA_NIT',
+
+    // Correo por Microsoft Graph (CLAUDE.md §7). Sin ellas solo falla el paso
+    // `correo` (207); fuera de producción el modo por defecto no envía.
+    'CORREO_MODO',
+    'CORREO_REDIRIGIR_A',
+    'CORREO_GUARDAR_EN',
+    'AZURE_CLIENT_ID',
+    'AZURE_TENANT_ID',
+    'AZURE_CLIENT_SECRET',
+    'OUTLOOK_SENDER_EMAIL'
   ];
 
   log('\n🔍 Verificando variables de entorno requeridas...', 'cyan');

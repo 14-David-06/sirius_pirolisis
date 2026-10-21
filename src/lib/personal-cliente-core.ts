@@ -23,7 +23,14 @@ export interface PersonaCliente {
   nombre: string;
   cedula: string;
   cargo: string;
+  /** `Email`, o `Email Notificacion` si no tiene: lo que la pantalla de despacho muestra. */
   email: string;
+  /**
+   * `Email Notificacion` tal cual, vacío si no lo tiene. Va aparte porque la
+   * recepción prefiere ESTE para mandar el comprobante (es el que el cliente dejó
+   * para avisos), y `email` ya mezcla los dos campos para sus consumidores de hoy.
+   */
+  emailNotificacion: string;
   telefono: string;
 }
 
@@ -74,6 +81,7 @@ export async function listarPersonalCliente(idCliente: string): Promise<PersonaC
           cedula: String(f['Cedula'] ?? '').trim(),
           cargo: String(f['Cargo'] ?? '').trim(),
           email: String(f['Email'] ?? f['Email Notificacion'] ?? '').trim(),
+          emailNotificacion: String(f['Email Notificacion'] ?? '').trim(),
           telefono: String(f['Teléfono'] ?? '').trim(),
         });
       }

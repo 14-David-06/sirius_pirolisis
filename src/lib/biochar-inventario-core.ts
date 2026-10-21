@@ -27,8 +27,16 @@
 // agregó a esa tabla los dos campos que la sostienen:
 //
 //   bache_origen_id       → `Codigo Bache` (S-00XXX) del que salió el biochar
-//   produccion_destino_id → lote `BLEND-…` que lo consumió, o la referencia
-//                           `SAL-…` de una salida que no es producción
+//   produccion_destino_id → lote `BLEND-…` que lo consumió, la referencia
+//                           `SAL-…` de una salida que no es producción, o la
+//                           remisión `SIRIUS-REM-XXXX` de una venta (desde el
+//                           2026-10-21, el despacho comercial de biochar puro)
+//
+// En una venta la Salida es una POR BACHE, con `documento_referencia` =
+// `DESP-<REM>-<S-XXXXX>` (la llave de idempotencia, única por bache) y
+// `ubicacion_origen_id` = la remisión, que es la junta con el pedido, igual que en
+// la Salida de Blend. El destino es la remisión y no el pedido porque un pedido se
+// despacha en tandas y cada tanda es un documento distinto.
 //
 // Sin ellos se perdería "de qué bache salió cada kg" y "a qué lote fue", que es lo
 // que sostiene la contabilidad de carbono. No se reciclaron los campos existentes:
@@ -42,16 +50,21 @@ import {
   atFetch,
   credencialesProducto,
   crearMovimientoProducto,
+  crearMovimientosProducto,
+  documentosPorDestino,
   fetchAll,
   fetchMovimientosDeProducto,
   findStockRecordId,
   getStockDeProducto,
   MOVIMIENTO_PROD_FIELDS,
+  movimientoProductoDeRegistro,
   r2,
   STOCK_PROD_FIELDS,
   toNumber,
   type CredencialesProducto,
   type MovimientoCreado,
+  type MovimientoProducto,
+  type ResultadoMovimientoLote,
 } from './inventario-prod-core';
 
 // Los nombres de campo y el normalizador de fórmulas son de la BASE, no del
@@ -59,6 +72,12 @@ import {
 // consumidores ya los importaban desde acá.
 export { MOVIMIENTO_PROD_FIELDS, STOCK_PROD_FIELDS, toNumber };
 export type CredencialesBiocharPuro = CredencialesProducto;
+export type { ResultadoMovimientoLote };
+
+const SIN_CONFIGURACION =
+  'Biochar Puro no está configurado como producto de Sirius Inventario Production Core ' +
+  '(falta AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID, AIRTABLE_BASE_SIRIUS_INVENTARIO ' +
+  'o AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS).';
 
 /**
  * `documento_referencia` de la Entrada de un bache a bodega.
@@ -116,7 +135,7 @@ export interface MovimientoBiocharPuro {
   kg: number;
   /** `Codigo Bache` del que salió (o al que entró) el biochar. */
   bache: string;
-  /** Lote `BLEND-…` o referencia `SAL-…` que lo consumió. */
+  /** Lote `BLEND-…`, referencia `SAL-…` o remisión `SIRIUS-REM-…` que lo consumió. */
   destino: string;
   /** Texto libre: a quién o adónde fue. */
   ubicacionDestino: string;
@@ -137,7 +156,11 @@ export async function fetchMovimientosBiocharPuro(): Promise<MovimientoBiocharPu
   const movimientos = await fetchMovimientosDeProducto(credencialesBiocharPuro());
   if (!movimientos) return null;
 
-  return movimientos.map(({ cantidad, unidad: _unidad, ...resto }) => ({ ...resto, kg: cantidad }));
+  return movimientos.map(movimientoBiochar);
+}
+
+function movimientoBiochar({ cantidad, unidad: _unidad, ...resto }: MovimientoProducto): MovimientoBiocharPuro {
+  return { ...resto, kg: cantidad };
 }
 
 /** Saldo de biochar de un bache, reconstruido desde el libro mayor. */
@@ -150,7 +173,7 @@ export interface BacheBiocharCore {
   kgIngresado: number;
   /** Lo consumido en producciones y salidas. */
   kgConsumido: number;
-  /** Lotes de Blend (o referencias de salida) a los que fue el biochar. */
+  /** Lotes de Blend, referencias de salida o remisiones a los que fue el biochar. */
   lotes: string[];
 }
 
@@ -169,7 +192,17 @@ export interface BacheBiocharCore {
 export async function fetchBachesBiocharCore(): Promise<BacheBiocharCore[] | null> {
   const movimientos = await fetchMovimientosBiocharPuro();
   if (!movimientos) return null;
+  return saldosPorBache(movimientos);
+}
 
+/**
+ * El saldo por bache a partir de los movimientos ya leídos, de mayor a menor saldo.
+ *
+ * PURO a propósito: el despacho de biochar necesita los movimientos para dos cosas
+ * —el saldo por bache y las referencias que ya existen— y así los lee UNA vez. Los
+ * movimientos sin bache (no debería haberlos) no cuentan para ningún bache.
+ */
+export function saldosPorBache(movimientos: MovimientoBiocharPuro[]): BacheBiocharCore[] {
   const porBache = new Map<string, BacheBiocharCore>();
 
   for (const mov of movimientos) {
@@ -199,6 +232,50 @@ export async function fetchBachesBiocharCore(): Promise<BacheBiocharCore[] | nul
       kgConsumido: r2(b.kgConsumido),
     }))
     .sort((a, b) => b.kg - a.kg);
+}
+
+/** Cuántos baches caben en un `OR(...)` sin que la URL se vuelva un riesgo. */
+const BACHES_POR_LECTURA = 40;
+
+/**
+ * Saldo en el Core de unos baches concretos, leyendo SOLO sus movimientos.
+ *
+ * Es la verificación después de escribir un despacho: releer el libro completo
+ * para mirar tres baches es mucho más caro que una consulta acotada, y lo que se
+ * quiere saber es si alguno de ESTOS quedó negativo porque otro flujo (una salida
+ * o una producción) consumió el mismo bache a la vez.
+ *
+ * Todo bache pedido aparece en el mapa; sin movimientos, con 0.
+ *
+ * @throws si falta configuración o la lectura falla: "no pude verificar" no es
+ *   "quedó bien".
+ */
+export async function saldoDeBaches(codigos: string[]): Promise<Map<string, number>> {
+  const cred = credencialesBiocharPuro();
+  if (!cred) throw new Error(SIN_CONFIGURACION);
+
+  const unicos = [...new Set(codigos.map((c) => c.trim()).filter(Boolean))];
+  const saldos = new Map<string, number>(unicos.map((c) => [c, 0]));
+  if (!unicos.length) return saldos;
+
+  const f = MOVIMIENTO_PROD_FIELDS;
+  const movimientos: MovimientoBiocharPuro[] = [];
+  for (let i = 0; i < unicos.length; i += BACHES_POR_LECTURA) {
+    const lote = unicos.slice(i, i + BACHES_POR_LECTURA);
+    const condiciones = lote.map((c) => `{${f.bacheOrigen}} = '${escapeAirtableValue(c)}'`);
+    const registros = await fetchAll(cred.base, cred.movimientos, cred.token, {
+      filterByFormula:
+        `AND({${f.productoId}} = '${escapeAirtableValue(cred.producto)}', ` +
+        (condiciones.length === 1 ? condiciones[0] : `OR(${condiciones.join(', ')})`) +
+        ')',
+    });
+    movimientos.push(...registros.map((r) => movimientoBiochar(movimientoProductoDeRegistro(r))));
+  }
+
+  for (const b of saldosPorBache(movimientos)) {
+    if (saldos.has(b.codigo)) saldos.set(b.codigo, b.kg);
+  }
+  return saldos;
 }
 
 /**
@@ -305,8 +382,10 @@ export interface MovimientoBiocharPuroInput {
   /** Nombre legible de quien registra. */
   responsable?: string;
   observaciones?: string;
-  /** A dónde fue (receptor, laboratorio, área). */
+  /** A dónde fue (receptor, laboratorio, área; el `CL-XXXX` en una venta). */
   ubicacionDestino?: string;
+  /** De qué documento sale: la remisión `SIRIUS-REM-XXXX` en una venta. */
+  ubicacionOrigen?: string;
 }
 
 /**
@@ -318,15 +397,19 @@ export async function crearMovimientoBiocharPuro(
   input: MovimientoBiocharPuroInput
 ): Promise<{ movimientoId: string; kg: number; vinculadoAlStock: boolean }> {
   const cred = credencialesBiocharPuro();
-  if (!cred) {
-    throw new Error(
-      'Biochar Puro no está configurado como producto de Sirius Inventario Production Core ' +
-        '(falta AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID, AIRTABLE_BASE_SIRIUS_INVENTARIO ' +
-        'o AIRTABLE_TABLE_SIRIUS_INVENTARIO_MOVIMIENTOS).'
-    );
-  }
+  if (!cred) throw new Error(SIN_CONFIGURACION);
 
-  const creado: MovimientoCreado = await crearMovimientoProducto(cred, {
+  const creado: MovimientoCreado = await crearMovimientoProducto(cred, entradaProducto(input));
+
+  return {
+    movimientoId: creado.movimientoId,
+    kg: creado.cantidad,
+    vinculadoAlStock: creado.vinculadoAlStock,
+  };
+}
+
+function entradaProducto(input: MovimientoBiocharPuroInput) {
+  return {
     tipo: input.tipo,
     cantidad: input.kg,
     unidad: 'kg',
@@ -338,11 +421,36 @@ export async function crearMovimientoBiocharPuro(
     responsable: input.responsable,
     observaciones: input.observaciones,
     ubicacionDestino: input.ubicacionDestino,
-  });
-
-  return {
-    movimientoId: creado.movimientoId,
-    kg: creado.cantidad,
-    vinculadoAlStock: creado.vinculadoAlStock,
+    ubicacionOrigen: input.ubicacionOrigen,
   };
+}
+
+/**
+ * Crea las Salidas de biochar puro de un despacho, una por bache, en POST de 10 y
+ * vinculadas a `Stock_Actual` en el mismo POST (`crearMovimientosProducto`).
+ *
+ * Lanza antes de escribir si falta configuración o la fila de stock, y se detiene
+ * en el primer lote que falla: el resultado dice, por `documentoReferencia`, qué
+ * quedó escrito y qué no, para que el reintento complete solo lo que falta.
+ */
+export async function crearSalidasBiocharPuro(
+  inputs: Array<Omit<MovimientoBiocharPuroInput, 'tipo'>>
+): Promise<ResultadoMovimientoLote[]> {
+  const cred = credencialesBiocharPuro();
+  if (!cred) throw new Error(SIN_CONFIGURACION);
+  return crearMovimientosProducto(
+    cred,
+    inputs.map((i) => entradaProducto({ ...i, tipo: 'Salida' }))
+  );
+}
+
+/**
+ * Las `documento_referencia` del biochar puro que ya van a un destino (un lote, una
+ * salida o una remisión `SIRIUS-REM-…`). Es la idempotencia del despacho: una
+ * lectura para saber qué Salidas `DESP-<REM>-<S>` ya existen.
+ *
+ * @throws si falta configuración o la lectura falla.
+ */
+export async function documentosSalidaBiochar(produccionDestino: string): Promise<Set<string>> {
+  return documentosPorDestino(credencialesBiocharPuro(), produccionDestino);
 }

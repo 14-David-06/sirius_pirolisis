@@ -84,6 +84,34 @@ export function esSalidaNoComercial(destino: string): boolean {
   return NO_COMERCIAL.test(destino);
 }
 
+/**
+ * A qué fue una Salida de biochar puro, leída de su destino:
+ *
+ *   venta     → `SIRIUS-REM-…` (o su llave `DESP-SIRIUS-REM-…-S-XXXXX`): un
+ *               despacho comercial con remisión en Remisiones Core.
+ *   sin-venta → laboratorio, muestra, merma, traslado, entrega y las remisiones
+ *               de baches viejas (`esSalidaNoComercial`).
+ *   blend     → todo lo demás: los lotes `BLEND-…` y también los `SAL-<CLIENTE>-…`
+ *               históricos, que fueron a despachos de Blend de la hoja de bodega.
+ *
+ * Existe para que la venta y la salida sin venta no se puedan confundir en la
+ * pantalla: hay kg de "muestra" y "laboratorio" con destino de un pedido, y una
+ * venta registrada como salida no deja remisión, ni pedido, ni recepción.
+ *
+ * Acepta el destino (`produccion_destino_id`) o el documento
+ * (`documento_referencia`), porque hay pantallas que solo tienen uno de los dos.
+ */
+export type ClaseSalidaBiochar = 'venta' | 'blend' | 'sin-venta';
+
+const VENTA = /^(?:DESP-)?SIRIUS-REM-\d+/;
+
+export function clasificarSalidaBiochar(destino: string): ClaseSalidaBiochar {
+  const d = typeof destino === 'string' ? destino.trim() : '';
+  if (VENTA.test(d)) return 'venta';
+  if (esSalidaNoComercial(d)) return 'sin-venta';
+  return 'blend';
+}
+
 export function esMotivoSalida(valor: unknown): valor is MotivoSalida {
   return typeof valor === 'string' && valor in MOTIVOS_SALIDA;
 }

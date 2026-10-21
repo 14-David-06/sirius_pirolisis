@@ -14,6 +14,21 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const GLOBAL_TOKEN = process.env.AIRTABLE_GLOBAL_TOKEN;
 
+/** Lista de correos separada por comas (o punto y coma), en minúsculas y sin repetidos. */
+function listaCorreos(valor: string): string[] {
+  return [...new Set(valor.split(/[,;]/).map((c) => c.trim().toLowerCase()).filter(Boolean))];
+}
+
+/**
+ * Días de vigencia del enlace de recepción: 7 por defecto, recortados a [1, 30].
+ * Más de 30 no se acepta ni al verificar (`VIGENCIA_MAXIMA_SEG`): un enlace
+ * impreso que vive meses es una credencial que nadie recuerda haber repartido.
+ */
+function diasVigenciaEnlace(valor: string | undefined): number {
+  const dias = parseInt(valor || '7', 10);
+  return Number.isFinite(dias) ? Math.min(30, Math.max(1, dias)) : 7;
+}
+
 export const config = {
   airtable: {
     // Token principal para base PiroliApp (con fallback a global)
@@ -311,6 +326,13 @@ export const config = {
       // la producción era una fila local; ya no se escribe.
       idProduccionBlend: process.env.AIRTABLE_DETALLE_ID_PRODUCCION_BLEND_FIELD_ID
     },
+    // Prueba de la autorización de datos personales (Ley 1581; Decreto 1377, art. 8):
+    // una fila, de solo inserción, cada vez que alguien autoriza en la recepción por
+    // enlace. Vive en PiroliApp y no en un Core: es evidencia de esta app, y los Core
+    // se comparten con apps que no tienen por qué leerla. La crea
+    // `scripts/esquema-remisiones-pirolisis.mjs` y se accede por NOMBRE de campo.
+    // Sin la variable, la recepción que trae datos nuevos responde 503 sin escribir.
+    autorizacionesDatosTableId: process.env.AIRTABLE_AUTORIZACIONES_DATOS_TABLE_ID,
     // Calculadora de Carbono — Table IDs
     carboneBiomasViajesBiomasaTableId: process.env.CARBON_eBiomas_VIAJES_BIOMASA_TABLE_ID,
     carbonEpirolisisTurnoTableId: process.env.CARBON_EPIROLISIS_TURNO_TABLE_ID,
@@ -366,6 +388,38 @@ export const config = {
     pctBiologicos: parseFloat(process.env.BLEND_PCT_BIOLOGICOS || '0.007'),
     // Peso por Big Bag de biochar (solo referencia de UI; la deducción usa KG reales).
     bigBagKg: parseFloat(process.env.BLEND_BIG_BAG_KG || '1000'),
+  },
+  // Datos de la empresa que imprimen los documentos (remisión, acta).
+  empresa: {
+    razonSocial: 'SIRIUS REGENERATIVE SOLUTIONS S.A.S. ZOMAC',
+    // Vacío por defecto, y entonces el documento no imprime NIT. El que traía el
+    // encabezado era de relleno y no coincide con el de Clients Core; desde que la
+    // remisión sale por correo a terceros, un NIT equivocado en un documento
+    // comercial es peor que ninguno. Se carga cuando esté confirmado.
+    nit: process.env.EMPRESA_NIT?.trim() || '',
+  },
+  // Recepción de remisiones por enlace y QR (2026-10-21). Aquí solo lo que no es
+  // secreto: este archivo también entra en páginas de cliente, así que el secreto
+  // que firma los enlaces se lee perezoso en `src/lib/recepcion/enlace.server.ts`,
+  // como AWS en `aws-config.server.ts`.
+  recepcion: {
+    // Dominio público de los enlaces. NUNCA `VERCEL_URL` ni el Host de la petición:
+    // la URL de un deployment cambia con cada uno (y la de un Preview pide login de
+    // Vercel), y el QR impreso tiene que seguir abriendo semanas después.
+    urlBase: (process.env.RECEPCION_URL_BASE || process.env.NEXT_PUBLIC_APP_URL || '').trim(),
+    ttlDias: diasVigenciaEnlace(process.env.RECEPCION_TTL_DIAS),
+    // Copia de cada recepción. Propia de PiroliApp: copiar la `REMISION_EMAIL_CC`
+    // del laboratorio arrastraría su lista de destinatarios.
+    correoCc: listaCorreos(
+      process.env.RECEPCION_CORREO_CC || 'adm@siriusregenerative.com,david@siriusregenerative.com'
+    ),
+    correoResponderA: (process.env.RECEPCION_CORREO_RESPONDER_A || 'adm@siriusregenerative.com')
+      .trim()
+      .toLowerCase(),
+    // Canal para ejercer los derechos sobre los datos, que va en el correo. El texto
+    // legal versionado (`recepcion/textos.ts`) lleva el suyo escrito: cambiar este
+    // no puede cambiar lo que una persona ya aceptó.
+    contactoDatos: (process.env.RECEPCION_CONTACTO_DATOS || 'adm@siriusregenerative.com').trim(),
   },
   // ❌ REMOVIDO: aws config - ahora solo en server-side por seguridad
   security: {

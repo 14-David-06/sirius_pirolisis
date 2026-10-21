@@ -1,5 +1,5 @@
 /**
- * PDF de una remisión de Biochar Blend.
+ * PDF de una remisión de pirólisis: Biochar Blend o Biochar puro.
  *
  * Sigue el formato estándar de remisión del ecosistema, el de DataLab
  * (`sirius_laboratorio/src/lib/remision-pdf-generator.ts`, Manual de Marca 2023):
@@ -38,6 +38,30 @@ export interface BlendRemisionData {
 
   estado: string;
   observaciones?: string;
+
+  /** Lo que dice el renglón del producto. Sin él, `Biochar Blend` (remisiones viejas). */
+  producto?: string;
+  /** NIT de la empresa. Vacío o ausente = el encabezado no imprime NIT. */
+  empresa_nit?: string;
+  /**
+   * La remisión espera a quien la recibe: bloque con instrucciones, «Válido
+   * hasta», líneas para firmar en papel y, si hay enlace, el QR. Sin receptor.
+   */
+  recepcion_pendiente?: { qr_png?: Uint8Array; vence_el?: string };
+  /** Quien recibe la confirmó por enlace: fecha y hora legibles en Bogotá. */
+  recepcion_confirmada?: { fecha_hora: string };
+  /** Cancelada: insignia de anulada en el pie y sin bloque de recepción. */
+  anulada?: boolean;
+}
+
+/**
+ * Línea del encabezado con la razón social y, si está configurado, el NIT.
+ * Sin NIT no se inventa uno: el que traía el encabezado era de relleno, y desde
+ * que la remisión sale por correo a terceros un NIT equivocado es peor que ninguno.
+ */
+export function lineaRazonSocial(nit?: string): string {
+  const limpio = (nit ?? '').trim();
+  return limpio ? `S.A.S. ZOMAC  |  NIT: ${limpio}` : 'S.A.S. ZOMAC';
 }
 
 // ============ COLORES MARCA SIRIUS (los mismos de DataLab) ============
@@ -60,6 +84,8 @@ export const NOTES_TEXT = rgb(0.480, 0.370, 0.060);
 export const COMPLETED_BG = rgb(0.925, 0.980, 0.945);
 export const COMPLETED_BORDER = rgb(0.180, 0.741, 0.420);
 export const COMPLETED_TEXT = rgb(0.090, 0.400, 0.200);
+
+export const ANULADO = rgb(0.760, 0.150, 0.150);
 
 export const PAGE_WIDTH = 595.28; // A4
 export const PAGE_HEIGHT = 841.89;
@@ -206,10 +232,10 @@ export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise
     const textX = MARGIN + logoW + 14;
     page.drawText('SIRIUS', { x: textX, y: y + 55, size: 20, font: bold, color: WHITE });
     page.drawText('REGENERATIVE SOLUTIONS', { x: textX, y: y + 38, size: 10, font: regular, color: rgb(0.75, 0.78, 0.82) });
-    page.drawText('S.A.S. ZOMAC  |  NIT: 901.234.567-8', { x: textX, y: y + 22, size: 7.5, font: regular, color: rgb(0.55, 0.58, 0.62) });
+    page.drawText(sanitize(lineaRazonSocial(data.empresa_nit)), { x: textX, y: y + 22, size: 7.5, font: regular, color: rgb(0.55, 0.58, 0.62) });
   } else {
     page.drawText('SIRIUS REGENERATIVE SOLUTIONS', { x: MARGIN, y: y + 52, size: 18, font: bold, color: WHITE });
-    page.drawText('S.A.S. ZOMAC  |  NIT: 901.234.567-8', { x: MARGIN, y: y + 34, size: 8, font: regular, color: rgb(0.55, 0.58, 0.62) });
+    page.drawText(sanitize(lineaRazonSocial(data.empresa_nit)), { x: MARGIN, y: y + 34, size: 8, font: regular, color: rgb(0.55, 0.58, 0.62) });
   }
 
   textRight(page, 'REMISION DE DESPACHO', regular, 7.5, PAGE_WIDTH - MARGIN, y + 68, rgb(0.55, 0.58, 0.62));
@@ -300,7 +326,7 @@ export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise
   // Un solo renglón aunque la remisión junte varios lotes: al cliente se le
   // despacha un producto, no tandas de producción. El reparto por lote vive en
   // las notas de la remisión y en las Salidas del Core, que es donde se audita.
-  const filas = [{ nombre: 'Biochar Blend', kg: data.kg_total }];
+  const filas = [{ nombre: data.producto || 'Biochar Blend', kg: data.kg_total }];
 
   ensureSpace(thH + tdH * (filas.length + 1) + 20);
   y -= thH;
@@ -361,29 +387,106 @@ export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise
     });
   }
 
-  // ═══ RECEPCIÓN ════════════════════════════════════════════════════════════
-  // DataLab solo la pinta con la firma del receptor. Aquí la remisión se emite
-  // sin firma (2026-09-25), así que va siempre que se sepa quién recibe, con el
-  // estado real: decir "ENTREGADA" de algo en tránsito sería falso.
-  if (data.receptor) {
+  // ═══ ANULADA ══════════════════════════════════════════════════════════════
+  // Arriba y visible, no solo en el pie: una copia cancelada que circula impresa
+  // tiene que leerse como tal antes de que alguien entregue o reciba con ella.
+  if (data.anulada) {
+    const anH = 30;
     y -= 18;
-    ensureSpace(70);
-    const compH = 62;
+    ensureSpace(anH + 5);
+    y -= anH;
+    borderRect(page, MARGIN, y, CONTENT_W, anH, ANULADO, 1.25, WHITE);
+    textCenter(page, 'REMISION ANULADA - SIN VALIDEZ PARA ENTREGA', bold, 10, MARGIN, CONTENT_W, y + 11, ANULADO);
+  }
+
+  // ═══ RECEPCIÓN ════════════════════════════════════════════════════════════
+  // Tres casos excluyentes, según el estado que arma `construirDatosPdf()`:
+  //  - anulada: nada de recepción;
+  //  - pendiente: cómo confirmar la recepción —QR del enlace personal— y, como
+  //    respaldo, las líneas para firmar en papel. Sin receptor: nadie recibió;
+  //  - con receptor: quién recibió y cuándo, con la hora si fue por enlace.
+  if (!data.anulada && data.recepcion_pendiente) {
+    const pend = data.recepcion_pendiente;
+    const qrLado = 96;
+    const boxH = 128;
+    y -= 18;
+    ensureSpace(boxH + 5);
+    y -= boxH;
+    borderRect(page, MARGIN, y, CONTENT_W, boxH, NOTES_BORDER, 1, NOTES_BG);
+
+    const textoW = CONTENT_W - 28 - (pend.qr_png ? qrLado + 18 : 0);
+    page.drawText('RECEPCION PENDIENTE', { x: MARGIN + 14, y: y + boxH - 18, size: 8, font: bold, color: NOTES_TEXT });
+    const instrucciones = pend.qr_png
+      ? 'Quien recibe: escanee el codigo con la camara del celular y confirme la recepcion con su numero de documento. Si no puede, firme abajo en papel.'
+      : 'Quien recibe: escriba su nombre y documento y firme en papel.';
+    const lineas = wrapText(instrucciones, regular, 8, textoW).slice(0, 3);
+    lineas.forEach((l, k) => {
+      page.drawText(l, { x: MARGIN + 14, y: y + boxH - 32 - k * 11, size: 8, font: regular, color: NOTES_TEXT });
+    });
+    if (pend.vence_el) {
+      page.drawText(sanitize(`Valido hasta: ${formatDateES(pend.vence_el)}`), {
+        x: MARGIN + 14,
+        y: y + boxH - 36 - lineas.length * 11,
+        size: 8,
+        font: bold,
+        color: NOTES_TEXT,
+      });
+    }
+
+    // Respaldo en papel: si en la finca no hay señal, el documento sigue
+    // sirviendo como siempre.
+    const campoW = (textoW - 12) / 2;
+    ['Nombre', 'Documento', 'Firma', 'Fecha'].forEach((c, k) => {
+      const cx2 = MARGIN + 14 + (k % 2) * (campoW + 12);
+      const cy2 = y + 34 - Math.floor(k / 2) * 22;
+      page.drawText(`${c}:`, { x: cx2, y: cy2, size: 7, font: regular, color: NOTES_TEXT });
+      const etiquetaW = regular.widthOfTextAtSize(`${c}:`, 7) + 4;
+      line(page, cx2 + etiquetaW, cy2 - 1, cx2 + campoW, cy2 - 1, NOTES_BORDER, 0.6);
+    });
+
+    if (pend.qr_png) {
+      const qr = await pdfDoc.embedPng(pend.qr_png);
+      const qx = MARGIN + CONTENT_W - 14 - qrLado;
+      const qy = y + (boxH - qrLado) / 2;
+      rect(page, qx - 2, qy - 2, qrLado + 4, qrLado + 4, WHITE);
+      page.drawImage(qr, { x: qx, y: qy, width: qrLado, height: qrLado });
+    }
+  } else if (!data.anulada && data.receptor) {
+    // DataLab solo la pinta con la firma del receptor. Aquí la remisión se emite
+    // sin firma (2026-09-25), así que va siempre que se sepa quién recibe, con el
+    // estado real: decir "ENTREGADA" de algo en tránsito sería falso.
+    const confirmacion = data.recepcion_confirmada
+      ? wrapText(
+          sanitize(
+            `Recepcion confirmada por quien recibe mediante enlace personal de Sirius, el ${data.recepcion_confirmada.fecha_hora}.`
+          ),
+          regular,
+          7.5,
+          CONTENT_W - 28
+        )
+      : [];
+    y -= 18;
+    const compH = 62 + (confirmacion.length ? confirmacion.length * 10 + 4 : 0);
+    ensureSpace(compH + 8);
     y -= compH;
     borderRect(page, MARGIN, y, CONTENT_W, compH, COMPLETED_BORDER, 1, COMPLETED_BG);
 
+    const top = y + compH;
     const badge = sanitize(data.estado).toUpperCase();
     if (badge) {
       const btW = bold.widthOfTextAtSize(badge, 7) + 14;
-      rect(page, MARGIN + 14, y + compH - 20, btW, 15, SIRIUS_GREEN);
-      page.drawText(badge, { x: MARGIN + 21, y: y + compH - 17, size: 7, font: bold, color: WHITE });
+      rect(page, MARGIN + 14, top - 20, btW, 15, SIRIUS_GREEN);
+      page.drawText(badge, { x: MARGIN + 21, y: top - 17, size: 7, font: bold, color: WHITE });
     }
 
     const midX = MARGIN + CONTENT_W / 2;
-    page.drawText('Receptor:', { x: MARGIN + 14, y: y + compH - 38, size: 7, font: regular, color: COMPLETED_TEXT });
-    page.drawText(`${sanitize(data.receptor.nombre)}  -  C.C. ${sanitize(data.receptor.cedula)}`, { x: MARGIN + 14, y: y + compH - 52, size: 9, font: bold, color: COMPLETED_TEXT });
-    page.drawText('Fecha de Recepcion:', { x: midX + 10, y: y + compH - 38, size: 7, font: regular, color: COMPLETED_TEXT });
-    page.drawText(data.fecha_recibido ? sanitize(formatDateES(data.fecha_recibido)) : 'Pendiente', { x: midX + 10, y: y + compH - 52, size: 9, font: bold, color: COMPLETED_TEXT });
+    page.drawText('Receptor:', { x: MARGIN + 14, y: top - 38, size: 7, font: regular, color: COMPLETED_TEXT });
+    page.drawText(`${sanitize(data.receptor.nombre)}  -  C.C. ${sanitize(data.receptor.cedula)}`, { x: MARGIN + 14, y: top - 52, size: 9, font: bold, color: COMPLETED_TEXT });
+    page.drawText('Fecha de Recepcion:', { x: midX + 10, y: top - 38, size: 7, font: regular, color: COMPLETED_TEXT });
+    page.drawText(data.fecha_recibido ? sanitize(formatDateES(data.fecha_recibido)) : 'Pendiente', { x: midX + 10, y: top - 52, size: 9, font: bold, color: COMPLETED_TEXT });
+    confirmacion.forEach((l, k) => {
+      page.drawText(l, { x: MARGIN + 14, y: top - 68 - k * 10, size: 7.5, font: regular, color: COMPLETED_TEXT });
+    });
   }
 
   // ═══ PIE — en todas las páginas ═══════════════════════════════════════════
@@ -394,10 +497,12 @@ export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise
     pg.drawText('Documento generado automaticamente por PiroliApp  |  Sirius Regenerative Solutions S.A.S.', { x: MARGIN, y: fY + 8, size: 6.5, font: regular, color: TEXT_MUTED });
     pg.drawText(sanitize(`${fechaGen}  -  ${horaGen}`), { x: MARGIN, y: fY - 2, size: 6.5, font: regular, color: TEXT_MUTED });
     textRight(pg, `${pi + 1} / ${pages.length}`, regular, 6.5, PAGE_WIDTH - MARGIN, fY + 8, TEXT_MUTED);
-    const badge = 'DOCUMENTO VALIDO';
+    // Una remisión cancelada sigue existiendo (las Salidas del Core la nombran),
+    // pero el papel no puede decir que vale.
+    const badge = data.anulada ? 'DOCUMENTO ANULADO' : 'DOCUMENTO VALIDO';
     const bW = bold.widthOfTextAtSize(badge, 6.5) + 12;
     const bX = PAGE_WIDTH - MARGIN - bW;
-    rect(pg, bX, fY - 5, bW, 13, SIRIUS_GREEN);
+    rect(pg, bX, fY - 5, bW, 13, data.anulada ? ANULADO : SIRIUS_GREEN);
     pg.drawText(badge, { x: bX + 6, y: fY - 2, size: 6.5, font: bold, color: WHITE });
   });
 
