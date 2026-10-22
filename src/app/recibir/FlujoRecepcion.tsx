@@ -276,12 +276,11 @@ export default function FlujoRecepcion() {
         </div>
       </header>
       <main className="mx-auto max-w-[28rem] px-4 py-6">{contenido}</main>
+      {/* Sin direcciones de correo en la página (decisión de David, 2026-10-22). El
+          canal para ejercer los derechos sobre los datos sigue en el texto legal
+          versionado, porque la Ley 1581 lo exige. */}
       <footer className="mx-auto max-w-[28rem] px-4 pb-8 text-base text-[#5B616B]">
-        ¿Tiene dudas? Escriba a{' '}
-        <a className="font-medium text-[#176633] underline" href="mailto:adm@siriusregenerative.com">
-          adm@siriusregenerative.com
-        </a>
-        .
+        ¿Tiene dudas? Comuníquese con la persona de Sirius que le despachó el producto.
       </footer>
     </div>
   );
@@ -557,7 +556,7 @@ function PantallaConocida(props: {
       <p className="mb-2">Documento terminado en {enmascararCedula(estado.cedula ?? '').replace('•••• ', '')}.</p>
       <p className="mb-4">
         {paso.correo
-          ? `Le enviaremos la remisión a ${paso.correo}.`
+          ? 'Le enviaremos la remisión al correo que tenemos registrado.'
           : 'No tenemos un correo suyo registrado. Si quiere recibir la remisión, escríbalo abajo.'}
       </p>
       <p className="mb-4 rounded-lg border border-[#E8C44F] bg-[#FEF8E1] p-3 text-[#7A5E0F]">
@@ -712,7 +711,7 @@ function PantallaExito({ h1Ref, paso }: { h1Ref: H1Ref; paso: Extract<PasoRecepc
   let correo: string;
   if (d.yaRecibida) correo = 'Usted ya había confirmado esta recepción. No hace falta hacer nada más.';
   else if ((d.correo.estado === 'enviado' || d.correo.estado === 'simulado') && d.correo.a)
-    correo = `Le enviamos la remisión a ${d.correo.a}. Revise también el correo no deseado.`;
+    correo = 'Le enviamos la remisión a su correo. Revise también el correo no deseado.';
   else if (d.correo.estado === 'sin_correo')
     correo = 'Su confirmación quedó registrada. Como no tenemos un correo suyo, Sirius le hará llegar la remisión.';
   else correo = 'Su confirmación quedó registrada. El correo no salió en este momento; Sirius se lo hará llegar.';

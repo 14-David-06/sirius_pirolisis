@@ -157,7 +157,10 @@ describe('FlujoRecepcion', () => {
 
     const h1 = await screen.findByRole('heading', { level: 1, name: '¿Es usted Ana M. P.?' });
     expect(h1).toHaveFocus();
-    expect(screen.getByText(/Le enviaremos la remisión a a\*\*\*z@correo.test/)).toBeInTheDocument();
+    expect(screen.getByText('Le enviaremos la remisión al correo que tenemos registrado.')).toBeInTheDocument();
+    // El correo registrado no se muestra, ni enmascarado. (El único `@` que queda
+    // es el canal de derechos del aviso legal, que la Ley 1581 exige.)
+    expect(document.body.textContent).not.toContain('correo.test');
     expect(screen.getByText(/Sus datos ya están registrados en Sirius/)).toBeInTheDocument();
     // Sin correo escrito no hay casilla.
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -165,7 +168,8 @@ describe('FlujoRecepcion', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar recepción' }));
     const exito = await screen.findByRole('heading', { level: 1, name: 'Recepción confirmada' });
     expect(exito).toHaveFocus();
-    expect(screen.getByText(/Le enviamos la remisión a a\*\*\*z@correo.test/)).toBeInTheDocument();
+    expect(screen.getByText(/Le enviamos la remisión a su correo/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/@/);
     expect(cuerpoDe(2)).toEqual({ token: TOKEN, cedula: '1234567', modo: 'conocida', textoVersion: '2026-10-21' });
   });
 

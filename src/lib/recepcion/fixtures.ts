@@ -364,5 +364,7 @@ export function crearDepsFixtures(enviarReal?: (c: CorreoSaliente) => Promise<Re
       const r = leerFixture(recId);
       if (r) guardar({ ...r, notas: conMarca(r.notas, marca) });
     },
+    // Los fixtures nunca escriben en Flujo de caja: es la base de finanzas.
+    registrarFlujoCaja: async () => ({ step: 'flujo_caja', ok: true, skipped: true, detail: { fixture: true } }),
   };
 }

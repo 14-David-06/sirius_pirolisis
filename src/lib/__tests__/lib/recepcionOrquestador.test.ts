@@ -283,7 +283,7 @@ describe('confirmar', () => {
     expect(d.marcarCorreo).not.toHaveBeenCalled();
     // El cuerpo público no lleva pasos ni la cédula.
     expect(JSON.stringify(r.body)).not.toMatch(/steps|1234567/);
-    expect(r.steps.map((s) => s.step)).toEqual(['autorizacion_datos', 'receptor', 'remision', 'documento', 'correo', 'marca_correo']);
+    expect(r.steps.map((s) => s.step)).toEqual(['autorizacion_datos', 'receptor', 'remision', 'documento', 'correo', 'marca_correo', 'flujo_caja']);
   });
 
   it('sin la tabla de autorizaciones, los datos nuevos dan 503 SIN escribir nada', async () => {

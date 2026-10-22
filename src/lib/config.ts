@@ -231,6 +231,13 @@ export const config = {
     // `Personas` (PER-REM-XXXX): transportista y receptor de la remisión. Es donde
     // vive la identidad de quien firma; las firmas en sí van en el PDF de S3.
     remisionesCorePersonasTable: process.env.AIRTABLE_TABLE_PERSONAS_REMISION,
+    // Flujo de caja (finanzas): `Remisiones Pirolisis` y `Productos Remisiones
+    // Pirolisis`, la copia que finanzas usa para facturar y cuadrar ventas. Ver
+    // `src/lib/flujo-caja-remisiones.ts`.
+    flujoCajaBaseId: process.env.AIRTABLE_FLUJO_CAJA_BASE_ID,
+    flujoCajaToken: process.env.AIRTABLE_FLUJO_CAJA_TOKEN || GLOBAL_TOKEN,
+    flujoCajaRemisionesTable: process.env.AIRTABLE_FLUJO_CAJA_REMISIONES_PIROLISIS_TABLE,
+    flujoCajaProductosTable: process.env.AIRTABLE_FLUJO_CAJA_PRODUCTOS_REMISIONES_PIROLISIS_TABLE,
     // Sirius Inventario Production Core (inventario de productos finales) — Blend
     inventarioProdCoreBaseId: process.env.AIRTABLE_BASE_SIRIUS_INVENTARIO,
     inventarioProdCoreToken: process.env.AIRTABLE_API_KEY_SIRIUS_INVENTARIO || GLOBAL_TOKEN,

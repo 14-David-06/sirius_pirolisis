@@ -12,8 +12,9 @@
 // 3. La remisión pasa a `Entregada` en UN PATCH y se relee después: si la marca
 //    `[recibida:ISO]` no es la propia, otra confirmación ganó y esta NO manda
 //    correo (409).
-// 4. Documento y correo son best-effort (207): la recepción ya quedó registrada,
-//    que es lo que importa, y lo que falte se completa desde la bodega.
+// 4. Documento, correo y Flujo de caja son best-effort (207): la recepción ya
+//    quedó registrada, que es lo que importa, y lo que falte se completa desde la
+//    bodega o con `scripts/registrar-remisiones-flujo-caja.ts`.
 //
 // ═══ LO QUE NUNCA SALE ═══════════════════════════════════════════════════════
 // Las respuestas públicas no llevan pasos internos, mensajes de Airtable ni datos
@@ -29,6 +30,7 @@ import { generarPdfRemision } from '../blend-remision-pdf';
 import { CandadoOcupado, conCandado } from '../candado';
 import { enviarCorreo, ErrorCorreo, type CorreoSaliente, type ResultadoEnvio } from '../correo/graph.server';
 import { fechaBogota } from '../fecha-bogota';
+import { registrarRemisionFlujoCaja } from '../flujo-caja-remisiones';
 import { sanearError } from '../log-seguro';
 import {
   adjuntarDocumento,
@@ -108,6 +110,8 @@ export interface DepsRecepcion {
   descargarDocumento(recId: string, sufijo: string): Promise<Uint8Array | null>;
   enviarCorreo(c: CorreoSaliente): Promise<ResultadoEnvio>;
   marcarCorreo(recId: string, marca: string): Promise<void>;
+  /** La copia para finanzas en Flujo de caja. Paso best-effort: nunca lanza. */
+  registrarFlujoCaja(r: RemisionBlend): Promise<StepResult>;
 }
 
 function depsReales(): DepsRecepcion {
@@ -131,6 +135,7 @@ function depsReales(): DepsRecepcion {
     descargarDocumento,
     enviarCorreo,
     marcarCorreo: agregarMarcaRemision,
+    registrarFlujoCaja: registrarRemisionFlujoCaja,
   };
 }
 
@@ -665,6 +670,11 @@ export async function confirmarRecepcion(
         steps.push({ step: 'correo', ok: false, error: 'Sin la remisión no se puede armar el correo' });
       }
       if (!plan.correo) estadoCorreo = 'sin_correo';
+
+      // ── Flujo de caja (B): el último paso. Con la remisión ya Entregada, finanzas
+      // la ve con quien la recibió. Si falla, el script la completa después.
+      if (remision) steps.push(await deps.registrarFlujoCaja(remision));
+      else steps.push({ step: 'flujo_caja', ok: false, error: 'Sin la remisión no se puede registrar en Flujo de caja' });
 
       return {
         status: hayFalla(steps) ? 207 : 200,

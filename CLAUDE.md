@@ -427,6 +427,27 @@ quién recibió y a qué hora.
 - **El papel queda como respaldo.** El bloque del QR trae líneas para firmar: si
   quien recibe no tiene señal ni celular, se firma como antes, y la remisión se
   cierra a mano.
+- **La página no muestra direcciones de correo (decisión de David, 2026-10-22)**:
+  ni la de adm@ ni la del receptor enmascarada. El único `@` que queda es el canal
+  de derechos del texto legal versionado, que la Ley 1581 exige.
+- **El último paso es Flujo de caja (2026-10-22).** Finanzas factura desde la base
+  Flujo de caja, no desde los Core, y las remisiones de pirólisis no llegaban. Al
+  confirmar, el paso `flujo_caja` (best-effort → 207) copia la remisión a
+  `Remisiones Pirolisis` y su línea a `Productos Remisiones Pirolisis`
+  (`flujo-caja-remisiones.ts`), armadas con `construirDatosPdf()` para que digan
+  lo mismo que el papel. Idempotente por `Numero Remision`. Lo anterior y lo que
+  se cierra a mano lo trae `npx tsx scripts/registrar-remisiones-flujo-caja.ts
+  [--remision …] [--apply]`, que verifica el esquema antes de escribir. Las
+  tablas se clonaron de las del laboratorio y el mismo día se adaptaron al
+  biochar: `Cantidad Kg`, `Producto`, `Código Producto`, `Precio por Kg` y
+  `Valor Total` = kg × precio, sin tarifas de referencia. ⚠️ Los vínculos del
+  clon apuntan a las tablas del LABORATORIO y la API no los puede repuntar ni
+  borrar: quedaron como «(No usar) …»; los buenos son «Productos Remisiones
+  Pirolisis» y «Remisión Pirolisis». Sin precio la línea vale 0, así que el del
+  catálogo (Product Core, `Precio Venta Unitario`) es obligatorio: sin él no se
+  escribe.
+  Usa el token global (que tiene la base desde el 2026-10-22) salvo que se
+  defina `AIRTABLE_FLUJO_CAJA_TOKEN`.
 
 **El biochar puro también se vende: despacho por pedido (2026-10-21).** Hasta hoy
 el biochar puro solo salía SIN venta (`runSalidaBiochar()`); un pedido de Pedidos
@@ -763,3 +784,15 @@ producción) y `scripts/ensayar-recepcion.ts`.
     usa `fechaBogota()`.
   - eUse no cuenta los despachos de Blend: no escriben fila en
     `Remisiones Baches Pirolisis`, que es lo que eUse lee como viaje.
+  - **Un transportista que no queda en `Personas` no avisa.** Sin
+    `AIRTABLE_TABLE_PERSONAS_REMISION`, `buscarOCrearPersona()` devuelve null con
+    un `console.warn` y el paso `transportista` sale `ok`: así quedó
+    SIRIUS-REM-0228 sin quien la llevó (2026-10-22), y la recepción fallaba en el
+    paso `receptor`. Hay que vincularle PER-REM-0025 a mano.
+  - **Flujo de caja (2026-10-22):** las 5 remisiones de Blend (REM-0200, 0202,
+    0203, 0204, 0228) ya están registradas. Falta cargar en Vercel
+    `AIRTABLE_FLUJO_CAJA_BASE_ID`,
+    `AIRTABLE_FLUJO_CAJA_REMISIONES_PIROLISIS_TABLE` y
+    `AIRTABLE_FLUJO_CAJA_PRODUCTOS_REMISIONES_PIROLISIS_TABLE`. En la UI de
+    Airtable: borrar los seis campos «(No usar) …» y, si hace falta, darle
+    decimales a `Cantidad Kg` (hoy es entero, heredado).

@@ -83,7 +83,7 @@ export const MENSAJES_RECEPCION: Record<ErrorRecepcion, { titulo: string; texto:
   },
   ya_recibida: {
     titulo: 'Esta remisión ya fue recibida',
-    texto: 'Si no fue usted quien confirmó la recepción, escriba a adm@siriusregenerative.com.',
+    texto: 'Si no fue usted quien confirmó la recepción, avise a la persona de Sirius que le despachó el producto.',
   },
   anulada: {
     titulo: 'Remisión anulada',
@@ -118,8 +118,8 @@ export const MENSAJES_RECEPCION: Record<ErrorRecepcion, { titulo: string; texto:
   recibida_por_otra_persona: {
     titulo: 'Otra persona ya confirmó',
     texto:
-      'Alguien confirmó esta recepción hace un momento. Si no fue usted, escriba a ' +
-      'adm@siriusregenerative.com.',
+      'Alguien confirmó esta recepción hace un momento. Si no fue usted, avise a la persona ' +
+      'de Sirius que le despachó el producto.',
   },
   demasiados_intentos: {
     titulo: 'Demasiados intentos',
