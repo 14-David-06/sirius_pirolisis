@@ -173,9 +173,28 @@ describe('registrarRemisionFlujoCaja', () => {
     const [linea] = falso.registros(B_FC, T.productos);
     expect(linea.fields['Remisión Pirolisis']).toEqual([rem.id]);
     expect(linea.fields['Precio por Kg']).toBe(1400);
-    expect(rem.fields['Documento Remisión']).toBe(
-      'https://piroliapp.falso.test/api/pirolisis/blend/remision/pdf?remision=SIRIUS-REM-0228'
-    );
+    // Sin copia pública en el Core no se escribe enlace: el de PiroliApp pide login.
+    expect(rem.fields).not.toHaveProperty('Documento Remisión');
+  });
+
+  it('copia a Documento Remisión la URL pública de S3, nunca un texto suelto del Core', async () => {
+    const s3 = 'https://siriuspirolisis.s3.us-east-1.amazonaws.com/blend-remisiones/recREMFALSA000001-1.pdf';
+    const falso = falsoConCatalogo(1400);
+    await fc.registrarRemisionFlujoCaja(remision({ documentoUrl: s3 }));
+    expect(falso.registros(B_FC, T.remisiones)[0].fields['Documento Remisión']).toBe(s3);
+
+    const otro = falsoConCatalogo(1400);
+    await fc.registrarRemisionFlujoCaja(remision({ documentoUrl: '202' }));
+    expect(otro.registros(B_FC, T.remisiones)[0].fields).not.toHaveProperty('Documento Remisión');
+  });
+
+  it('al actualizar NO pisa el precio que la línea ya tenía (puede estar facturado)', async () => {
+    const falso = falsoConCatalogo(1400);
+    const linea = falso.sembrar(B_FC, T.productos, { Producto: 'Biochar Blend', 'Cantidad Kg': 1000, 'Precio por Kg': 1190 });
+    falso.sembrar(B_FC, T.remisiones, { 'Numero Remision': 228, 'Productos Remisiones Pirolisis': [linea] });
+
+    await fc.registrarRemisionFlujoCaja(remision());
+    expect(falso.registro(B_FC, T.productos, linea)?.fields['Precio por Kg']).toBe(1190);
   });
 
   it('la segunda vez actualiza la misma fila y su línea, sin duplicar ni tocar el link', async () => {

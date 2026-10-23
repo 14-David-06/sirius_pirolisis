@@ -124,7 +124,7 @@ async function main() {
       continue;
     }
 
-    const filas = fc.filasFlujoCaja(remision, { precioUnitario: precio, urlDocumento: fc.urlDocumentoRemision(codigo) });
+    const filas = fc.filasFlujoCaja(remision, { precioUnitario: precio, urlDocumento: fc.urlDocumentoRemision(remision) });
     const linea = filas.producto;
     console.log(
       `• ${codigo} — ${remision.estado} · ${filas.remision['Nombre Cliente']} · ` +

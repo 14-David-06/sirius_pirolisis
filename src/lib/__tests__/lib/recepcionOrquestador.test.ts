@@ -26,6 +26,14 @@ import { AirtableFalso } from '@/test-utils/airtable-falso';
 import type { CorreoSaliente, ResultadoEnvio } from '@/lib/correo/graph';
 import type { DepsRecepcion, ConfirmarInput } from '@/lib/recepcion/recepcion';
 
+// La prueba de punta a punta usa las dependencias reales: S3 no se toca nunca.
+const mockPublicar = jest.fn(
+  async (recId: string) => `https://siriuspirolisis.s3.us-east-1.amazonaws.com/blend-remisiones/${recId}-1.pdf`
+);
+jest.mock('@/lib/remision-documento-s3.server', () => ({
+  publicarDocumentoRemision: (recId: string) => mockPublicar(recId),
+}));
+
 const B_REM = 'baseRemFalsa';
 const B_CLI = 'baseCliFalsa';
 const B_PIRO = 'basePiroFalsa';
@@ -283,7 +291,7 @@ describe('confirmar', () => {
     expect(d.marcarCorreo).not.toHaveBeenCalled();
     // El cuerpo público no lleva pasos ni la cédula.
     expect(JSON.stringify(r.body)).not.toMatch(/steps|1234567/);
-    expect(r.steps.map((s) => s.step)).toEqual(['autorizacion_datos', 'receptor', 'remision', 'documento', 'correo', 'marca_correo', 'flujo_caja']);
+    expect(r.steps.map((s) => s.step)).toEqual(['autorizacion_datos', 'receptor', 'remision', 'documento', 'documento_publico', 'correo', 'marca_correo', 'flujo_caja']);
   });
 
   it('sin la tabla de autorizaciones, los datos nuevos dan 503 SIN escribir nada', async () => {
@@ -438,6 +446,30 @@ describe('confirmar', () => {
     expect((await d.leerRemision(ID().biocharEnTransito))?.estado).toBe('Entregada');
   });
 
+  it('publica el PDF recibido y pasa esa URL a Flujo de caja', async () => {
+    const url = 'https://siriuspirolisis.s3.us-east-1.amazonaws.com/blend-remisiones/recFALSO-1.pdf';
+    const { d } = deps({
+      publicarDocumento: jest.fn(async () => url),
+      registrarFlujoCaja: jest.fn(async () => ({ step: 'flujo_caja', ok: true })),
+    });
+    const r = await rec.confirmarRecepcion(confirmar({ cedula: CED().personalConCorreo }), d);
+    expect(r.status).toBe(200);
+    expect(d.publicarDocumento).toHaveBeenCalledWith(ID().biocharEnTransito, expect.any(Uint8Array));
+    expect(d.registrarFlujoCaja).toHaveBeenCalledWith(expect.anything(), { urlDocumento: url });
+  });
+
+  it('si S3 falla, la recepción queda y Flujo de caja se registra sin enlace (207)', async () => {
+    const { d } = deps({
+      publicarDocumento: jest.fn(async () => { throw new Error('S3 403'); }),
+      registrarFlujoCaja: jest.fn(async () => ({ step: 'flujo_caja', ok: true })),
+    });
+    const r = await rec.confirmarRecepcion(confirmar({ cedula: CED().personalConCorreo }), d);
+    expect(r.status).toBe(207);
+    expect(r.steps.find((s) => s.step === 'documento_publico')?.ok).toBe(false);
+    expect(d.registrarFlujoCaja).toHaveBeenCalledWith(expect.anything(), { urlDocumento: undefined });
+    expect((await d.leerRemision(ID().biocharEnTransito))?.estado).toBe('Entregada');
+  });
+
   it('si el documento falla, el correo igual sale (207)', async () => {
     const { d } = deps({ adjuntar: jest.fn(async () => { throw new Error('upload 500'); }) });
     const r = await rec.confirmarRecepcion(confirmar({ cedula: CED().personalConCorreo }), d);
@@ -568,6 +600,7 @@ describe('de punta a punta contra el doble de Airtable', () => {
     ]);
     // Simulado: sin marca de correo.
     expect(String(remision['Notas de Remisión'])).not.toContain('[correo:');
+    expect(mockPublicar).toHaveBeenCalledWith(remId);
   });
 });
 

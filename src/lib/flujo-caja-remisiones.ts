@@ -34,6 +34,7 @@ import { construirDatosPdf } from './blend-remision-pdf';
 import type { RemisionBlend } from './blend-remisiones-core';
 import { sanearError } from './log-seguro';
 import { ESTADO_REMISION } from './remisiones-core';
+import { esUrlDocumentoPublica } from './remision-documento-url';
 import type { StepResult } from '@/types/step-result';
 
 const AT = 'https://api.airtable.com/v0';
@@ -315,17 +316,25 @@ export async function escribirRemisionFlujoCaja(cfg: ConfigFlujoCaja, filas: Fil
   // líneas (si finanzas agregó alguna) no se tocan.
   const nombre = filas.producto[C.producto.nombre];
   let lineaId: string | undefined;
+  let precioPrevio = 0;
   if (lineasPrevias.length) {
     const ids = new URLSearchParams({
       filterByFormula: `OR(${lineasPrevias.map((id) => `RECORD_ID() = '${escapeAirtableValue(id)}'`).join(',')})`,
     });
     const lineas = (await at(`${base}/${cfg.productosTable}?${ids}`, cfg.token)).records ?? [];
-    lineaId = lineas.find((l: { fields?: Record<string, unknown> }) => l.fields?.[C.producto.nombre] === nombre)?.id;
+    const linea = lineas.find((l: { fields?: Record<string, unknown> }) => l.fields?.[C.producto.nombre] === nombre);
+    lineaId = linea?.id;
+    precioPrevio = Number(linea?.fields?.[C.producto.precio]) || 0;
   }
   if (lineaId) {
+    // El precio de una línea que ya lo tiene NO se pisa: es el de la venta, y
+    // puede estar facturado. El catálogo cambia (el Blend pasó de 1.190 a 1.400)
+    // y repetir el registro no puede re-tarifar lo que ya se vendió.
+    const campos = { ...filas.producto };
+    if (precioPrevio > 0) delete campos[C.producto.precio];
     await at(`${base}/${cfg.productosTable}/${lineaId}`, cfg.token, {
       method: 'PATCH',
-      body: JSON.stringify({ fields: filas.producto }),
+      body: JSON.stringify({ fields: campos }),
     });
   } else {
     const creada = await at(`${base}/${cfg.productosTable}`, cfg.token, {
@@ -347,17 +356,25 @@ export function motivoParaOmitir(remision: RemisionBlend): string | null {
   return null;
 }
 
-/** Para `Documento Remisión`: el PDF con sesión de PiroliApp, nunca una URL pública (lleva cédulas). */
-export function urlDocumentoRemision(codigo: string): string | undefined {
-  const base = config.recepcion.urlBase.replace(/\/+$/, '');
-  return base ? `${base}/api/pirolisis/blend/remision/pdf?remision=${encodeURIComponent(codigo)}` : undefined;
+/**
+ * Para `Documento Remisión`: la copia pública en S3, la misma de `URL Remision
+ * Generada` en el Core, para que finanzas la abra sin sesión como las del
+ * laboratorio. Lo que no sea esa copia no se copia: un enlace a PiroliApp pide
+ * login, y un texto escrito a mano en el Core no es un enlace.
+ */
+export function urlDocumentoRemision(remision: RemisionBlend, publicada?: string): string | undefined {
+  if (esUrlDocumentoPublica(publicada)) return publicada;
+  return esUrlDocumentoPublica(remision.documentoUrl) ? remision.documentoUrl : undefined;
 }
 
 /**
  * El paso `flujo_caja`, best-effort: nunca lanza. Sin configuración, `skipped`
  * fuera de producción y `ok:false` en producción, con las variables por nombre.
  */
-export async function registrarRemisionFlujoCaja(remision: RemisionBlend): Promise<StepResult> {
+export async function registrarRemisionFlujoCaja(
+  remision: RemisionBlend,
+  o: { urlDocumento?: string } = {}
+): Promise<StepResult> {
   const step = 'flujo_caja';
   const omitir = motivoParaOmitir(remision);
   if (omitir) return { step, ok: true, skipped: true, detail: { motivo: omitir } };
@@ -372,7 +389,7 @@ export async function registrarRemisionFlujoCaja(remision: RemisionBlend): Promi
     if (precio === null) {
       return { step, ok: false, error: `${remision.productoId} no tiene Precio Venta Unitario en el catálogo` };
     }
-    const filas = filasFlujoCaja(remision, { precioUnitario: precio, urlDocumento: urlDocumentoRemision(remision.codigo) });
+    const filas = filasFlujoCaja(remision, { precioUnitario: precio, urlDocumento: urlDocumentoRemision(remision, o.urlDocumento) });
     const r = await escribirRemisionFlujoCaja(cfg, filas);
     return { step, ok: true, detail: { accion: r.accion, numero: filas.numero } };
   } catch (err) {

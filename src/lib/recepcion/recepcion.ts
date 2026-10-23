@@ -12,7 +12,7 @@
 // 3. La remisión pasa a `Entregada` en UN PATCH y se relee después: si la marca
 //    `[recibida:ISO]` no es la propia, otra confirmación ganó y esta NO manda
 //    correo (409).
-// 4. Documento, correo y Flujo de caja son best-effort (207): la recepción ya
+// 4. Documento, enlace público, correo y Flujo de caja son best-effort (207): la recepción ya
 //    quedó registrada, que es lo que importa, y lo que falte se completa desde la
 //    bodega o con `scripts/registrar-remisiones-flujo-caja.ts`.
 //
@@ -31,6 +31,7 @@ import { CandadoOcupado, conCandado } from '../candado';
 import { enviarCorreo, ErrorCorreo, type CorreoSaliente, type ResultadoEnvio } from '../correo/graph.server';
 import { fechaBogota } from '../fecha-bogota';
 import { registrarRemisionFlujoCaja } from '../flujo-caja-remisiones';
+import { publicarDocumentoRemision } from '../remision-documento-s3.server';
 import { sanearError } from '../log-seguro';
 import {
   adjuntarDocumento,
@@ -108,10 +109,12 @@ export interface DepsRecepcion {
   adjuntar(recId: string, b: Uint8Array, n: string): Promise<void>;
   /** El `-recibida.pdf` archivado, para reenviarlo tal cual. */
   descargarDocumento(recId: string, sufijo: string): Promise<Uint8Array | null>;
+  /** La copia pública en S3 y `URL Remision Generada`. Devuelve la URL. */
+  publicarDocumento(recId: string, pdf: Uint8Array): Promise<string>;
   enviarCorreo(c: CorreoSaliente): Promise<ResultadoEnvio>;
   marcarCorreo(recId: string, marca: string): Promise<void>;
   /** La copia para finanzas en Flujo de caja. Paso best-effort: nunca lanza. */
-  registrarFlujoCaja(r: RemisionBlend): Promise<StepResult>;
+  registrarFlujoCaja(r: RemisionBlend, o?: { urlDocumento?: string }): Promise<StepResult>;
 }
 
 function depsReales(): DepsRecepcion {
@@ -133,6 +136,7 @@ function depsReales(): DepsRecepcion {
     generarPdf: (r) => generarPdfRemision(r),
     adjuntar: adjuntarDocumento,
     descargarDocumento,
+    publicarDocumento: (id, pdf) => publicarDocumentoRemision(id, pdf),
     enviarCorreo,
     marcarCorreo: agregarMarcaRemision,
     registrarFlujoCaja: registrarRemisionFlujoCaja,
@@ -655,6 +659,19 @@ export async function confirmarRecepcion(
         steps.push({ step: 'documento', ok: false, error: sanearError(err) });
       }
 
+      // ── Enlace público (B): el mismo PDF en S3, para finanzas (Core y Flujo de caja) ──
+      let urlDocumento: string | undefined;
+      if (pdf) {
+        try {
+          urlDocumento = await deps.publicarDocumento(recId, pdf);
+          steps.push({ step: 'documento_publico', ok: true });
+        } catch (err) {
+          steps.push({ step: 'documento_publico', ok: false, error: sanearError(err) });
+        }
+      } else {
+        steps.push({ step: 'documento_publico', ok: false, error: 'Sin PDF no hay qué publicar' });
+      }
+
       // ── Correo (B) ──
       let estadoCorreo: 'enviado' | 'simulado' | 'no_enviado' | 'sin_correo' = 'no_enviado';
       if (remision) {
@@ -673,7 +690,7 @@ export async function confirmarRecepcion(
 
       // ── Flujo de caja (B): el último paso. Con la remisión ya Entregada, finanzas
       // la ve con quien la recibió. Si falla, el script la completa después.
-      if (remision) steps.push(await deps.registrarFlujoCaja(remision));
+      if (remision) steps.push(await deps.registrarFlujoCaja(remision, { urlDocumento }));
       else steps.push({ step: 'flujo_caja', ok: false, error: 'Sin la remisión no se puede registrar en Flujo de caja' });
 
       return {

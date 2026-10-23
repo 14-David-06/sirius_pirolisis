@@ -356,6 +356,8 @@ export function crearDepsFixtures(enviarReal?: (c: CorreoSaliente) => Promise<Re
       const d = almacen().documentos.get(recId);
       return d && d.nombre.endsWith(sufijo) ? d.bytes : null;
     },
+    // Ni S3 ni el Core: una URL que no resuelve, para recorrer el flujo completo.
+    publicarDocumento: async (recId) => `https://fixtures.invalid/blend-remisiones/${recId}.pdf`,
     enviarCorreo: async (c) => {
       if (enviarReal && resolverModoCorreo(process.env).modo === 'simular') return enviarReal(c);
       return { modo: 'simular', enviado: false, destinatarios: c.para.length + (c.cc?.length ?? 0), intentos: 0 };

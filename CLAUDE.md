@@ -446,6 +446,17 @@ quién recibió y a qué hora.
   Pirolisis» y «Remisión Pirolisis». Sin precio la línea vale 0, así que el del
   catálogo (Product Core, `Precio Venta Unitario`) es obligatorio: sin él no se
   escribe.
+  **El enlace del documento es PÚBLICO, en S3 (decisión de David, 2026-10-23).**
+  Finanzas abre las remisiones con un enlace directo, como las del laboratorio:
+  al confirmar, el paso `documento_publico` (best-effort → 207) sube el PDF
+  recibido a `siriuspirolisis/blend-remisiones/<recId>-<ms>.pdf`
+  (`publicarDocumentoRemision()`), escribe esa URL en `URL Remision Generada` y
+  la pasa a `Documento Remisión`. ⚠️ Cualquiera con el enlace ve nombre y cédula:
+  por eso se publica solo al RECIBIR y la key lleva el record ID, no el código
+  consecutivo. Flujo de caja copia solo una URL de ese bucket, nunca el enlace a
+  PiroliApp (pide login) ni un texto escrito a mano en el Core. Y repetir el
+  registro NO pisa el `Precio por Kg` de una línea que ya lo tiene: puede estar
+  facturada a un precio que el catálogo ya cambió.
   Usa el token global (que tiene la base desde el 2026-10-22) salvo que se
   defina `AIRTABLE_FLUJO_CAJA_TOKEN`.
 

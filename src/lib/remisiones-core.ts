@@ -784,10 +784,9 @@ const CAMPO_DOCUMENTO = 'Documento Remision';
 /**
  * Deja `bytes` como el ÚNICO archivo de `Documento Remision`.
  *
- * Por `uploadAttachment` (contenido en base64) y no por URL: un adjunto por URL
- * exige un archivo público, y el PDF lleva nombre y cédula de quien se lleva el
- * producto. Así se publicaban los de la firma digital, en `blend-remisiones/` del
- * bucket.
+ * Por `uploadAttachment` (contenido en base64) y no por URL, para que el adjunto
+ * no dependa de que exista la copia pública. Esa copia (`blend-remisiones/` del
+ * bucket) se publica aparte al recibir: `publicarDocumentoRemision()`.
  *
  * `uploadAttachment` AGREGA al campo, así que lo que ya hubiera se quita DESPUÉS
  * de subir el nuevo: al revés, un fallo de la subida dejaría la remisión sin
@@ -829,6 +828,18 @@ export async function adjuntarDocumento(
   await atRemisiones(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token, {
     method: 'PATCH',
     body: JSON.stringify({ fields: { [campo]: nuevos.map((a) => ({ id: a.id })) } }),
+  });
+}
+
+/**
+ * Escribe `URL Remision Generada`: el enlace público del PDF en S3, el mismo
+ * campo que llenan las remisiones del laboratorio y que finanzas copia.
+ */
+export async function guardarUrlDocumento(remisionRecordId: string, url: string): Promise<void> {
+  const { baseId, token, remisionesTable } = remisionesCoreConfig();
+  await atRemisiones(`${AT}/${baseId}/${remisionesTable}/${remisionRecordId}`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ fields: { 'URL Remision Generada': url } }),
   });
 }
 
