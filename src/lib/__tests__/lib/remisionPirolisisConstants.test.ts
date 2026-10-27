@@ -23,6 +23,7 @@ import {
   esIdDespacho,
   estadoPedidoTrasRemitir,
   idDespachoDeNotas,
+  kgLotesExplicitos,
   kgRemitidoDeRemision,
   marcaCorreo,
   marcaDespacho,
@@ -347,6 +348,21 @@ describe('kgRemitidoDeRemision', () => {
 
   it('una remisión ajena es null', () => {
     expect(kgRemitidoDeRemision(cruda({ areaOrigen: 'Laboratorio', notas: '[lote:X] Biochar Blend', kgRollup: 9 }))).toBeNull();
+  });
+
+  it('mixta (Blend con biochar puro): solo el Blend, de [kg-lote:], no el rollup que suma los dos', () => {
+    const notas = '[lote:BLEND-2026-10-20] [kg-lote:BLEND-2026-10-20=25] [bache:S-00140=25.00] Biochar Blend — obs';
+    expect(kgRemitidoDeRemision(cruda({ notas, kgRollup: 50 }))).toEqual({ tipo: 'blend', kg: 25 });
+  });
+});
+
+describe('kgLotesExplicitos', () => {
+  it('suma [kg-lote:] solo si cada lote tiene la suya, y solo antes de « — »', () => {
+    expect(kgLotesExplicitos('[lote:A] [lote:B] [kg-lote:A=2.21] [kg-lote:B=997.79] Biochar Blend')).toBe(1000);
+    expect(kgLotesExplicitos('[lote:A] [kg-lote:A=25] Biochar Blend')).toBe(25);
+    expect(kgLotesExplicitos('[lote:A] [lote:B] [kg-lote:A=2.21] Biochar Blend')).toBeNull();
+    expect(kgLotesExplicitos('[lote:A] Biochar Blend — [kg-lote:A=9]')).toBeNull();
+    expect(kgLotesExplicitos('Biochar Blend')).toBeNull();
   });
 });
 

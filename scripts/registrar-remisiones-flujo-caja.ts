@@ -53,7 +53,7 @@ async function main() {
   loadEnvLocal();
   const { config } = await import('../src/lib/config');
   const { assertCodigoSimbolico } = await import('../src/lib/airtable-escape');
-  const { resolverRemision } = await import('../src/lib/blend-remisiones-core');
+  const { resolverRemision, lineasDeRemision } = await import('../src/lib/blend-remisiones-core');
   const { tipoRemision, remisionCrudaDeRegistro } = await import('../src/lib/remision-pirolisis.constants');
   const fc = await import('../src/lib/flujo-caja-remisiones');
 
@@ -116,20 +116,26 @@ async function main() {
       console.log(`– ${codigo}: se omite (${omitir})`);
       continue;
     }
-    if (!precios.has(remision.productoId)) precios.set(remision.productoId, await fc.precioCatalogo(remision.productoId));
-    const precio = precios.get(remision.productoId);
-    if (!precio) {
-      console.log(`✗ ${codigo}: ${remision.productoId} no tiene Precio Venta Unitario en el catálogo`);
+    // Una mixta (Blend con biochar) lleva una línea por producto, cada una a su precio.
+    const productosIds = lineasDeRemision(remision).map((l) => l.productoId);
+    for (const id of productosIds) if (!precios.has(id)) precios.set(id, await fc.precioCatalogo(id));
+    const sinPrecio = productosIds.filter((id) => !precios.get(id));
+    if (sinPrecio.length) {
+      console.log(`✗ ${codigo}: ${sinPrecio.join(', ')} no tiene Precio Venta Unitario en el catálogo`);
       fallos++;
       continue;
     }
 
-    const filas = fc.filasFlujoCaja(remision, { precioUnitario: precio, urlDocumento: fc.urlDocumentoRemision(remision) });
-    const linea = filas.producto;
+    const preciosRemision = Object.fromEntries(productosIds.map((id) => [id, precios.get(id) as number]));
+    const filas = fc.filasFlujoCaja(remision, {
+      precioUnitario: preciosRemision[remision.productoId],
+      precios: preciosRemision,
+      urlDocumento: fc.urlDocumentoRemision(remision),
+    });
     console.log(
       `• ${codigo} — ${remision.estado} · ${filas.remision['Nombre Cliente']} · ` +
-        `${linea['Producto']} ${linea['Cantidad Kg']} kg × $${precio} · ` +
-        `lleva: ${filas.remision['Nombre Lleva'] ?? '—'} · recibe: ${filas.remision['Nombre Recibe'] ?? '—'}`
+        filas.productos.map((l) => `${l['Producto']} ${l['Cantidad Kg']} kg × $${l['Precio por Kg']}`).join(' + ') +
+        ` · lleva: ${filas.remision['Nombre Lleva'] ?? '—'} · recibe: ${filas.remision['Nombre Recibe'] ?? '—'}`
     );
     if (!APPLY) continue;
     try {

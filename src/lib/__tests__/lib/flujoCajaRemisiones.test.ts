@@ -36,6 +36,7 @@ beforeAll(async () => {
     AIRTABLE_FLUJO_CAJA_PRODUCTOS_REMISIONES_PIROLISIS_TABLE: T.productos,
     AIRTABLE_PRODUCTS_BASE_ID: B_PROD,
     AIRTABLE_PRODUCTS_TABLE_ID: T.catalogo,
+    AIRTABLE_INVENTARIO_BIOCHAR_PURO_PRODUCT_ID: 'SIRIUS-PRODUCT-0015',
     RECEPCION_URL_BASE: 'https://piroliapp.falso.test',
   });
   fc = await import('@/lib/flujo-caja-remisiones');
@@ -117,13 +118,13 @@ describe('filasFlujoCaja', () => {
         'Total: 1000 kg | Estado: Entregada | Lotes: BLEND-2026-10-20 (2.21 kg), BLEND-2026-10-22 (997.79 kg) | ' +
         'Personal: PER-REM-9001, PER-REM-9002'
     );
-    expect(f.producto).toEqual({
+    expect(f.productos).toEqual([{
       'Cantidad Kg': 1000,
       Producto: 'Biochar Blend',
       'Código Producto': 'SIRIUS-PRODUCT-0016',
       'Precio por Kg': 1400,
       'Fecha Creacion': '2026-10-22T17:00:00.000Z',
-    });
+    }]);
     // El link de la remisión nunca va en la fila: se vincula desde la línea.
     expect(f.remision).not.toHaveProperty('Productos Remisiones Pirolisis');
   });
@@ -138,6 +139,18 @@ describe('filasFlujoCaja', () => {
     expect(f.remision).not.toHaveProperty('Fecha Recibio');
     expect(f.remision).not.toHaveProperty('Documento Remisión');
     expect(f.remision['Nombre Lleva']).toBe('Lleva Inventada');
+  });
+
+  it('mixta: una línea por producto, cada una a su precio, y el total de las dos', () => {
+    const mixta = remision({ kgTotal: 25, lotes: [{ lote: 'BLEND-2026-10-20', kg: 25 }], lote: 'BLEND-2026-10-20', bachesRemitidos: [{ bache: 'S-00140', kg: 25 }] });
+    const f = fc.filasFlujoCaja(mixta, { precioUnitario: 1400, precios: { 'SIRIUS-PRODUCT-0015': 4000 } });
+    expect(f.productos.map((l) => [l['Producto'], l['Código Producto'], l['Cantidad Kg'], l['Precio por Kg']])).toEqual([
+      ['Biochar Blend', 'SIRIUS-PRODUCT-0016', 25, 1400],
+      ['Biochar', 'SIRIUS-PRODUCT-0015', 25, 4000],
+    ]);
+    expect(f.remision['Observaciones Remisión']).toContain('Productos: Biochar Blend 25 kg, Biochar 25 kg | Total: 50 kg');
+    // Sin el precio de la segunda línea no se arma: valdría 0 en Flujo de caja.
+    expect(() => fc.filasFlujoCaja(mixta, { precioUnitario: 1400 })).toThrow(/Sin precio para Biochar/);
   });
 
   it('una cédula con letras no va al campo número: queda en las observaciones', () => {
@@ -175,6 +188,19 @@ describe('registrarRemisionFlujoCaja', () => {
     expect(linea.fields['Precio por Kg']).toBe(1400);
     // Sin copia pública en el Core no se escribe enlace: el de PiroliApp pide login.
     expect(rem.fields).not.toHaveProperty('Documento Remisión');
+  });
+
+  it('mixta: crea una línea por producto con el precio de cada uno en el catálogo', async () => {
+    const falso = falsoConCatalogo(1400);
+    falso.sembrar(B_PROD, T.catalogo, { 'Codigo Producto': 'SIRIUS-PRODUCT-0015', 'Precio Venta Unitario': 4000 });
+    const paso = await fc.registrarRemisionFlujoCaja(remision({ kgTotal: 25, bachesRemitidos: [{ bache: 'S-00140', kg: 25 }] }));
+    expect(paso).toMatchObject({ ok: true, detail: { accion: 'creada' } });
+    const [rem] = falso.registros(B_FC, T.remisiones);
+    const lineas = falso.registros(B_FC, T.productos);
+    expect(lineas.map((l) => [l.fields['Producto'], l.fields['Precio por Kg'], l.fields['Remisión Pirolisis']])).toEqual([
+      ['Biochar Blend', 1400, [rem.id]],
+      ['Biochar', 4000, [rem.id]],
+    ]);
   });
 
   it('copia a Documento Remisión la URL pública de S3, nunca un texto suelto del Core', async () => {

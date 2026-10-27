@@ -433,8 +433,8 @@ quién recibió y a qué hora.
 - **El último paso es Flujo de caja (2026-10-22).** Finanzas factura desde la base
   Flujo de caja, no desde los Core, y las remisiones de pirólisis no llegaban. Al
   confirmar, el paso `flujo_caja` (best-effort → 207) copia la remisión a
-  `Remisiones Pirolisis` y su línea a `Productos Remisiones Pirolisis`
-  (`flujo-caja-remisiones.ts`), armadas con `construirDatosPdf()` para que digan
+  `Remisiones Pirolisis` y una línea por producto a `Productos Remisiones
+  Pirolisis` (`flujo-caja-remisiones.ts`), armadas con `construirDatosPdf()` para que digan
   lo mismo que el papel. Idempotente por `Numero Remision`. Lo anterior y lo que
   se cierra a mano lo trae `npx tsx scripts/registrar-remisiones-flujo-caja.ts
   [--remision …] [--apply]`, que verifica el esquema antes de escribir. Las
@@ -519,6 +519,19 @@ reparto (`lotesDeNotas()`), una fila de `Productos Remitidos` y una Salida
 derivando exactos: el biochar de la remisión es la suma de lo que aporta cada lote
 con su propia proporción real. Sin él no se podría, y por eso antes era un lote
 por remisión. Las remisiones de un solo lote quedan como siempre.
+
+**Blend y biochar en UNA remisión (2026-10-27).** Una entrega con los dos
+productos es un solo documento: lo que salió en ese viaje (Invernalia,
+SIRIUS-REM-0214: 25 kg de Blend + 25 kg de biochar). Partirla en dos remisiones
+dejaba un papel que no listaba el biochar. Es de tipo `blend` y lleva además
+`[bache:S-XXXXX=kg]` por el biochar puro, con su Salida `DESP-<REM>-<S-XXXXX>`.
+Como el rollup `Total Cantidad Remitida` suma los dos productos, en una mixta va
+`[kg-lote:]` aunque haya un solo lote, y el Blend se lee de ahí
+(`kgLotesExplicitos()`). `lineasDeRemision()` da un renglón por producto al PDF y
+una línea con su precio a Flujo de caja; `saldosDespachables()` compromete sus
+baches como los de una remisión de biochar. ⚠️ Lo que no cubre: el estado de un
+PEDIDO con una remisión mixta solo cuenta el Blend. No hay UI que las cree: hoy
+solo las escribe `scripts/remisiones-retroactivas-2026.ts`.
 
 **Un despacho va a un ÁREA del cliente (2026-09-28).** Sanidad, Fertilización,
 Cultivo… son áreas de la organización del cliente y viven por cliente en Sirius
@@ -801,9 +814,19 @@ producción) y `scripts/ensayar-recepcion.ts`.
     SIRIUS-REM-0228 sin quien la llevó (2026-10-22), y la recepción fallaba en el
     paso `receptor`. Hay que vincularle PER-REM-0025 a mano.
   - **Flujo de caja (2026-10-22):** las 5 remisiones de Blend (REM-0200, 0202,
-    0203, 0204, 0228) ya están registradas. Falta cargar en Vercel
+    0203, 0204, 0228) ya están registradas. SIRIUS-REM-0232 se recibió por
+    enlace el 2026-10-27 y tampoco llegó sola —ni a Flujo ni a S3—: se registró
+    a mano, lo que apunta a que faltan estas variables. Falta cargar en Vercel
     `AIRTABLE_FLUJO_CAJA_BASE_ID`,
     `AIRTABLE_FLUJO_CAJA_REMISIONES_PIROLISIS_TABLE` y
     `AIRTABLE_FLUJO_CAJA_PRODUCTOS_REMISIONES_PIROLISIS_TABLE`. En la UI de
     Airtable: borrar los seis campos «(No usar) …» y, si hace falta, darle
     decimales a `Cantidad Kg` (hoy es entero, heredado).
+  - **Remisiones retroactivas de 2026 (2026-10-27):** las ventas que no son de
+    Guaicaramo y salieron sin documento quedaron en REM-0205…0210, 0212 y 0214,
+    reutilizando remisiones vacías y anuladas
+    (`scripts/remisiones-retroactivas-2026.ts`), con su PDF público y su fila en
+    Flujo de caja; falta que finanzas les vincule `Factura Relacionada`. Siguen
+    bloqueadas REM-0211 (NANOMOF, 200 kg de biochar) y REM-0213 (Agro Ocampo,
+    120 kg de Blend): ninguno de los dos clientes está en Clients Core y sus kg no
+    tienen Salida en el libro mayor.

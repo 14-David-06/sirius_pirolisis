@@ -31,7 +31,7 @@
 import { config } from './config';
 import { escapeAirtableValue } from './airtable-escape';
 import { construirDatosPdf } from './blend-remision-pdf';
-import type { RemisionBlend } from './blend-remisiones-core';
+import { lineasDeRemision, type RemisionBlend } from './blend-remisiones-core';
 import { sanearError } from './log-seguro';
 import { ESTADO_REMISION } from './remisiones-core';
 import { esUrlDocumentoPublica } from './remision-documento-url';
@@ -137,25 +137,33 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 export interface FilaFlujoCaja {
   numero: number;
   remision: Record<string, unknown>;
-  producto: Record<string, unknown>;
+  /** Una línea por producto: el de la remisión primero; en una mixta, el biochar después. */
+  productos: Record<string, unknown>[];
 }
 
 /**
- * Las dos filas para una remisión. Puro: el precio y la URL del documento llegan
+ * Las filas para una remisión. Puro: los precios y la URL del documento llegan
  * de afuera. Los campos sin dato se OMITEN, no se mandan vacíos: al actualizar,
  * una remisión todavía sin receptor no debe borrar nada.
+ *
+ * @param o.precioUnitario el del producto de la remisión.
+ * @param o.precios los de las demás líneas (una mixta), por `SIRIUS-PRODUCT-…`.
  */
 export function filasFlujoCaja(
   remision: RemisionBlend,
-  o: { precioUnitario: number; urlDocumento?: string }
+  o: { precioUnitario: number; precios?: Record<string, number>; urlDocumento?: string }
 ): FilaFlujoCaja {
   const numero = numeroRemision(remision.codigo);
   if (numero === null) throw new Error(`Código de remisión inesperado: ${remision.codigo}`);
   const d = construirDatosPdf(remision);
   const C = CAMPOS_FLUJO_CAJA;
   const fecha = mediodiaBogota(d.fecha_evento);
-  const producto = d.producto ?? remision.productoNombre;
-  const kg = r2(d.kg_total);
+  const lineas = lineasDeRemision(remision).map((l, i) => {
+    const precio = i === 0 ? o.precioUnitario : o.precios?.[l.productoId];
+    if (!(Number(precio) > 0)) throw new Error(`Sin precio para ${l.nombre} (${l.productoId})`);
+    return { ...l, kg: r2(l.kg), precio: Number(precio) };
+  });
+  const kgTotal = r2(lineas.reduce((t, l) => t + l.kg, 0));
 
   const cedulaRecibe = cedulaNumerica(d.receptor?.cedula);
   const cedulaLleva = cedulaNumerica(d.transportista?.cedula);
@@ -174,8 +182,8 @@ export function filasFlujoCaja(
     remision.codigo,
     remision.idPedido && `Pedido: ${remision.idPedido}`,
     'Área origen: Producción',
-    `Productos: ${producto} ${kg} kg`,
-    `Total: ${kg} kg`,
+    `Productos: ${lineas.map((l) => `${l.nombre} ${l.kg} kg`).join(', ')}`,
+    `Total: ${kgTotal} kg`,
     `Estado: ${remision.estado}`,
     lotes && `Lotes: ${lotes}`,
     d.area_cliente && `Área cliente: ${d.area_cliente.nombre}`,
@@ -200,15 +208,18 @@ export function filasFlujoCaja(
   if (cedulaLleva !== null) fila[C.remision.cedulaLleva] = cedulaLleva;
   if (d.fecha_evento) fila[C.remision.fechaLlevo] = d.fecha_evento;
 
-  const linea: Record<string, unknown> = {
-    [C.producto.cantidad]: kg,
-    [C.producto.nombre]: producto,
-    [C.producto.codigo]: remision.productoId,
-    [C.producto.precio]: o.precioUnitario,
-  };
-  if (fecha) linea[C.producto.fecha] = fecha;
+  const productos = lineas.map((l) => {
+    const linea: Record<string, unknown> = {
+      [C.producto.cantidad]: l.kg,
+      [C.producto.nombre]: l.nombre,
+      [C.producto.codigo]: l.productoId,
+      [C.producto.precio]: l.precio,
+    };
+    if (fecha) linea[C.producto.fecha] = fecha;
+    return linea;
+  });
 
-  return { numero, remision: fila, producto: linea };
+  return { numero, remision: fila, productos };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,7 +283,10 @@ export async function verificarEsquemaFlujoCaja(cfg: ConfigFlujoCaja): Promise<v
 export interface ResultadoFlujoCaja {
   accion: 'creada' | 'actualizada';
   recordId: string;
+  /** La del producto de la remisión. */
   lineaId: string;
+  /** Una por producto, en el orden de `filas.productos`. */
+  lineaIds: string[];
 }
 
 /**
@@ -312,39 +326,40 @@ export async function escribirRemisionFlujoCaja(cfg: ConfigFlujoCaja, filas: Fil
     accion = 'creada';
   }
 
-  // La línea del mismo producto se actualiza; si no está, se crea. Las demás
+  // Cada línea del mismo producto se actualiza; si no está, se crea. Las demás
   // líneas (si finanzas agregó alguna) no se tocan.
-  const nombre = filas.producto[C.producto.nombre];
-  let lineaId: string | undefined;
-  let precioPrevio = 0;
+  let previas: { id: string; fields?: Record<string, unknown> }[] = [];
   if (lineasPrevias.length) {
     const ids = new URLSearchParams({
       filterByFormula: `OR(${lineasPrevias.map((id) => `RECORD_ID() = '${escapeAirtableValue(id)}'`).join(',')})`,
     });
-    const lineas = (await at(`${base}/${cfg.productosTable}?${ids}`, cfg.token)).records ?? [];
-    const linea = lineas.find((l: { fields?: Record<string, unknown> }) => l.fields?.[C.producto.nombre] === nombre);
-    lineaId = linea?.id;
-    precioPrevio = Number(linea?.fields?.[C.producto.precio]) || 0;
+    previas = (await at(`${base}/${cfg.productosTable}?${ids}`, cfg.token)).records ?? [];
   }
-  if (lineaId) {
-    // El precio de una línea que ya lo tiene NO se pisa: es el de la venta, y
-    // puede estar facturado. El catálogo cambia (el Blend pasó de 1.190 a 1.400)
-    // y repetir el registro no puede re-tarifar lo que ya se vendió.
-    const campos = { ...filas.producto };
-    if (precioPrevio > 0) delete campos[C.producto.precio];
-    await at(`${base}/${cfg.productosTable}/${lineaId}`, cfg.token, {
-      method: 'PATCH',
-      body: JSON.stringify({ fields: campos }),
-    });
-  } else {
-    const creada = await at(`${base}/${cfg.productosTable}`, cfg.token, {
-      method: 'POST',
-      body: JSON.stringify({ records: [{ fields: { ...filas.producto, [C.producto.remision]: [recordId] } }] }),
-    });
-    lineaId = creada.records?.[0]?.id;
-    if (!lineaId) throw new Error('Airtable no devolvió el ID de la línea creada en Flujo de caja');
+  const lineaIds: string[] = [];
+  for (const producto of filas.productos) {
+    const linea = previas.find((l) => l.fields?.[C.producto.nombre] === producto[C.producto.nombre]);
+    let lineaId = linea?.id;
+    if (lineaId) {
+      // El precio de una línea que ya lo tiene NO se pisa: es el de la venta, y
+      // puede estar facturado. El catálogo cambia (el Blend pasó de 1.190 a 1.400)
+      // y repetir el registro no puede re-tarifar lo que ya se vendió.
+      const campos = { ...producto };
+      if ((Number(linea?.fields?.[C.producto.precio]) || 0) > 0) delete campos[C.producto.precio];
+      await at(`${base}/${cfg.productosTable}/${lineaId}`, cfg.token, {
+        method: 'PATCH',
+        body: JSON.stringify({ fields: campos }),
+      });
+    } else {
+      const creada = await at(`${base}/${cfg.productosTable}`, cfg.token, {
+        method: 'POST',
+        body: JSON.stringify({ records: [{ fields: { ...producto, [C.producto.remision]: [recordId] } }] }),
+      });
+      lineaId = creada.records?.[0]?.id;
+      if (!lineaId) throw new Error('Airtable no devolvió el ID de la línea creada en Flujo de caja');
+    }
+    lineaIds.push(lineaId);
   }
-  return { accion, recordId, lineaId };
+  return { accion, recordId, lineaId: lineaIds[0], lineaIds };
 }
 
 /** ¿Va a Flujo de caja? Solo las de PiroliApp ya despachadas: ni Borrador ni Cancelada. */
@@ -385,11 +400,19 @@ export async function registrarRemisionFlujoCaja(
     return process.env.VERCEL_ENV === 'production' ? { step, ok: false, error } : { step, ok: true, skipped: true, error };
   }
   try {
-    const precio = await precioCatalogo(remision.productoId);
-    if (precio === null) {
-      return { step, ok: false, error: `${remision.productoId} no tiene Precio Venta Unitario en el catálogo` };
+    const precios: Record<string, number> = {};
+    for (const { productoId } of lineasDeRemision(remision)) {
+      const precio = await precioCatalogo(productoId);
+      if (precio === null) {
+        return { step, ok: false, error: `${productoId} no tiene Precio Venta Unitario en el catálogo` };
+      }
+      precios[productoId] = precio;
     }
-    const filas = filasFlujoCaja(remision, { precioUnitario: precio, urlDocumento: urlDocumentoRemision(remision, o.urlDocumento) });
+    const filas = filasFlujoCaja(remision, {
+      precioUnitario: precios[remision.productoId],
+      precios,
+      urlDocumento: urlDocumentoRemision(remision, o.urlDocumento),
+    });
     const r = await escribirRemisionFlujoCaja(cfg, filas);
     return { step, ok: true, detail: { accion: r.accion, numero: filas.numero } };
   } catch (err) {

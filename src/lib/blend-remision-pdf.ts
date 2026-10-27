@@ -17,6 +17,7 @@ import { generateBlendRemisionPdf, type BlendRemisionData } from './blend-remisi
 import {
   adjuntarDocumento,
   ESTADO_REMISION,
+  lineasDeRemision,
   TIPO_PERSONA,
   type PersonaRemision,
   type RemisionBlend,
@@ -97,6 +98,7 @@ export function construirDatosPdf(
 
     producto: remision.productoNombre || NOMBRE_PRODUCTO.blend,
     kg_total: remision.kgTotal,
+    productos: lineasDeRemision(remision).map(({ nombre, kg }) => ({ nombre, kg })),
     // Biochar puro: kg × `config.carbon.factorSecuestroCo2` (lo calcula el mapeo,
     // el mismo factor del acta de entrega). Blend: el biochar real del lote × factor.
     co2_secuestrado_kg: remision.co2SecuestradoKg,
