@@ -19,12 +19,16 @@
 // Si los lotes se eligen a mano, entre ellos tienen que alcanzar: pedir lotes
 // concretos es decir de dónde sale, y fabricar por debajo sería desobedecer.
 //
-// ═══ UN PEDIDO, UNA REMISIÓN, LOS LOTES QUE HAGAN FALTA ══════════════════════
+// ═══ UN VIAJE, UNA REMISIÓN, LOS LOTES QUE HAGAN FALTA ═══════════════════════
 // Un pedido se produce en tantas tandas como alcancen el abono y el biochar
-// (`BLEND-<fecha>-<pedido>`, `…-<pedido>-2`), pero se despacha COMPLETO: una sola
-// remisión por el total, con una fila de producto remitido y una Salida por lote.
-// La remisión guarda cuánto salió de cada uno (`[kg-lote:…]`), y con eso la
-// composición y el CO₂ se siguen derivando exactos, ponderados por lote.
+// (`BLEND-<fecha>-<pedido>`, `…-<pedido>-2`), y las tandas NO dictan los viajes:
+// cada despacho es una sola remisión por lo que sale ese día, con una fila de
+// producto remitido y una Salida por lote. La remisión guarda cuánto salió de cada
+// uno (`[kg-lote:…]`), y con eso la composición y el CO₂ se siguen derivando
+// exactos, ponderados por lote. Lo normal es que salga todo de una vez; un pedido
+// con entregas programadas (SIRIUS-PED-0134: 3 t en tres días) sale en varias
+// remisiones con `kg` menor que lo pendiente, y queda `Enviado Parcial` hasta la
+// última.
 //
 // ═══ DESPACHAR PRODUCE ════════════════════════════════════════════════════════
 // El Blend no se almacena esperando pedidos: se produce contra el pedido. Si lo

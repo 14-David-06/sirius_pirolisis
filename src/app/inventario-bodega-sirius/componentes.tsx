@@ -63,6 +63,20 @@ export interface PersonaClienteUI {
   telefono: string;
 }
 
+/**
+ * Alguien que ya llevó o recibió una remisión del cliente sin estar en su
+ * personal del Core (ver `quien-recoge.ts`). `codigo` es `PER-REM-XXXX`.
+ */
+export interface PersonaAnteriorUI {
+  recordId: string;
+  codigo: string;
+  nombre: string;
+  cedula: string;
+  tipo: string;
+  email: string;
+  telefono: string;
+}
+
 /** Un área del cliente en Sirius Clients Core (ver `/api/clientes/areas`). */
 export interface AreaClienteUI {
   recordId: string;
@@ -667,6 +681,11 @@ export function transportistaParaEnviar(t: TransportistaUI) {
  * Sirius Clients Core: elegirla evita digitar otra versión de la misma persona en
  * cada remisión. Lo comparten el despacho de Blend y el de biochar para que las
  * dos remisiones identifiquen al transportista igual.
+ *
+ * Debajo van quienes ya llevaron o recibieron remisiones del cliente sin estar en
+ * su personal (2026-11-06: Claudia Fula, de Guaicaramo, había que digitarla en
+ * cada despacho). Son dos grupos y no una lista: el primero lo mantiene el
+ * cliente; el segundo es lo que quedó en nuestras remisiones.
  */
 export function CamposTransportista({
   idCliente,
@@ -683,15 +702,20 @@ export function CamposTransportista({
 }) {
   // `null` = todavía cargando.
   const [personal, setPersonal] = useState<PersonaClienteUI[] | null>(null);
+  const [anteriores, setAnteriores] = useState<PersonaAnteriorUI[]>([]);
   const [errorPersonal, setErrorPersonal] = useState<string | null>(null);
-  /** recordId de la persona elegida, `OTRA` para alguien que no está en el Core. */
+  /** recordId de la persona elegida, `OTRA` para alguien que no está en ninguna lista. */
   const [personaId, setPersonaId] = useState('');
-  const personaElegida = personal?.find((p) => p.recordId === personaId) ?? null;
+  const personaElegida =
+    personal?.find((p) => p.recordId === personaId) ??
+    anteriores.find((p) => p.recordId === personaId) ??
+    null;
 
   useEffect(() => {
     let vigente = true;
     if (!idCliente) {
       setPersonal([]);
+      setAnteriores([]);
       setPersonaId(OTRA_PERSONA);
       return;
     }
@@ -704,16 +728,21 @@ export function CamposTransportista({
         // hacer.
         if (res.status === 401) throw new Error(SESION_VENCIDA);
         if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
-        return (json.personal ?? []) as PersonaClienteUI[];
+        return {
+          personal: (json.personal ?? []) as PersonaClienteUI[],
+          anteriores: (json.anteriores ?? []) as PersonaAnteriorUI[],
+        };
       })
-      .then((lista) => {
+      .then(({ personal: lista, anteriores: previas }) => {
         if (!vigente) return;
         setPersonal(lista);
-        if (!lista.length) setPersonaId(OTRA_PERSONA);
+        setAnteriores(previas);
+        if (!lista.length && !previas.length) setPersonaId(OTRA_PERSONA);
       })
       .catch((err) => {
         if (!vigente) return;
         setPersonal([]);
+        setAnteriores([]);
         setPersonaId(OTRA_PERSONA);
         setErrorPersonal(err instanceof Error ? err.message : String(err));
       });
@@ -724,7 +753,8 @@ export function CamposTransportista({
 
   const elegirPersona = (id: string) => {
     setPersonaId(id);
-    const p = personal?.find((x) => x.recordId === id);
+    const p =
+      personal?.find((x) => x.recordId === id) ?? anteriores.find((x) => x.recordId === id);
     onCambio({
       nombre: p?.nombre ?? '',
       cedula: p?.cedula ?? '',
@@ -766,14 +796,27 @@ export function CamposTransportista({
           <option value="" disabled>
             {personal === null ? 'Cargando personal del cliente…' : 'Elige quién recoge'}
           </option>
-          {(personal ?? []).map((p) => (
-            <option key={p.recordId} value={p.recordId}>
-              {p.nombre}
-              {p.cargo ? ` · ${p.cargo}` : ''}
-              {p.cedula ? ` · C.C. ${p.cedula}` : ' · sin cédula en el Core'}
-            </option>
-          ))}
-          <option value={OTRA_PERSONA}>Otra persona (no está en Clients Core)</option>
+          {!!personal?.length && (
+            <optgroup label={`Personal de ${clienteNombre || idCliente} (Clients Core)`}>
+              {personal.map((p) => (
+                <option key={p.recordId} value={p.recordId}>
+                  {p.nombre}
+                  {p.cargo ? ` · ${p.cargo}` : ''}
+                  {p.cedula ? ` · C.C. ${p.cedula}` : ' · sin cédula en el Core'}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {!!anteriores.length && (
+            <optgroup label="Ya llevaron o recibieron remisiones de este cliente">
+              {anteriores.map((p) => (
+                <option key={p.recordId} value={p.recordId}>
+                  {p.nombre} · C.C. {p.cedula}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <option value={OTRA_PERSONA}>Otra persona (no está en ninguna lista)</option>
         </select>
         {errorPersonal === SESION_VENCIDA ? (
           <span className="mt-1 block text-xs text-amber-200">
@@ -789,7 +832,8 @@ export function CamposTransportista({
           </span>
         ) : (
           personal !== null &&
-          !personal.length && (
+          !personal.length &&
+          !anteriores.length && (
             <span className="mt-1 block text-xs text-white/50">
               El cliente no tiene personal activo en Sirius Clients Core: digita los datos.
             </span>

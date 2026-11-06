@@ -339,12 +339,21 @@ por bache, o el chequeo de duplicados se saltaría todos menos el primero) mient
 ⚠️ Dos producciones distintas el mismo día SIN sufijo comparten lote y la segunda se
 lee como reintento de la primera; por eso el formulario ofrece el pedido como sufijo.
 
-**Un pedido se produce y DESPUÉS se despacha (2026-09-22).** En la tabla de pedidos,
-`Producir` fabrica lo programado con el pedido en el lote `BLEND-<fecha>-<pedido>`
-(`-<n>` si ya hubo otro ese día), y solo cuando ese lote tiene producto aparece
-`Despachar`, que es donde se piden los datos de quien se lo lleva. El
-despacho nunca produce desde la UI. El lote de un pedido no se le despacha a otro
-(`esLoteDeOtroPedido()` en `despacho-blend.ts`).
+**Un pedido se produce y DESPUÉS se despacha (2026-09-22).** Solo cuando hay
+Blend en bodega aparece `Despachar`, que es donde se piden los datos de quien se lo
+lleva. El despacho nunca produce desde la UI. El lote de un pedido no se le
+despacha a otro (`esLoteDeOtroPedido()` en `despacho-blend.ts`).
+
+**Se produce SOLO con la calculadora (2026-11-06, decisión de David).** El pedido
+tuvo un botón `Producir` que abría el formulario por bache con el lote
+`BLEND-<fecha>-<pedido>`; se quitó. Hoy la única puerta es `Producción` en la
+tarjeta del Blend (`ProduccionPorTotales`, desde el 2026-10-14): se digitan los kg
+de Blend, los baches se eligen FIFO y sale un lote SIN pedido (`BLEND-<fecha>`,
+`-<n>` si ya hubo otro ese día). Así que el Blend ya no queda reservado para un
+pedido: el despacho toma los lotes libres, el más viejo primero. Los
+`…-<pedido>` que ya existían se siguen respetando. `FormProduccionBlend` conserva
+las props `pedido` y `kgYaProducidos` y su lista de baches manual, que ya nadie
+abre: limpiarlas es deuda, no funcionalidad.
 
 **La recepción se confirma por enlace (2026-10-21).** Del 2026-10-02 a hoy la
 remisión se firmaba solo en papel: primero salió de la app el trazo del conductor
@@ -519,6 +528,17 @@ reparto (`lotesDeNotas()`), una fila de `Productos Remitidos` y una Salida
 derivando exactos: el biochar de la remisión es la suma de lo que aporta cada lote
 con su propia proporción real. Sin él no se podría, y por eso antes era un lote
 por remisión. Las remisiones de un solo lote quedan como siempre.
+
+**Un pedido puede salir en VARIAS entregas (2026-11-06).** Las tandas de
+producción no dictan los viajes: en el formulario de despacho los KG se proponen
+como todo lo despachable y se pueden bajar a lo de ese día (SIRIUS-PED-0134,
+Guaicaramo: 3 t en tres viajes del 9 al 13 de noviembre). Cada viaje es su
+remisión, con su fecha y su conductor; lo que no sale sigue en bodega, y el
+pedido queda `Enviado Parcial` —que sigue siendo pendiente— hasta la
+última. El servidor ya lo aceptaba (`kg` es un tope en `despacharPedidoBlend()`);
+la pantalla mandaba siempre el total. El reparto entre lotes es
+`repartirKgEnLotes()` (`inventario-bodega-sirius/comunes.ts`): los del pedido
+primero, después los libres.
 
 **Un despacho va a un ÁREA del cliente (2026-09-28).** Sanidad, Fertilización,
 Cultivo… son áreas de la organización del cliente y viven por cliente en Sirius

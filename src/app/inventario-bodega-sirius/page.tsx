@@ -39,6 +39,7 @@ import { fechaBogota } from '@/lib/fecha-bogota';
 import {
   CAMPO,
   kg,
+  repartirKgEnLotes,
   type BacheBodega,
   type BacheNoDisponible,
   type EstadoBodega,
@@ -564,7 +565,6 @@ function BodegaContent() {
   /** El pedido que se está despachando, o `null` si no hay ninguno. */
   const [despachando, setDespachando] = useState<PedidoBlend | null>(null);
   /** El pedido para el que se está produciendo, o `null` si no hay ninguno. */
-  const [produciendoPara, setProduciendoPara] = useState<PedidoBlend | null>(null);
   /** Los pedidos de biochar puro: la otra lista de la misma lectura de Pedidos Core. */
   const [pedidosBiochar, setPedidosBiochar] = useState<PedidoBiocharUI[] | null>(null);
   /** El pedido de biochar que se está despachando (o completando), o `null`. */
@@ -700,7 +700,7 @@ function BodegaContent() {
   const hayPedidosBiocharPendientes = (pedidosBiochar ?? []).some(
     (p) => p.pendiente && (p.kgPendientes > 0.01 || !!p.despachoIncompleto)
   );
-  /** Lleva a una sección de pedidos (las dos viven en la pestaña del biochar). */
+  /** Lleva a una sección de pedidos; vuelve a la pestaña del biochar, que es su tarjeta. */
   const irAPedidos = (id: string) => {
     setModal(null);
     setProducto('biochar');
@@ -769,6 +769,35 @@ function BodegaContent() {
   const { disponible, totales } = biochar;
   const totalBaches = biochar.baches?.length ?? 0;
   const conSaldo = (totales?.porEstado?.completo ?? 0) + (totales?.porEstado?.parcial ?? 0);
+
+  // Qué hay (en la tarjeta) contra para qué hace falta (acá). El saldo por sí solo
+  // no dice si sobra o falta: el pedido pendiente es el que convierte el
+  // inventario en una decisión de producir.
+  //
+  // Va en TODAS las pestañas (2026-11-06). Vivía solo en la del biochar, y quien
+  // entraba a la del Blend —la de Producción— no veía el pedido que tenía que
+  // despachar justo después de producirlo.
+  const pedidosYRemisiones = (
+    <>
+      <SeccionPedidos
+        pedidos={pedidos}
+        cargando={pedidosCargando}
+        kgBlendDisponible={blend?.kg ?? null}
+        lotes={lotesBlend}
+        onDespachar={setDespachando}
+      />
+
+      <SeccionPedidosBiochar
+        pedidos={pedidosBiochar}
+        cargando={pedidosCargando}
+        kgBodega={disponible.kg}
+        onDespachar={setDespachandoBiochar}
+        onCompletar={setDespachandoBiochar}
+      />
+
+      <SeccionRemisiones recargar={versionRemisiones} />
+    </>
+  );
 
   return (
     <PageShell>
@@ -962,27 +991,7 @@ function BodegaContent() {
             no genera remisión. Producir Blend: lo descuenta la producción.
           </p>
 
-          {/* Qué hay (arriba) contra para qué hace falta (acá). El saldo por sí solo
-              no dice si sobra o falta: el pedido pendiente es el que convierte el
-              inventario en una decisión de producir. */}
-          <SeccionPedidos
-            pedidos={pedidos}
-            cargando={pedidosCargando}
-            kgBlendDisponible={blend?.kg ?? null}
-            lotes={lotesBlend}
-            onProducir={setProduciendoPara}
-            onDespachar={setDespachando}
-          />
-
-          <SeccionPedidosBiochar
-            pedidos={pedidosBiochar}
-            cargando={pedidosCargando}
-            kgBodega={disponible.kg}
-            onDespachar={setDespachandoBiochar}
-            onCompletar={setDespachandoBiochar}
-          />
-
-          <SeccionRemisiones recargar={versionRemisiones} />
+          {pedidosYRemisiones}
 
           {/* La divergencia entre las dos vistas del mismo inventario se muestra, no
               se esconde: significa que un consumo se escribió en una y no en la otra. */}
@@ -1247,7 +1256,9 @@ function BodegaContent() {
           setBusqueda={setBusqueda}
           filtroTipo={filtroTipoProd}
           setFiltroTipo={setFiltroTipoProd}
-        />
+        >
+          {pedidosYRemisiones}
+        </SeccionProducto>
       )}
 
       {actaDe && (
@@ -1329,27 +1340,6 @@ function BodegaContent() {
             }}
             onCancelar={() => setDespachandoBiochar(null)}
             onOcupado={setModalBloqueado}
-          />
-        </Modal>
-      )}
-
-      {produciendoPara && (
-        <Modal
-          titulo={`Producir ${produciendoPara.codigo}`}
-          descripcion="Produce el Blend programado con el pedido. El despacho —con quien se lo lleva— va después."
-          onCerrar={() => setProduciendoPara(null)}
-        >
-          <FormProduccionBlend
-            baches={(biochar.baches ?? []).filter((b) => b.kg > 0.01)}
-            abonoDisponible={abono?.kg ?? abono?.kgSegunMovimientos ?? 0}
-            pedido={produciendoPara}
-            kgYaProducidos={kgProducidosParaPedido(produciendoPara.codigo, lotesBlend)}
-            lotesExistentes={lotesBlend.map((l) => l.lote)}
-            onListo={async (mensaje) => {
-              setProduciendoPara(null);
-              await tras(mensaje);
-            }}
-            onCancelar={() => setProduciendoPara(null)}
           />
         </Modal>
       )}
@@ -3165,14 +3155,12 @@ function SeccionPedidos({
   cargando,
   kgBlendDisponible,
   lotes,
-  onProducir,
   onDespachar,
 }: {
   pedidos: PedidoBlend[] | null;
   cargando: boolean;
   kgBlendDisponible: number | null;
   lotes: LoteBlend[];
-  onProducir: (pedido: PedidoBlend) => void;
   onDespachar: (pedido: PedidoBlend) => void;
 }) {
   const [filtro, setFiltro] = useState<FiltroPedido>('todos');
@@ -3338,12 +3326,7 @@ function SeccionPedidos({
                     </td>
                     <td className="px-4 py-3 text-right">
                       {p.pendiente && p.kgPendientes > 0.01 && (
-                        <AccionesPedido
-                          pedido={p}
-                          lotes={lotes}
-                          onProducir={onProducir}
-                          onDespachar={onDespachar}
-                        />
+                        <AccionesPedido pedido={p} lotes={lotes} onDespachar={onDespachar} />
                       )}
                     </td>
                   </tr>
@@ -3403,53 +3386,42 @@ function lotesDespachables(pedido: PedidoBlend, lotes: LoteBlend[]): LoteBlend[]
 }
 
 /**
- * Producir y despachar son dos pasos, en ese orden.
+ * En el pedido solo se despacha: producir no se hace desde aquí.
  *
- * Se produce lo que se programó con el pedido —normalmente días antes de que
- * lo recojan— y solo cuando ese Blend existe aparece el despacho, que es donde se
- * piden los datos de quien se lo lleva. Juntarlos en un formulario
- * obligaba a tener al conductor delante para poder producir.
+ * El pedido tuvo su propio botón Producir, que abría el formulario por bache con
+ * el lote `BLEND-<fecha>-<pedido>`. Se quitó el 2026-11-06 (decisión de David): el
+ * Blend se produce SOLO con la calculadora de la tarjeta (Producción → kg de
+ * Blend), que elige los baches FIFO y deja un lote sin pedido. Dos puertas para
+ * producir pedían dos formas de pensar la misma mezcla —por lonas y por kilos—.
+ * Por eso el despacho sale de los lotes libres; los `…-<pedido>` que ya existan
+ * se siguen respetando (`lotesDespachables()`).
  *
- * Si lo producido no cubre el pedido (el abono o el biochar no alcanzaron), se
- * ofrecen los dos: producir el resto, o despachar ya lo que hay como parcial.
+ * Sin Blend en bodega el pedido lo dice, en vez de quedarse sin botones.
  */
 function AccionesPedido({
   pedido,
   lotes,
-  onProducir,
   onDespachar,
 }: {
   pedido: PedidoBlend;
   lotes: LoteBlend[];
-  onProducir: (pedido: PedidoBlend) => void;
   onDespachar: (pedido: PedidoBlend) => void;
 }) {
   const producido = kgProducidosParaPedido(pedido.codigo, lotes);
   const hayQueDespachar = lotesDespachables(pedido, lotes).length > 0;
-  const faltaProducir = producido + 0.01 < pedido.kgPendientes;
 
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex justify-end gap-2">
-        {faltaProducir && (
-          <button
-            onClick={() => onProducir(pedido)}
-            className={
-              hayQueDespachar
-                ? 'rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white ring-1 ring-white/20 transition hover:bg-white/20'
-                : 'rounded-lg bg-[#5A7836] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#4a6429]'
-            }
-          >
-            Producir
-          </button>
-        )}
-        {hayQueDespachar && (
+        {hayQueDespachar ? (
           <button
             onClick={() => onDespachar(pedido)}
             className="rounded-lg bg-[#5A7836] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#4a6429]"
           >
             Despachar
           </button>
+        ) : (
+          <span className="text-xs text-white/50">Sin Blend en bodega: producir con Producción</span>
         )}
       </div>
       {(producido > 0.01 || pedido.kgDespachados > 0.01) && (
@@ -3504,7 +3476,7 @@ interface PlanDespacho {
  * descuenta el Blend del libro mayor.
  *
  * ═══ SOLO SALE LO QUE YA SE PRODUJO ═════════════════════════════════════════
- * Producir es el paso ANTERIOR, con su propio botón en el pedido (ver
+ * Producir es el paso ANTERIOR, con la calculadora de la tarjeta del Blend (ver
  * `AccionesPedido`). Antes este formulario producía y despachaba de un golpe, y
  * eso obligaba a tener al conductor delante —su nombre y su cédula—
  * para poder producir, cuando el Blend se prepara días antes de que lo recojan.
@@ -3518,9 +3490,17 @@ interface PlanDespacho {
  * que no se elige: salen todos los lotes del pedido, en orden, en una sola
  * remisión; si no alcanzan, se completa con lotes que no son de ningún pedido.
  *
- * Los KG son lo que el pedido debe, recortado a lo que sumen esos lotes: si la
- * producción no alcanzó para todo, sale lo producido y el pedido queda
- * `Enviado Parcial`, que es lo que de verdad pasó.
+ * Los KG se proponen como lo que el pedido debe, recortado a lo que sumen esos
+ * lotes: si la producción no alcanzó para todo, sale lo producido y el pedido
+ * queda `Enviado Parcial`, que es lo que de verdad pasó.
+ *
+ * ═══ UN PEDIDO, VARIAS ENTREGAS (2026-11-06) ═════════════════════════════════
+ * Los KG se pueden BAJAR: un pedido puede tener entregas programadas
+ * (SIRIUS-PED-0134, 3 t en tres viajes) y cada viaje es su propia remisión, con
+ * su fecha y su conductor. Lo que no sale queda en bodega, y el pedido sigue
+ * `Enviado Parcial` con su botón Despachar hasta la última. El
+ * servidor ya lo aceptaba (`kg` es un tope en `despacharPedidoBlend()`); la que
+ * mandaba siempre todo era esta pantalla.
  *
  * Se ensaya primero (`dryRun`) y se confirma después reenviando `idDespacho`. Una
  * remisión no se puede deshacer: apenas se emite, ya descontó el Blend del libro
@@ -3546,19 +3526,24 @@ function FormDespacho({
   onOcupado?: (ocupado: boolean) => void;
 }) {
   const despachables = lotesDespachables(pedido, lotes);
+  const kgEnLotes = Math.round(despachables.reduce((t, l) => t + l.kgDisponibles, 0) * 100) / 100;
+  /** El tope: ni más de lo que el pedido debe, ni más de lo que hay en esos lotes. */
+  const kgMaximo = Math.round(Math.min(pedido.kgPendientes, kgEnLotes) * 100) / 100;
+
+  const [kgTexto, setKgTexto] = useState(() => (kgMaximo > 0 ? String(kgMaximo) : ''));
+  const kgDigitados = Number(kgTexto);
+  const kgValidos = kgTexto.trim() !== '' && Number.isFinite(kgDigitados) && kgDigitados > 0;
+  const excede = kgValidos && kgDigitados > kgMaximo + 0.005;
 
   // Los del pedido van primero en la lista, así que se vacían antes que los libres,
   // y un lote libre solo entra si los del pedido no alcanzan.
-  const reparto: Array<{ lote: string; kg: number; propio: boolean }> = [];
-  let porCubrir = pedido.kgPendientes;
-  for (const l of despachables) {
-    if (porCubrir <= 0.01) break;
-    const toma = Math.round(Math.min(porCubrir, l.kgDisponibles) * 100) / 100;
-    reparto.push({ lote: l.lote, kg: toma, propio: esLoteDelPedido(l.lote, pedido.codigo) });
-    porCubrir -= toma;
-  }
+  const reparto = (kgValidos && !excede ? repartirKgEnLotes(despachables, kgDigitados) ?? [] : []).map(
+    (l) => ({ lote: l.lote, kg: l.kg, propio: esLoteDelPedido(l.lote, pedido.codigo) })
+  );
   const kgADespachar = Math.round(reparto.reduce((t, l) => t + l.kg, 0) * 100) / 100;
-  const esParcial = kgADespachar + 0.01 < pedido.kgPendientes;
+  const esParcial = kgADespachar > 0 && kgADespachar + 0.01 < pedido.kgPendientes;
+  /** Parcial por decisión (entregas programadas), no porque falte producto. */
+  const esEntregaProgramada = esParcial && kgADespachar + 0.01 < kgMaximo;
 
   const sesion = useSesionServidor();
   const [sesionVencida, setSesionVencida] = useState(false);
@@ -3781,8 +3766,8 @@ function FormDespacho({
   if (!despachables.length) {
     return (
       <div className="text-sm text-white/70">
-        Todavía no hay Blend producido para {pedido.codigo}. Primero se produce lo programado con
-        el pedido —botón <strong>Producir</strong>— y después se despacha.
+        No hay Blend en bodega para despachar {pedido.codigo}. Primero se produce con{' '}
+        <strong>Producción</strong> en la tarjeta del Biochar Blend y después se despacha.
         <div className="mt-4">
           <BotonAccion onClick={onCancelar}>Cerrar</BotonAccion>
         </div>
@@ -3810,9 +3795,30 @@ function FormDespacho({
         </p>
       </div>
 
-      <div className="block">
-        <span className="text-white/70">KG a despachar</span>
-        <p className={CAMPO}>{kg(kgADespachar)}</p>
+      <label className="block">
+        <span className="text-white/70">KG a despachar en este viaje</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          max={kgMaximo}
+          value={kgTexto}
+          onChange={(e) => setKgTexto(e.target.value)}
+          required
+          aria-invalid={excede || undefined}
+          className={CAMPO}
+        />
+        <span className="mt-1 block text-xs text-white/50">
+          Hasta {kg(kgMaximo)}. Si el pedido se entrega en varios días, digite solo lo de hoy: lo
+          demás queda en sus lotes para el próximo despacho.
+        </span>
+        {excede && (
+          <span className="mt-1 block text-xs text-red-300">
+            {kgDigitados > pedido.kgPendientes + 0.005
+              ? `Al pedido solo le faltan ${kg(pedido.kgPendientes)}.`
+              : `Los lotes disponibles solo tienen ${kg(kgEnLotes)}.`}
+          </span>
+        )}
         <ul className="mt-2 space-y-0.5 text-xs text-white/60">
           {reparto.map((l) => (
             <li key={l.lote}>
@@ -3821,13 +3827,20 @@ function FormDespacho({
             </li>
           ))}
         </ul>
-        {esParcial && (
-          <span className="mt-1 block text-xs text-amber-200">
-            Lo producido no cubre los {kg(pedido.kgPendientes)} del pedido: sale lo que hay y el
-            pedido queda Enviado Parcial.
+        {esEntregaProgramada ? (
+          <span className="mt-1 block text-xs text-sky-200">
+            Entrega parcial: el pedido queda Enviado Parcial y le faltarán{' '}
+            {kg(pedido.kgPendientes - kgADespachar)} para los próximos despachos.
           </span>
+        ) : (
+          esParcial && (
+            <span className="mt-1 block text-xs text-amber-200">
+              Lo producido no cubre los {kg(pedido.kgPendientes)} del pedido: sale lo que hay y el
+              pedido queda Enviado Parcial.
+            </span>
+          )
         )}
-      </div>
+      </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -3897,9 +3910,13 @@ function FormDespacho({
         <p className="text-xs text-white/50">
           {vencida
             ? 'Tu sesión venció.'
-            : responsable.trim().length < 2
-              ? 'Falta quién entrega.'
-              : 'Falta el nombre y la cédula de quien se lleva el pedido.'}
+            : !kgValidos
+              ? 'Falta cuántos kg salen en este viaje.'
+              : excede
+                ? `Se pueden despachar hasta ${kg(kgMaximo)}.`
+                : responsable.trim().length < 2
+                  ? 'Falta quién entrega.'
+                  : 'Falta el nombre y la cédula de quien se lleva el pedido.'}
         </p>
       )}
     </form>
@@ -3942,6 +3959,7 @@ function SeccionProducto({
   setBusqueda,
   filtroTipo,
   setFiltroTipo,
+  children,
 }: {
   resumen: ResumenProd | null;
   etiquetas: EtiquetasProducto;
@@ -3951,13 +3969,18 @@ function SeccionProducto({
   setBusqueda: (v: string) => void;
   filtroTipo: FiltroTipo;
   setFiltroTipo: (v: FiltroTipo) => void;
+  /** Pedidos y remisiones: van bajo los indicadores, en el mismo sitio que en el biochar. */
+  children?: React.ReactNode;
 }) {
   if (!resumen) {
     return (
-      <div className="mt-6 rounded-xl bg-white/5 ring-1 ring-white/10 p-6 text-white">
-        <h2 className="text-lg font-semibold">{etiquetas.titulo} sin configurar</h2>
-        <p className="mt-2 text-sm text-white/70">{etiquetas.sinConfigurar}</p>
-      </div>
+      <>
+        <div className="mt-6 rounded-xl bg-white/5 ring-1 ring-white/10 p-6 text-white">
+          <h2 className="text-lg font-semibold">{etiquetas.titulo} sin configurar</h2>
+          <p className="mt-2 text-sm text-white/70">{etiquetas.sinConfigurar}</p>
+        </div>
+        {children}
+      </>
     );
   }
 
@@ -4003,6 +4026,8 @@ function SeccionProducto({
           nota="Entradas y salidas registradas"
         />
       </section>
+
+      {children}
 
       {/* Que el saldo no cuadre con los movimientos es la señal —la única— de que
           alguno entró sin vincularse a `Stock_Actual`, que es el modo silencioso en
