@@ -73,7 +73,8 @@ export function saldosDespachables(
 ): SaldoDespachable[] {
   const comprometido = new Map<string, number>();
   for (const r of remisiones) {
-    if (r.estado === CANCELADA || tipoRemision(r) !== 'biochar') continue;
+    // Las de biochar y las mixtas (Blend con biochar puro): las dos llevan `[bache:]`.
+    if (r.estado === CANCELADA || !tipoRemision(r)) continue;
     if (o.excluirRemision && r.codigo === o.excluirRemision) continue;
     for (const { bache, kg } of bachesDeNotas(r.notas)) {
       // Sin código de remisión no hay referencia que buscar: se asume pendiente,

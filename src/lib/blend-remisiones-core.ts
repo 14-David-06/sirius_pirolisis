@@ -155,7 +155,10 @@ export interface RemisionBlend {
   productoNombre: string;
   /** Llave `[desp:<uuid>]` del despacho que la creó, si la tiene. */
   idDespacho: string | null;
-  /** Biochar puro: de qué bache sale cada kg (`[bache:S=kg]`). Vacío en Blend. */
+  /**
+   * De qué bache sale cada kg de biochar puro (`[bache:S=kg]`). En una de Blend,
+   * el biochar que viaja con él en la misma entrega (mixta); casi siempre vacío.
+   */
   bachesRemitidos: BacheDeRemision[];
   /** Instante ISO de la confirmación por enlace (`[recibida:]`), con hora. */
   recibidaEn: string | null;
@@ -223,15 +226,16 @@ export function loteDeNotas(notas: string): string {
  * Los lotes de una remisión con los KG de cada uno.
  *
  * Una remisión de un solo lote no lleva `[kg-lote:…]`: todo el total es de ese
- * lote. Es la forma de todas las emitidas antes de los despachos multilote.
+ * lote. Es la forma de todas las emitidas antes de los despachos multilote. La
+ * excepción es la mixta (Blend con biochar puro): su total suma los dos productos,
+ * así que el lote lleva su `[kg-lote:…]` y manda la marca.
  */
 export function lotesDeNotas(notas: string, kgTotal: number): LoteDeRemision[] {
   const codigos = [...new Set([...notas.matchAll(MARCA_LOTE_G)].map((m) => m[1]))];
-  if (codigos.length <= 1) return codigos.map((lote) => ({ lote, kg: kgTotal }));
-
   const kgPorLote = new Map(
     [...notas.matchAll(MARCA_KG_LOTE_G)].map((m) => [m[1], toNumber(m[2])] as const)
   );
+  if (codigos.length === 1 && !kgPorLote.has(codigos[0])) return [{ lote: codigos[0], kg: kgTotal }];
   return codigos.map((lote) => ({ lote, kg: kgPorLote.get(lote) ?? 0 }));
 }
 
@@ -293,6 +297,10 @@ async function mapRemision(rec: RegistroAirtable): Promise<RemisionBlend> {
   let baches: BacheDeLote[] = [];
 
   if (tipo === 'blend') {
+    // Mixta: el biochar puro que viaja con el Blend, y el total que queda es solo
+    // el Blend (el rollup trae los dos).
+    bachesRemitidos = bachesDeNotas(notas);
+    kgTotal = kgRemitidoDeRemision(cruda)?.kg ?? kgTotal;
     lotes = lotesDeNotas(notas, kgTotal);
     ({ composicion, baches } = await derivadosBlend(lotes, kgTotal));
   } else if (tipo === 'biochar') {
@@ -351,9 +359,39 @@ async function mapRemision(rec: RegistroAirtable): Promise<RemisionBlend> {
     correoEnviadoEn: correoDeNotas(notas),
     documentos: cruda.documentos,
     composicion,
-    co2SecuestradoKg: co2Secuestrado(composicion.biochar),
+    // En una mixta el carbono del documento es el del Blend más el del biochar puro.
+    co2SecuestradoKg: co2Secuestrado(
+      composicion.biochar + (tipo === 'blend' ? bachesRemitidos.reduce((t, b) => t + b.kg, 0) : 0)
+    ),
     baches,
   };
+}
+
+export interface LineaRemision {
+  /** `SIRIUS-PRODUCT-…`. */
+  productoId: string;
+  /** Como lo imprime el documento. */
+  nombre: string;
+  kg: number;
+}
+
+/**
+ * Los renglones de producto de una remisión: el suyo y, en una mixta, el biochar
+ * puro que viajó con el Blend. Es lo que listan el PDF y Flujo de caja; los lotes
+ * no son renglones (al cliente se le despacha un producto, no tandas).
+ */
+export function lineasDeRemision(r: RemisionBlend): LineaRemision[] {
+  const lineas: LineaRemision[] = [
+    { productoId: r.productoId, nombre: r.productoNombre || NOMBRE_PRODUCTO.blend, kg: r.kgTotal },
+  ];
+  if (r.tipo === 'blend' && r.bachesRemitidos.length) {
+    lineas.push({
+      productoId: config.airtable.inventarioProdCoreBiocharPuroProductId ?? '',
+      nombre: NOMBRE_PRODUCTO.biochar,
+      kg: r2(r.bachesRemitidos.reduce((t, b) => t + b.kg, 0)),
+    });
+  }
+  return lineas;
 }
 
 /**

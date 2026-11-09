@@ -41,6 +41,11 @@ export interface BlendRemisionData {
 
   /** Lo que dice el renglón del producto. Sin él, `Biochar Blend` (remisiones viejas). */
   producto?: string;
+  /**
+   * Un renglón por producto, cuando la entrega llevó más de uno (Blend y biochar
+   * puro). Sin él, el único renglón es `producto` con `kg_total`.
+   */
+  productos?: { nombre: string; kg: number }[];
   /** NIT de la empresa. Vacío o ausente = el encabezado no imprime NIT. */
   empresa_nit?: string;
   /**
@@ -323,10 +328,13 @@ export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise
   const colW = [36, CONTENT_W - 36 - 85 - 70, 85, 70];
   const thH = 28;
   const tdH = 26;
-  // Un solo renglón aunque la remisión junte varios lotes: al cliente se le
-  // despacha un producto, no tandas de producción. El reparto por lote vive en
+  // Un renglón por PRODUCTO aunque la remisión junte varios lotes: al cliente se
+  // le despacha un producto, no tandas de producción. El reparto por lote vive en
   // las notas de la remisión y en las Salidas del Core, que es donde se audita.
-  const filas = [{ nombre: data.producto || 'Biochar Blend', kg: data.kg_total }];
+  const filas = data.productos?.length
+    ? data.productos
+    : [{ nombre: data.producto || 'Biochar Blend', kg: data.kg_total }];
+  const kgTotalFilas = filas.reduce((t, f) => t + f.kg, 0);
 
   ensureSpace(thH + tdH * (filas.length + 1) + 20);
   y -= thH;
@@ -357,7 +365,7 @@ export async function generateBlendRemisionPdf(data: BlendRemisionData): Promise
   rect(page, MARGIN, y, CONTENT_W, tdH, SIRIUS_GREEN);
   const totalLabelW = bold.widthOfTextAtSize('TOTAL', 9);
   page.drawText('TOTAL', { x: MARGIN + colW[0] + colW[1] - totalLabelW - 12, y: y + 8, size: 9, font: bold, color: WHITE });
-  textCenter(page, formatKg(data.kg_total), bold, 9, MARGIN + colW[0] + colW[1], colW[2], y + 8, WHITE);
+  textCenter(page, formatKg(kgTotalFilas), bold, 9, MARGIN + colW[0] + colW[1], colW[2], y + 8, WHITE);
   textCenter(page, 'kg', bold, 9, MARGIN + colW[0] + colW[1] + colW[2], colW[3], y + 8, WHITE);
 
   // ═══ CARBONO ══════════════════════════════════════════════════════════════

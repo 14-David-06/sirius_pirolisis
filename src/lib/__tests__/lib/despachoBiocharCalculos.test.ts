@@ -88,6 +88,14 @@ describe('saldosDespachables', () => {
     expect(r.find((s) => s.bache === 'S-00141')).toMatchObject({ comprometido: 10 });
   });
 
+  it('una mixta (Blend con biochar puro) compromete su biochar hasta que exista su Salida', () => {
+    const notas = '[lote:BLEND-2026-10-20] [kg-lote:BLEND-2026-10-20=25] [bache:S-00140=25.00] Biochar Blend';
+    const rems = [remision({ codigo: 'SIRIUS-REM-0904', estado: 'Entregada', notas, kgRollup: 50 })];
+    expect(saldosDespachables(saldos, rems, new Set()).find((s) => s.bache === 'S-00140')).toMatchObject({ comprometido: 25 });
+    const conSalida = saldosDespachables(saldos, rems, new Set(['DESP-SIRIUS-REM-0904-S-00140']));
+    expect(conSalida.find((s) => s.bache === 'S-00140')).toMatchObject({ comprometido: 0, disponible: 100 });
+  });
+
   it('lo comprometido de más nunca da disponible negativo', () => {
     const rems = [remision({ estado: 'Borrador', notas: '[bache:S-00140=150.00] Biochar' })];
     expect(saldosDespachables(saldos, rems, new Set())[0]).toMatchObject({ saldoCore: 100, comprometido: 150, disponible: 0 });

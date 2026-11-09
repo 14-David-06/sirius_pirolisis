@@ -174,6 +174,24 @@ describe('construirDatosPdf', () => {
   });
 });
 
+describe('construirDatosPdf: renglones', () => {
+  it('un producto: un renglón; mixta: uno por producto', () => {
+    expect(pdf.construirDatosPdf(remision()).productos).toEqual([{ nombre: 'Biochar Blend', kg: 100 }]);
+    const mixta = remision({ bachesRemitidos: [{ bache: 'S-00140', kg: 25 }] });
+    expect(pdf.construirDatosPdf(mixta).productos).toEqual([
+      { nombre: 'Biochar Blend', kg: 100 },
+      { nombre: 'Biochar', kg: 25 },
+    ]);
+  });
+
+  it('el PDF de una mixta lista los dos productos', async () => {
+    const bytes = await gen.generateBlendRemisionPdf(
+      pdf.construirDatosPdf(remision({ estado: 'Entregada', bachesRemitidos: [{ bache: 'S-00140', kg: 25 }] }))
+    );
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
+});
+
 describe('generarPdfRemision', () => {
   it('cada estado produce un PDF válido; el pendiente con enlace lleva UNA imagen más (el QR)', async () => {
     const enlace = { url: 'https://piroliapp.ejemplo.test/recibir#v1.token', venceEl: '2026-10-28' };
@@ -260,6 +278,24 @@ describe('mapeo de la remisión (resolverRemision)', () => {
     expect(r.lotes).toEqual([]);
     expect(r.co2SecuestradoKg).toBe(0);
     expect(falso.llamadas.filter((l) => l.base === B_INV)).toHaveLength(0);
+  });
+
+  it('mixta: el Blend sale de [kg-lote:] y no del rollup, y el CO₂ suma el biochar puro', async () => {
+    core0({
+      'Area Origen': 'Producción',
+      'Notas de Remisión': '[lote:BLEND-A] [kg-lote:BLEND-A=25] [bache:S-00140=25.00] Biochar Blend — Obs',
+      'Total Cantidad Remitida': 50,
+    });
+    const r = (await core.resolverRemision('SIRIUS-REM-0230'))!;
+    expect(r.tipo).toBe('blend');
+    expect(r.kgTotal).toBe(25);
+    expect(r.lotes).toEqual([{ lote: 'BLEND-A', kg: 25 }]);
+    expect(r.bachesRemitidos).toEqual([{ bache: 'S-00140', kg: 25 }]);
+    expect(r.co2SecuestradoKg).toBeCloseTo((r.composicion.biochar + 25) * FACTOR, 4);
+    expect(core.lineasDeRemision(r)).toEqual([
+      { productoId: 'PRODUCTO-BLEND-FALSO', nombre: 'Biochar Blend', kg: 25 },
+      { productoId: 'PRODUCTO-PURO-FALSO', nombre: 'Biochar', kg: 25 },
+    ]);
   });
 
   it('Blend: sigue leyendo el lote para la proporción real', async () => {

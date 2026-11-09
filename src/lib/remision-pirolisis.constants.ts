@@ -21,6 +21,14 @@
 // DESPUÉS del primer « — » es texto del operador: el PDF lo imprime como
 // observaciones y NUNCA se lee como marca. Si se leyera, un `[bache:S-00999=500]`
 // escrito a mano entraría a la contabilidad de carbono.
+//
+// ═══ BLEND Y BIOCHAR EN UNA REMISIÓN (2026-10-27) ═════════════════════════════
+// Una entrega con los dos productos es UNA remisión: el documento tiene que listar
+// lo que salió en ese viaje (Invernalia, SIRIUS-REM-0214). Es de tipo `blend` y
+// lleva además `[bache:S=kg]` por el biochar puro. Como `Total Cantidad Remitida`
+// suma los dos productos, el Blend se lee de `[kg-lote:]`, que en una mixta va
+// aunque haya un solo lote. Lo que queda sin cubrir: el estado de un PEDIDO con
+// una remisión mixta solo cuenta su Blend (`kgRemitidoDeRemision`).
 
 export type ProductoPirolisis = 'blend' | 'biochar';
 
@@ -344,18 +352,35 @@ export function remisionCrudaDeRegistro(rec: { id: string; fields: Record<string
  * si no es de PiroliApp.
  *
  * Blend: el rollup, que suma una fila de `Productos Remitidos` por lote. Biochar:
- * la suma de las marcas, que es lo que se descontó del inventario.
+ * la suma de las marcas, que es lo que se descontó del inventario. Mixta (Blend
+ * con `[bache:]`): solo el Blend, de sus `[kg-lote:]`; el rollup trae también el
+ * biochar.
  *
  * No mira el estado: quien suma decide (una `Cancelada` no remite nada).
  */
 export function kgRemitidoDeRemision(r: RemisionCruda): { tipo: ProductoPirolisis; kg: number } | null {
   const tipo = tipoRemision(r);
   if (!tipo) return null;
-  if (tipo === 'biochar') {
-    const baches = bachesDeNotas(r.notas);
-    if (baches.length) return { tipo, kg: r2(baches.reduce((t, b) => t + b.kg, 0)) };
+  const baches = bachesDeNotas(r.notas);
+  if (tipo === 'biochar' && baches.length) return { tipo, kg: r2(baches.reduce((t, b) => t + b.kg, 0)) };
+  if (tipo === 'blend' && baches.length) {
+    const kg = kgLotesExplicitos(r.notas);
+    if (kg !== null) return { tipo, kg };
   }
   return { tipo, kg: r2(r.kgRollup) };
+}
+
+/**
+ * Suma de `[kg-lote:]` si CADA lote de las marcas tiene la suya, o null. Una
+ * remisión de un solo lote no la lleva (todo el rollup es de ese lote), salvo que
+ * sea mixta.
+ */
+export function kgLotesExplicitos(notas: string): number | null {
+  const prefijo = prefijoMarcas(notas);
+  const lotes = new Set([...prefijo.matchAll(/\[lote:([A-Za-z0-9\-_]+)\]/g)].map((m) => m[1]));
+  const kg = new Map([...prefijo.matchAll(/\[kg-lote:([A-Za-z0-9\-_]+)=([0-9.]+)\]/g)].map((m) => [m[1], Number(m[2])] as const));
+  if (!lotes.size || [...lotes].some((l) => !Number.isFinite(kg.get(l)))) return null;
+  return r2([...lotes].reduce((t, l) => t + (kg.get(l) ?? 0), 0));
 }
 
 /**
