@@ -826,7 +826,9 @@ producción) y `scripts/ensayar-recepcion.ts`.
     Guaicaramo y salieron sin documento quedaron en REM-0205…0210, 0212 y 0214,
     reutilizando remisiones vacías y anuladas
     (`scripts/remisiones-retroactivas-2026.ts`), con su PDF público y su fila en
-    Flujo de caja; falta que finanzas les vincule `Factura Relacionada`. Siguen
-    bloqueadas REM-0211 (NANOMOF, 200 kg de biochar) y REM-0213 (Agro Ocampo,
-    120 kg de Blend): ninguno de los dos clientes está en Clients Core y sus kg no
-    tienen Salida en el libro mayor.
+    Flujo de caja; falta que finanzas les vincule `Factura Relacionada`.
+    REM-0211 (NANOMOF, 200 kg de biochar) y REM-0213 (Agro Ocampo, 120 kg de
+    Blend) estuvieron bloqueadas —sin cliente en Clients Core ni Salida en el libro
+    mayor— hasta el 2026-10-30, cuando se crearon CL-0094 y CL-0095, se asentaron
+    sus movimientos (S-00141) y se aplicaron. A esa fecha eran las dos sin
+    `Factura Relacionada`.

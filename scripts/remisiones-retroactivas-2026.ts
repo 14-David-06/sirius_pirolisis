@@ -99,6 +99,11 @@ interface Retroactiva {
   responsable?: string;
   /** `Fecha Recibido`, si se sabe. */
   recibido?: string;
+  /**
+   * Código `PER-REM-XXXX` del Receptor en `Personas`, si se sabe quién recibió.
+   * El código y no el record ID: ningún ID de Airtable va en el fuente (§7).
+   */
+  receptor?: string;
   /** Lo que el PDF dice además de la factura. */
   nota?: string;
   /** `documento_referencia` de la Salida de muestra de la que salieron estos kg. */
@@ -120,14 +125,23 @@ const PLAN: Retroactiva[] = [
   { codigo: 'SIRIUS-REM-0208', factura: 'SRFE1532', idCliente: 'CL-0003', cliente: 'AGRICOLA GUARILA SAS', producto: 'blend', kg: 5000, precio: 1400, fecha: '2026-05-07', lote: 'BLEND-2026-04-30' },
   { codigo: 'SIRIUS-REM-0209', factura: 'SRFE1536', idCliente: 'CL-0003', cliente: 'AGRICOLA GUARILA SAS', producto: 'blend', kg: 12330, precio: 1400, fecha: '2026-05-14', lote: 'BLEND-2026-04-30' },
   { codigo: 'SIRIUS-REM-0210', factura: 'SRFE1553', idCliente: 'CL-0023', cliente: 'INPARME S.A.S', producto: 'blend', kg: 10010, precio: 1190, fecha: '2026-07-01', lote: 'BLEND-2026-06-24' },
+  // NANOMOF salió directo de la bodega, sin Salida en el libro mayor: se asentó el
+  // 2026-10-30 (INV-MOV-0753, FIFO desde S-00141) con la llave DESP-<REM>-<bache>.
+  // No hay contacto de NANOMOF en Clients Core: el documento sale sin receptor.
   {
-    codigo: 'SIRIUS-REM-0211', factura: 'SRFE1563', idCliente: null, cliente: 'NANOMOF S.A.S.', producto: 'biochar', kg: 200, precio: 4000, fecha: '2026-08-11',
-    bloqueo: 'NANOMOF no está en Clients Core, y el libro mayor no tiene la Salida de esos 200 kg: falta saber de qué bache salieron',
+    codigo: 'SIRIUS-REM-0211', factura: 'SRFE1563', idCliente: 'CL-0094', cliente: 'NANOMOF S.A.S.', producto: 'biochar', kg: 200, precio: 4000, fecha: '2026-08-11',
+    baches: [{ bache: 'S-00141', kg: 200 }], responsable: 'Santiago Amaya', recibido: '2026-08-11',
+    nota: 'Recibido por NANOMOF S.A.S. el 11 de agosto de 2026.',
   },
   { codigo: 'SIRIUS-REM-0212', factura: 'SRFE1574', idCliente: 'CL-0002', cliente: 'BELLACRUZ DEL LLANO S A S', producto: 'blend', kg: 770, precio: 1400, fecha: '2026-09-01', lote: 'SAL-BELLACRUZ-2026-09-01' },
+  // Agro Ocampo: ningún lote tenía 120 kg a finales de septiembre, así que se
+  // mezcló y despachó sin registrarse. Se asentó el 2026-10-30 como las ventas de
+  // la hoja: Entrada y Salida de Blend, y su biochar (S-00141) y abono, con el
+  // destino SAL-AGRO-OCAMPO-2026-10-05. La factura dice «REMISION 200» por error.
   {
-    codigo: 'SIRIUS-REM-0213', factura: 'SRFE1584', idCliente: null, cliente: 'AGRO OCAMPO ALVAREZ SAS', producto: 'blend', kg: 120, precio: 1400, fecha: '2026-10-05',
-    bloqueo: 'Agro Ocampo no está en Clients Core, y los 120 kg no tienen Salida ni lote en el libro mayor',
+    codigo: 'SIRIUS-REM-0213', factura: 'SRFE1584', idCliente: 'CL-0095', cliente: 'AGRO OCAMPO ALVAREZ SAS', producto: 'blend', kg: 120, precio: 1400, fecha: '2026-10-05',
+    lote: 'SAL-AGRO-OCAMPO-2026-10-05', responsable: 'Santiago Amaya', recibido: '2026-10-05', receptor: 'PER-REM-0029',
+    nota: 'Recibido por Agustín Ocampo el 5 de octubre de 2026.',
   },
   // Invernalia: una entrega con los dos productos, una remisión mixta (el
   // documento lista lo que salió en ese viaje). Los dos salieron de la muestra de
@@ -267,6 +281,18 @@ async function main() {
     if (problemas.length) throw new Error(`Esquema de Remisiones Core inesperado: ${problemas.join('; ')}`);
   }
 
+  /** Record ID de una persona de `Personas` por su `Codigo Persona Remision`. */
+  async function receptorId(codigo: string): Promise<string> {
+    assertCodigoSimbolico(codigo, 'código de persona');
+    const { personasTable } = core.remisionesCoreConfig();
+    if (!personasTable) throw new Error('AIRTABLE_TABLE_PERSONAS_REMISION no configurado');
+    const registros = await core.atAllRemisiones(baseId, personasTable, token, {
+      filterByFormula: `{Codigo Persona Remision} = '${escapeAirtableValue(codigo)}'`,
+    });
+    if (registros.length !== 1) throw new Error(`${codigo}: ${registros.length} personas con ese código en Personas`);
+    return registros[0].id;
+  }
+
   async function leerCruda(codigo: string) {
     const q = new URLSearchParams({ filterByFormula: `{ID} = '${escapeAirtableValue(codigo)}'`, maxRecords: '2' });
     const data = await atRemisiones(`${AT}/${baseId}/${remisionesTable}?${q}`, token);
@@ -374,7 +400,7 @@ async function main() {
       responsableEntrega: r.responsable ?? '',
       documentoUrl: '',
       notas: notasDe(r),
-      personas: [],
+      personas: r.receptor ? await core.personasDeRemision([await receptorId(r.receptor)]) : [],
       tipo: r.producto,
       productoId: productoId[r.producto],
       productoNombre: consts.NOMBRE_PRODUCTO[r.producto],
@@ -401,6 +427,8 @@ async function main() {
     if (r.reclasifica && r.producto === 'biochar' && r.baches!.length !== 1) {
       throw new Error('reclasificar una muestra de biochar se hace bache por bache: un bache por remisión');
     }
+    // Antes de la primera escritura: un código que no resuelve detiene esta remisión entera.
+    const receptor = r.receptor ? await receptorId(r.receptor) : null;
 
     // Una fila por producto. `a-medias`: las que falten, en orden.
     if (situacion === 'vacia' || situacion === 'a-medias') {
@@ -432,6 +460,9 @@ async function main() {
             'Responsable Entrega': r.responsable ?? '',
             'Fecha Pedido Despachado': r.fecha,
             ...(r.recibido ? { 'Fecha Recibido': r.recibido } : {}),
+            // Una remisión `vacia` no tiene personas, así que no hay histórico que
+            // el PATCH del link pueda borrar.
+            ...(receptor ? { Personas: [receptor] } : {}),
             'Notas de Remisión': notasDe(r),
             // Traía el número suelto («205»): no es un enlace, y Flujo de caja solo
             // copia uno del bucket público.
